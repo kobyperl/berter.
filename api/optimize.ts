@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 export default async function handler(req, res) {
-  // CORS Headers (Optional, useful if testing from localhost against prod)
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -16,12 +16,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Robust Body Parsing
   let body = req.body;
   if (typeof body === 'string') {
     try {
@@ -38,12 +36,20 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing rawInput in request body' });
   }
 
-  // Securely access the API key from Vercel Environment Variables
-  const apiKey = process.env.API_KEY;
+  // Check multiple possible environment variable names
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+
+  // Debug log (will show in Vercel logs) to help verify which keys are seen
+  console.log("Checking environment variables for API Key...");
+  console.log("VITE_GEMINI_API_KEY exists?", !!process.env.VITE_GEMINI_API_KEY);
+  console.log("API_KEY exists?", !!process.env.API_KEY);
 
   if (!apiKey) {
-    console.error("CRITICAL: Gemini API Key is missing in Vercel environment variables.");
-    return res.status(500).json({ error: 'Server configuration error: API Key missing' });
+    console.error("CRITICAL: No valid API Key found in environment variables.");
+    return res.status(500).json({ 
+        error: 'Server configuration error: API Key missing',
+        details: 'Checked: VITE_GEMINI_API_KEY, API_KEY, GOOGLE_API_KEY'
+    });
   }
 
   try {
@@ -88,7 +94,6 @@ export default async function handler(req, res) {
 
   } catch (error: any) {
     console.error("Gemini API execution failed:", error);
-    // Return the specific error message to help debugging (be careful with sensitive info in prod)
     return res.status(500).json({ error: 'Failed to optimize offer', details: error.message });
   }
 }
