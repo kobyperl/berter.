@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 // Core Components
 import { Navbar } from './components/Navbar';
@@ -46,7 +44,7 @@ import {
   getDocs,
   query,
   where,
-  writeBatch
+  writeBatch // Import writeBatch
 } from 'firebase/firestore';
 import { 
   createUserWithEmailAndPassword, 
@@ -259,16 +257,37 @@ export const App: React.FC = () => {
               await checkForNewCategory(updatedProfileData.mainField);
           }
 
-          const isAdmin = currentUser?.role === 'admin';
-          let updatedUser: UserProfile;
+          // Check for new interests
+          if (updatedProfileData.interests && updatedProfileData.interests.length > 0) {
+              for (const interest of updatedProfileData.interests) {
+                  await checkForNewInterest(interest);
+              }
+          }
 
+          const isAdmin = currentUser?.role === 'admin';
+          
           if (isAdmin) {
               const { pendingUpdate, ...dataToSave } = updatedProfileData;
               const finalData = {
                   ...dataToSave,
                   pendingUpdate: deleteField()
               };
+              
+              // 1. Update User Document
               await setDoc(doc(db, "users", updatedProfileData.id), finalData, { merge: true });
+
+              // 2. Batch Update all User's Offers with new profile snapshot
+              const batch = writeBatch(db);
+              const q = query(collection(db, "offers"), where("profileId", "==", updatedProfileData.id));
+              const querySnapshot = await getDocs(q);
+              
+              querySnapshot.forEach((docSnap) => {
+                  batch.update(docSnap.ref, { 
+                      profile: { ...finalData } // Use the new profile data
+                  });
+              });
+              await batch.commit();
+
           } else {
               const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
               await updateDoc(doc(db, "users", updatedProfileData.id), {
@@ -289,18 +308,48 @@ export const App: React.FC = () => {
       if (user.pendingUpdate.mainField) {
          await checkForNewCategory(user.pendingUpdate.mainField);
       }
+      // Check for new interests in pending update
+      if (user.pendingUpdate.interests) {
+         for (const interest of user.pendingUpdate.interests) {
+            await checkForNewInterest(interest);
+         }
+      }
 
       const { pendingUpdate, ...baseUserData } = user;
-      const finalData = {
+      
+      // The final new profile object
+      const finalProfileData = {
           ...baseUserData,
           ...pendingUpdate,
-          pendingUpdate: deleteField()
+          pendingUpdate: deleteField() // Remove the pending flag from DB
       };
+      // We also need a clean object without the DeleteField operator for the local state/offers update
+      const cleanProfileData = {
+          ...baseUserData,
+          ...pendingUpdate
+      };
+      delete cleanProfileData.pendingUpdate;
+
 
       try {
-          await setDoc(doc(db, "users", userId), finalData, { merge: true });
+          // 1. Update User Document
+          await setDoc(doc(db, "users", userId), finalProfileData, { merge: true });
+
+          // 2. Batch Update all User's Offers with new profile snapshot
+          const batch = writeBatch(db);
+          const q = query(collection(db, "offers"), where("profileId", "==", userId));
+          const querySnapshot = await getDocs(q);
+          
+          querySnapshot.forEach((docSnap) => {
+              batch.update(docSnap.ref, { 
+                  profile: cleanProfileData // Update the snapshot in the offer
+              });
+          });
+          await batch.commit();
+
+
           if (selectedProfile?.id === userId) {
-              setSelectedProfile({ ...user, ...pendingUpdate, pendingUpdate: undefined } as UserProfile);
+              setSelectedProfile(cleanProfileData as UserProfile);
           }
       } catch (error) { 
           console.error("Error approving update:", error); 
@@ -330,6 +379,12 @@ export const App: React.FC = () => {
         // Check for new category
         if (newUser.mainField) {
             await checkForNewCategory(newUser.mainField);
+        }
+        // Check for new interests
+        if (newUser.interests) {
+            for (const interest of newUser.interests) {
+                await checkForNewInterest(interest);
+            }
         }
 
         const userCredential = await createUserWithEmailAndPassword(auth, newUser.email!, pass);
@@ -411,8 +466,7 @@ export const App: React.FC = () => {
   const handleRejectInterest = async (interest: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-              pendingInterests: arrayRemove(interest),
-              approvedInterests: arrayRemove(interest)
+              pendingInterests: arrayRemove(interest)
           });
       } catch (e) { console.error(e); }
   };
@@ -710,24 +764,7 @@ export const App: React.FC = () => {
       <UsersListModal isOpen={isUserManagementOpen} onClose={() => setIsUserManagementOpen(false)} users={users} currentUser={currentUser} onDeleteUser={(id) => deleteDoc(doc(db, "users", id))} onApproveUpdate={handleApproveUserUpdate} onRejectUpdate={handleRejectUserUpdate} onViewProfile={handleViewProfile} />
       <AdminOffersModal isOpen={isAdminOffersOpen} onClose={() => setIsAdminOffersOpen(false)} offers={offers} onDeleteOffer={handleDeleteOffer} onBulkDelete={handleBulkDelete} onApproveOffer={handleApproveOffer} onEditOffer={(offer) => { setEditingOffer(offer); setIsCreateModalOpen(true); setIsAdminOffersOpen(false); }} onViewProfile={handleViewProfile} />
       <AdminAdManager isOpen={isAdManagerOpen} onClose={() => setIsAdManagerOpen(false)} ads={systemAds} availableInterests={availableInterests} availableCategories={availableCategories} onAddAd={handleAddAd} onEditAd={handleEditAd} onDeleteAd={handleDeleteAd} />
-      <AdminAnalyticsModal 
-        isOpen={isAdminAnalyticsOpen} 
-        onClose={() => setIsAdminAnalyticsOpen(false)} 
-        users={users} 
-        availableCategories={availableCategories} 
-        availableInterests={availableInterests} 
-        onAddCategory={(cat) => checkForNewCategory(cat)} // Fix: use helper to trigger approval logic
-        onAddInterest={(int) => checkForNewInterest(int)}
-        onDeleteCategory={handleRejectCategory}
-        onDeleteInterest={handleRejectInterest}
-        pendingCategories={taxonomy.pendingCategories}
-        pendingInterests={taxonomy.pendingInterests}
-        onApproveCategory={handleApproveCategory}
-        onRejectCategory={handleRejectCategory}
-        onReassignCategory={handleReassignCategory}
-        onApproveInterest={handleApproveInterest}
-        onRejectInterest={handleRejectInterest}
-      />
+      <AdminAnalyticsModal isOpen={isAdminAnalyticsOpen} onClose={() => setIsAdminAnalyticsOpen(false)} users={users} availableCategories={availableCategories} availableInterests={availableInterests} onAddCategory={(cat) => checkForNewCategory(cat)} onAddInterest={(int) => checkForNewInterest(int)} onDeleteCategory={handleRejectCategory} onDeleteInterest={handleRejectInterest} pendingCategories={taxonomy.pendingCategories} pendingInterests={taxonomy.pendingInterests} onApproveCategory={handleApproveCategory} onRejectCategory={handleRejectCategory} onReassignCategory={handleReassignCategory} onApproveInterest={handleApproveInterest} onRejectInterest={handleRejectInterest} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => { setAuthStartOnRegister(true); setIsAuthModalOpen(true); }} />
       <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} onStartSearching={() => { setIsSearchTipsOpen(false); window.scrollTo({ top: 600, behavior: 'smooth' }); }} />
