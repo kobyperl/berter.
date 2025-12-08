@@ -250,6 +250,21 @@ export const App: React.FC = () => {
   };
 
   // --- Handlers (FIREBASE IMPLEMENTATION) ---
+  
+  // Helper to update all offers for a user
+  const updateOffersForUser = async (userId: string, newProfileData: UserProfile) => {
+      const batch = writeBatch(db);
+      const q = query(collection(db, "offers"), where("profileId", "==", userId));
+      const querySnapshot = await getDocs(q);
+      
+      querySnapshot.forEach((docSnap) => {
+          batch.update(docSnap.ref, { 
+              profile: newProfileData // Use the new profile data
+          });
+      });
+      await batch.commit();
+  };
+
   const handleUpdateProfile = async (updatedProfileData: UserProfile) => {
       try {
           // Check for new category
@@ -267,28 +282,22 @@ export const App: React.FC = () => {
           const isAdmin = currentUser?.role === 'admin';
           
           if (isAdmin) {
+              // Admin direct update:
+              // 1. Clean pendingUpdate if it exists
               const { pendingUpdate, ...dataToSave } = updatedProfileData;
               const finalData = {
                   ...dataToSave,
                   pendingUpdate: deleteField()
               };
               
-              // 1. Update User Document
+              // 2. Update User Document
               await setDoc(doc(db, "users", updatedProfileData.id), finalData, { merge: true });
 
-              // 2. Batch Update all User's Offers with new profile snapshot
-              const batch = writeBatch(db);
-              const q = query(collection(db, "offers"), where("profileId", "==", updatedProfileData.id));
-              const querySnapshot = await getDocs(q);
-              
-              querySnapshot.forEach((docSnap) => {
-                  batch.update(docSnap.ref, { 
-                      profile: { ...finalData } // Use the new profile data
-                  });
-              });
-              await batch.commit();
+              // 3. Update All Offers immediately
+              await updateOffersForUser(updatedProfileData.id, finalData as UserProfile);
 
           } else {
+              // User request update: save changes inside 'pendingUpdate' field.
               const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
               await updateDoc(doc(db, "users", updatedProfileData.id), {
                   pendingUpdate: dataToUpdate
@@ -315,38 +324,31 @@ export const App: React.FC = () => {
          }
       }
 
+      // Merge pending updates into main profile
       const { pendingUpdate, ...baseUserData } = user;
       
-      // The final new profile object
-      const finalProfileData = {
-          ...baseUserData,
-          ...pendingUpdate,
-          pendingUpdate: deleteField() // Remove the pending flag from DB
-      };
-      
       // Clean object for offers update (without deleteField())
-      const cleanProfileData = { ...baseUserData, ...pendingUpdate };
+      const cleanProfileData = {
+          ...baseUserData,
+          ...pendingUpdate
+      } as UserProfile;
       delete cleanProfileData.pendingUpdate;
+
+      // Data for User Doc update (with deleteField to clear pending)
+      const finalUserData = {
+          ...cleanProfileData,
+          pendingUpdate: deleteField() 
+      };
 
       try {
           // 1. Update User Document
-          await setDoc(doc(db, "users", userId), finalProfileData, { merge: true });
+          await setDoc(doc(db, "users", userId), finalUserData, { merge: true });
 
           // 2. Batch Update all User's Offers with new profile snapshot
-          const batch = writeBatch(db);
-          const q = query(collection(db, "offers"), where("profileId", "==", userId));
-          const querySnapshot = await getDocs(q);
-          
-          querySnapshot.forEach((docSnap) => {
-              batch.update(docSnap.ref, { 
-                  profile: cleanProfileData // Update the snapshot in the offer
-              });
-          });
-          await batch.commit();
-
+          await updateOffersForUser(userId, cleanProfileData);
 
           if (selectedProfile?.id === userId) {
-              setSelectedProfile(cleanProfileData as UserProfile);
+              setSelectedProfile(cleanProfileData);
           }
       } catch (error) { 
           console.error("Error approving update:", error); 
@@ -362,7 +364,7 @@ export const App: React.FC = () => {
         
         const user = users.find(u => u.id === userId);
         if (user && selectedProfile?.id === userId) {
-             const originalUser = { ...user, pendingUpdate: undefined };
+             const originalUser = { ...user, pendingUpdate: undefined } as UserProfile;
              setSelectedProfile(originalUser);
         }
       } catch (error) { 
