@@ -1,4 +1,5 @@
 
+
 export enum ExpertiseLevel {
   JUNIOR = 'מתחיל',
   MID = 'בינוני',
@@ -76,11 +77,4 @@ export interface SystemAd {
   targetInterests: string[]; // Subject Matters / User Interests (e.g., "Music", "Sports")
   subLabel?: string; // Optional text to appear at the bottom (e.g., "Sponsored") - if empty, nothing shows
   isActive: boolean;
-}
-
-export interface SystemTaxonomy {
-  approvedCategories: string[];
-  pendingCategories: string[];
-  approvedInterests: string[];
-  pendingInterests?: string[];
 }
