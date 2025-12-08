@@ -251,6 +251,31 @@ export const App: React.FC = () => {
       }
   };
 
+  // --- Helper: Sync User Profile to Offers ---
+  // This ensures that when a user profile is updated (or approved), all their existing offers
+  // get the new name, avatar, etc.
+  const syncUserToOffers = async (userId: string, updatedProfile: UserProfile) => {
+      try {
+          // 1. Find all offers by this user
+          const q = query(collection(db, "offers"), where("profileId", "==", userId));
+          const querySnapshot = await getDocs(q);
+
+          if (querySnapshot.empty) return;
+
+          // 2. Batch update
+          const batch = writeBatch(db);
+          querySnapshot.forEach((docSnapshot) => {
+              const offerRef = doc(db, "offers", docSnapshot.id);
+              batch.update(offerRef, { profile: updatedProfile });
+          });
+
+          await batch.commit();
+          console.log(`Synced profile updates to ${querySnapshot.size} offers.`);
+      } catch (error) {
+          console.error("Error syncing profile to offers:", error);
+      }
+  };
+
   // --- Handlers (FIREBASE IMPLEMENTATION) ---
   const handleUpdateProfile = async (updatedProfileData: UserProfile) => {
       try {
@@ -260,20 +285,29 @@ export const App: React.FC = () => {
           }
 
           const isAdmin = currentUser?.role === 'admin';
-          let updatedUser: UserProfile;
-
+          
           if (isAdmin) {
+              // Admin updates immediately
               const { pendingUpdate, ...dataToSave } = updatedProfileData;
               const finalData = {
                   ...dataToSave,
                   pendingUpdate: deleteField()
               };
+              
+              // 1. Update User Doc
               await setDoc(doc(db, "users", updatedProfileData.id), finalData, { merge: true });
+              
+              // 2. Sync to all offers immediately
+              await syncUserToOffers(updatedProfileData.id, finalData as UserProfile);
+              
+              alert("הפרופיל עודכן בהצלחה (מנהל)");
           } else {
+              // Regular User -> Pending Update
               const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
               await updateDoc(doc(db, "users", updatedProfileData.id), {
                   pendingUpdate: dataToUpdate
               });
+              alert("השינויים נשלחו לאישור מנהל ויעודכנו באתר לאחר האישור.");
           }
       } catch (error) {
           console.error("Error updating profile:", error);
@@ -291,16 +325,26 @@ export const App: React.FC = () => {
       }
 
       const { pendingUpdate, ...baseUserData } = user;
-      const finalData = {
+      const finalData: UserProfile = {
           ...baseUserData,
           ...pendingUpdate,
+          // Remove pendingUpdate field from final object
+      };
+      // Explicitly delete pendingUpdate from Firestore
+      const updatePayload = {
+          ...finalData,
           pendingUpdate: deleteField()
       };
 
       try {
-          await setDoc(doc(db, "users", userId), finalData, { merge: true });
+          // 1. Update User Document
+          await setDoc(doc(db, "users", userId), updatePayload, { merge: true });
+          
+          // 2. Sync updates to all offers belonging to this user
+          await syncUserToOffers(userId, finalData);
+
           if (selectedProfile?.id === userId) {
-              setSelectedProfile({ ...user, ...pendingUpdate, pendingUpdate: undefined } as UserProfile);
+              setSelectedProfile(finalData);
           }
       } catch (error) { 
           console.error("Error approving update:", error); 
@@ -510,13 +554,24 @@ export const App: React.FC = () => {
   const handleContact = (profile: UserProfile, offerTitle?: string) => {
     if (!currentUser) { setAuthStartOnRegister(false); setIsAuthModalOpen(true); return; }
     if (profile.id === currentUser.id) { alert("זוהי ההצעה שלך :)"); return; }
-    setSelectedProfile(profile);
+    // Ensure we use the latest profile data from users array if available
+    const liveProfile = users.find(u => u.id === profile.id) || profile;
+    setSelectedProfile(liveProfile);
     setInitialMessageSubject(offerTitle ? `התעניינות ב: ${offerTitle}` : '');
     setIsMessagingModalOpen(true);
   };
 
   const handleViewProfile = (profile: UserProfile) => {
-    setSelectedProfile(currentUser && profile.id === currentUser.id ? currentUser : profile);
+    // IMPORTANT: Try to find the LIVE user data from the 'users' state.
+    // The profile passed from OfferCard might be stale (snapshot).
+    const liveProfile = users.find(u => u.id === profile.id);
+    
+    // If viewing myself, or if live profile found, use that. Fallback to passed profile.
+    const profileToView = (currentUser && profile.id === currentUser.id) 
+        ? currentUser 
+        : (liveProfile || profile);
+
+    setSelectedProfile(profileToView);
     setIsProfileModalOpen(true);
   };
 
@@ -609,7 +664,11 @@ export const App: React.FC = () => {
         onOpenCreateModal={handleOpenCreate}
         onOpenMessages={handleOpenMessages}
         onOpenAuth={() => { setAuthStartOnRegister(false); setIsAuthModalOpen(true); }}
-        onOpenProfile={() => { setSelectedProfile(currentUser); setIsProfileModalOpen(true); }}
+        onOpenProfile={() => { 
+            // When opening MY OWN profile, use currentUser (which has live updates/pendingUpdate)
+            setSelectedProfile(currentUser); 
+            setIsProfileModalOpen(true); 
+        }}
         onOpenUserManagement={() => setIsUserManagementOpen(true)}
         onOpenAdminOffers={() => setIsAdminOffersOpen(true)}
         onOpenAdManager={() => setIsAdManagerOpen(true)}

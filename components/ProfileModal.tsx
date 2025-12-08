@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Briefcase, ExternalLink, Heart, Pencil, Save, Plus, Image as ImageIcon, Camera, Upload, Tag, AlertCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { UserProfile, BarterOffer, ExpertiseLevel } from '../types';
@@ -94,6 +95,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   // I want to see the PREVIEW of how it will look (merged state).
   // Regular users see the stable 'profile' state.
   let displayProfile = profile;
+  
+  // Logic: Show pending updates if I am the owner OR I am an admin viewing a user with updates
   if (profile && profile.pendingUpdate && (isOwnProfile || isAdmin)) {
       displayProfile = { ...profile, ...profile.pendingUpdate } as UserProfile;
   }
@@ -338,7 +341,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 </button>
                              </div>
 
-                             <div className="flex flex-wrap gap-2 min-h-[40px] items-center">
+                             <div className="flex flex-wrap gap-2 min-h-[400px] items-center">
                                  {editFormData.interests?.map((interest, idx) => (
                                      <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-sm flex items-center gap-1 shadow-sm group hover:border-red-200">
                                          {interest}
@@ -436,7 +439,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
                              >
                                  <Save className="w-4 h-4" />
-                                 שמור שינויים
+                                 {isAdmin ? 'שמור ועדכן מידית' : 'שמור (שלח לאישור)'}
                              </button>
                          </div>
                     </form>
@@ -552,7 +555,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                          {/* Pending Changes Review Section (Bottom) */}
                          {(isOwnProfile || isAdmin) && profile?.pendingUpdate && (
-                             <div className="mt-8 border-t-2 border-yellow-200 pt-6">
+                             <div className="mt-8 border-t-2 border-yellow-200 pt-6 animate-in slide-in-from-bottom-2">
                                 {isAdmin ? (
                                     <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">
                                         <div className="flex items-center gap-3 mb-4">
@@ -585,14 +588,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4 flex items-center gap-4">
-                                        <div className="bg-yellow-100 p-2 rounded-full text-yellow-600">
-                                            <AlertCircle className="w-6 h-6" />
+                                    <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-right">
+                                        <div className="bg-yellow-100 p-3 rounded-full text-yellow-600 shrink-0">
+                                            <Loader2 className="w-6 h-6 animate-spin" />
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-yellow-900 text-lg">בוצעו שינויים, ממתין לאישור מנהל</h3>
-                                            <p className="text-sm text-yellow-700">
-                                                הפרטים החדשים נשמרו במערכת ויעודכנו בפרופיל הציבורי לאחר בדיקה ואישור של צוות האתר.
+                                            <h3 className="font-bold text-yellow-900 text-lg">השינויים נשמרו וממתינים לאישור</h3>
+                                            <p className="text-sm text-yellow-700 mt-1">
+                                                אתה צופה בתצוגה מקדימה של הפרופיל. שאר המשתמשים יראו את העדכון רק לאחר אישור מנהל המערכת.
                                             </p>
                                         </div>
                                     </div>
