@@ -1,0 +1,327 @@
+
+import React, { useState } from 'react';
+import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3 } from 'lucide-react';
+import { UserProfile } from '../types';
+
+interface NavbarProps {
+  currentUser: UserProfile | null;
+  onOpenCreateModal: () => void;
+  onOpenMessages: () => void;
+  onOpenAuth: () => void;
+  onOpenProfile: () => void;
+  onOpenUserManagement?: () => void;
+  onOpenAdminOffers?: () => void;
+  onOpenAdManager?: () => void;
+  onOpenAnalytics?: () => void;
+  onLogout: () => void;
+  onSearch: (query: string) => void;
+  unreadCount: number;
+  onOpenHowItWorks: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ 
+  currentUser,
+  onOpenCreateModal, 
+  onOpenMessages, 
+  onOpenAuth,
+  onOpenProfile,
+  onOpenUserManagement,
+  onOpenAdminOffers,
+  onOpenAdManager,
+  onOpenAnalytics,
+  onLogout,
+  onSearch,
+  unreadCount,
+  onOpenHowItWorks
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  return (
+    <nav className="bg-white border-b border-slate-200 sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16">
+          <div className="flex items-center flex-1">
+            {/* Logo */}
+            <div className="flex-shrink-0 flex items-center gap-2 cursor-pointer">
+              <div className="bg-brand-600 p-1.5 rounded-lg">
+                <ArrowRightLeft className="h-6 w-6 text-white" />
+              </div>
+              <span className="font-bold text-xl text-slate-800 tracking-tight hidden md:block">Barter.org.il</span>
+              <span className="font-bold text-xl text-slate-800 tracking-tight md:hidden">Barter</span>
+            </div>
+            
+            {/* Search Bar - Desktop */}
+            <div className="hidden md:flex items-center mr-8 flex-1 max-w-lg">
+               <div className="relative w-full">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm transition duration-150 ease-in-out"
+                    placeholder="חיפוש שירות, מקצוע או מילת מפתח..."
+                    onChange={(e) => onSearch(e.target.value)}
+                  />
+               </div>
+            </div>
+
+            {/* Desktop Nav Links */}
+            <div className="hidden md:flex md:space-x-8 md:space-x-reverse mr-4">
+              <button 
+                onClick={onOpenHowItWorks}
+                className="border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+              >
+                איך זה עובד?
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 sm:gap-4">
+            
+            {/* Messages Button - Visible to Everyone */}
+            <button 
+              onClick={onOpenMessages}
+              className="relative p-2 text-slate-500 hover:text-brand-600 hover:bg-slate-100 rounded-full transition-colors"
+              title={currentUser ? "הודעות" : "התחבר לצפייה בהודעות"}
+            >
+              <MessageSquare className="w-6 h-6" />
+              {currentUser && unreadCount > 0 && (
+                <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {currentUser ? (
+              <>
+                {/* Admin Buttons - Desktop */}
+                {currentUser.role === 'admin' && (
+                  <div className="hidden lg:flex items-center gap-2 border-l border-slate-200 pl-2 ml-2">
+                     {onOpenUserManagement && (
+                        <button 
+                          onClick={onOpenUserManagement}
+                          className="flex items-center gap-1 text-slate-600 hover:text-amber-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                          title="ניהול משתמשים"
+                        >
+                          <Shield className="w-4 h-4" />
+                          <span className="hidden xl:inline">משתמשים</span>
+                        </button>
+                     )}
+                     {onOpenAdminOffers && (
+                        <button 
+                          onClick={onOpenAdminOffers}
+                          className="flex items-center gap-1 text-slate-600 hover:text-red-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                          title="ניהול תוכן"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span className="hidden xl:inline">תוכן</span>
+                        </button>
+                     )}
+                     {onOpenAnalytics && (
+                        <button 
+                          onClick={onOpenAnalytics}
+                          className="flex items-center gap-1 text-slate-600 hover:text-blue-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                          title="ניתוח נתונים"
+                        >
+                          <BarChart3 className="w-4 h-4" />
+                          <span className="hidden xl:inline">נתונים</span>
+                        </button>
+                     )}
+                     {onOpenAdManager && (
+                        <button 
+                          onClick={onOpenAdManager}
+                          className="flex items-center gap-1 text-slate-600 hover:text-purple-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                          title="ניהול פרסומות"
+                        >
+                          <Megaphone className="w-4 h-4" />
+                          <span className="hidden xl:inline">פרסומות</span>
+                        </button>
+                     )}
+                  </div>
+                )}
+
+                {/* Desktop Profile Actions */}
+                <div className="hidden sm:flex items-center gap-3 pl-2 border-r border-slate-200 mr-2">
+                   <button 
+                      onClick={onOpenProfile}
+                      className="flex items-center gap-2 hover:bg-slate-50 p-1 rounded-lg transition-colors"
+                   >
+                      <img 
+                        src={currentUser.avatarUrl} 
+                        alt={currentUser.name} 
+                        className="w-8 h-8 rounded-full border border-slate-200 object-cover aspect-square"
+                      />
+                      <span className="text-sm font-medium text-slate-700 hidden lg:block">
+                        {currentUser.name}
+                      </span>
+                   </button>
+                   <button 
+                    onClick={onLogout} 
+                    className="text-slate-400 hover:text-red-500 p-1" 
+                    title="התנתק"
+                   >
+                     <LogOut className="w-5 h-5" />
+                   </button>
+                </div>
+              </>
+            ) : (
+              <div className="hidden sm:flex items-center gap-4">
+                <button 
+                  onClick={onOpenAuth}
+                  className="text-sm font-medium text-slate-600 hover:text-brand-600"
+                >
+                  התחברות / הרשמה
+                </button>
+              </div>
+            )}
+
+            {/* Post Offer - Visible to Everyone */}
+            <button 
+              onClick={onOpenCreateModal}
+              className="bg-brand-600 hover:bg-brand-700 text-white px-3 sm:px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 shadow-sm transition-colors"
+              title={currentUser ? "פרסם הצעה חדשה" : "הירשם לפרסום הצעה"}
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span className="inline">פרסם הצעה</span>
+            </button>
+
+            {/* Mobile Menu Button - Visible on small screens */}
+            <div className="flex items-center sm:hidden ml-1">
+              <button 
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 rounded-md text-slate-500 hover:bg-slate-100 focus:outline-none"
+              >
+                {isMenuOpen ? (
+                    <X className="h-6 w-6" />
+                ) : (
+                    <Menu className="h-6 w-6" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Menu Content */}
+      {isMenuOpen && (
+        <div className="sm:hidden bg-white border-t border-slate-200 absolute w-full left-0 shadow-xl z-50 animate-in slide-in-from-top-2 duration-200">
+            <div className="pt-2 pb-4 px-4 space-y-2">
+                
+                {/* Mobile Search */}
+                <div className="relative mb-4">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out"
+                    placeholder="חיפוש שירות..."
+                    onChange={(e) => onSearch(e.target.value)}
+                  />
+                </div>
+
+                {currentUser ? (
+                    <div className="border-b border-slate-100 pb-3 mb-3">
+                         <div 
+                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"
+                            onClick={() => {
+                                onOpenProfile();
+                                setIsMenuOpen(false);
+                            }}
+                         >
+                            <img src={currentUser.avatarUrl} alt="" className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" />
+                            <div>
+                                <div className="font-bold text-slate-800">{currentUser.name}</div>
+                                <div className="text-xs text-brand-600 font-medium">הצג פרופיל אישי</div>
+                            </div>
+                         </div>
+                         
+                         {currentUser.role === 'admin' && (
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                {onOpenUserManagement && (
+                                    <button 
+                                      onClick={() => {
+                                        onOpenUserManagement();
+                                        setIsMenuOpen(false);
+                                      }}
+                                      className="flex items-center justify-center gap-2 p-2 text-amber-600 bg-amber-50 rounded-lg text-sm font-bold"
+                                    >
+                                      <Shield className="w-4 h-4" />
+                                      משתמשים
+                                    </button>
+                                )}
+                                {onOpenAdminOffers && (
+                                    <button 
+                                      onClick={() => {
+                                        onOpenAdminOffers();
+                                        setIsMenuOpen(false);
+                                      }}
+                                      className="flex items-center justify-center gap-2 p-2 text-red-600 bg-red-50 rounded-lg text-sm font-bold"
+                                    >
+                                      <FileText className="w-4 h-4" />
+                                      תוכן
+                                    </button>
+                                )}
+                                {onOpenAnalytics && (
+                                    <button 
+                                      onClick={() => {
+                                        onOpenAnalytics();
+                                        setIsMenuOpen(false);
+                                      }}
+                                      className="flex items-center justify-center gap-2 p-2 text-blue-600 bg-blue-50 rounded-lg text-sm font-bold"
+                                    >
+                                      <BarChart3 className="w-4 h-4" />
+                                      נתונים
+                                    </button>
+                                )}
+                                {onOpenAdManager && (
+                                    <button 
+                                      onClick={() => {
+                                        onOpenAdManager();
+                                        setIsMenuOpen(false);
+                                      }}
+                                      className="flex items-center justify-center gap-2 p-2 text-purple-600 bg-purple-50 rounded-lg text-sm font-bold"
+                                    >
+                                      <Megaphone className="w-4 h-4" />
+                                      פרסומות
+                                    </button>
+                                )}
+                            </div>
+                         )}
+                    </div>
+                ) : (
+                    <div className="border-b border-slate-100 pb-3 mb-3">
+                        <button 
+                            onClick={() => { onOpenAuth(); setIsMenuOpen(false); }}
+                            className="w-full bg-slate-900 text-white py-2 rounded-lg font-medium text-sm"
+                        >
+                            התחברות / הרשמה
+                        </button>
+                    </div>
+                )}
+                
+                <button 
+                    onClick={() => {
+                        onOpenHowItWorks();
+                        setIsMenuOpen(false);
+                    }}
+                    className="block w-full text-right px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-slate-50"
+                >
+                    איך זה עובד?
+                </button>
+
+                {currentUser && (
+                    <button 
+                        onClick={() => { onLogout(); setIsMenuOpen(false); }}
+                        className="w-full text-right flex items-center gap-2 px-3 py-2 text-base font-medium text-red-600 hover:bg-red-50 rounded-md mt-4"
+                    >
+                        <LogOut className="w-4 h-4" />
+                        התנתק מהמערכת
+                    </button>
+                )}
+            </div>
+        </div>
+      )}
+    </nav>
+  );
+};
