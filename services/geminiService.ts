@@ -23,7 +23,16 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
     });
 
     if (!response.ok) {
-        console.error("Serverless function error:", response.statusText);
+        let errorMessage = response.statusText;
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.details || response.statusText;
+            console.error("Serverless function error details:", errorData);
+        } catch (e) {
+            console.error("Could not parse error JSON");
+        }
+        
+        console.error(`Server error (${response.status}):`, errorMessage);
         return null;
     }
 
@@ -31,7 +40,7 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
     return data;
 
   } catch (error) {
-    console.error("Offer optimization failed:", error);
+    console.error("Offer optimization failed (Network/Client error):", error);
     return null;
   }
 };
