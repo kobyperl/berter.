@@ -1,6 +1,4 @@
 
-import { GoogleGenAI } from "@google/genai";
-
 export default async function handler(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -39,11 +37,6 @@ export default async function handler(req, res) {
   // Check multiple possible environment variable names
   const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
 
-  // Debug log (will show in Vercel logs) to help verify which keys are seen
-  console.log("Checking environment variables for API Key...");
-  console.log("VITE_GEMINI_API_KEY exists?", !!process.env.VITE_GEMINI_API_KEY);
-  console.log("API_KEY exists?", !!process.env.API_KEY);
-
   if (!apiKey) {
     console.error("CRITICAL: No valid API Key found in environment variables.");
     return res.status(500).json({ 
@@ -53,38 +46,67 @@ export default async function handler(req, res) {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: apiKey });
     const today = new Date().toISOString().split('T')[0];
     const prompt = `
       Current Date: ${today}
       Analyze this barter offer request: "${rawInput}"
       
-      Return a JSON object with:
-      - title (Hebrew, professional)
-      - description (Hebrew, persuasive)
-      - offeredService (Short Hebrew)
-      - requestedService (Short Hebrew)
-      - location (Hebrew, City or 'Remote')
+      Return a JSON object with the following fields (all text in Hebrew):
+      - title (Professional headline)
+      - description (Persuasive description)
+      - offeredService (Short 2-4 words)
+      - requestedService (Short 2-4 words)
+      - location (City or 'Remote')
       - tags (Array of strings)
-      - expirationDate (YYYY-MM-DD, only if a deadline is explicitly mentioned relative to today)
+      - expirationDate (YYYY-MM-DD, optional, only if a specific deadline is mentioned)
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
+    // We use direct REST API fetch instead of the SDK to manually inject the 'Referer' header.
+    // This solves the "Requests from referer <empty> are blocked" error when using restricted API keys.
+    const model = 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const requestBody = {
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
         responseMimeType: "application/json"
       }
+    };
+
+    // Use the incoming request referer or fallback to the main domain
+    const referer = req.headers.referer || 'https://www.barter.org.il';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Referer': referer, // CRITICAL: Pass the referer to satisfy API key restrictions
+        'Origin': referer
+      },
+      body: JSON.stringify(requestBody)
     });
 
-    const text = response.text;
-    if (text) {
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini API Error (${response.status}):`, errorText);
+      return res.status(response.status).json({ 
+          error: 'Gemini API Error', 
+          details: errorText 
+      });
+    }
+
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (generatedText) {
       let jsonResponse;
       try {
-        jsonResponse = JSON.parse(text);
+        jsonResponse = JSON.parse(generatedText);
       } catch (parseError) {
-        console.error("Failed to parse Gemini response as JSON:", text);
-        return res.status(500).json({ error: 'AI returned invalid JSON' });
+        console.error("Failed to parse Gemini response as JSON:", generatedText);
+        return res.status(500).json({ error: 'AI returned invalid JSON', raw: generatedText });
       }
       return res.status(200).json(jsonResponse);
     } else {
@@ -93,7 +115,7 @@ export default async function handler(req, res) {
     }
 
   } catch (error: any) {
-    console.error("Gemini API execution failed:", error);
+    console.error("Server execution failed:", error);
     return res.status(500).json({ error: 'Failed to optimize offer', details: error.message });
   }
 }
