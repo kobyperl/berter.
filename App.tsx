@@ -44,6 +44,7 @@ import {
   arrayUnion,
   arrayRemove,
   getDocs,
+  getDoc,
   query,
   where,
   writeBatch
@@ -59,6 +60,8 @@ export const App: React.FC = () => {
   // --- Data State ---
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authUid, setAuthUid] = useState<string | null>(null); // Separate auth state
+
   const [offers, setOffers] = useState<BarterOffer[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [systemAds, setSystemAds] = useState<SystemAd[]>([]);
@@ -72,34 +75,74 @@ export const App: React.FC = () => {
       pendingInterests: []
   });
 
-  // --- Initial Data Loading from Firebase ---
+  // --- Auth Listener & Current User Sync ---
+  // We place this FIRST and INDEPENDENTLY to ensure user recognition happens 
+  // immediately, regardless of how long the main content takes to load.
   useEffect(() => {
-    const unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot: QuerySnapshot<DocumentData>) => {
-      const fetchedUsers: UserProfile[] = [];
-      snapshot.forEach((doc) => fetchedUsers.push(doc.data() as UserProfile));
-      setUsers(fetchedUsers);
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      setAuthUid(firebaseUser ? firebaseUser.uid : null);
+      if (!firebaseUser) {
+          setCurrentUser(null);
+          // Clear Admin Data if logged out
+          setUsers([]);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Dedicated listener for the current user's document
+  useEffect(() => {
+    if (!authUid) return;
+
+    const userDocRef = doc(db, "users", authUid);
+    const unsubscribeUserDoc = onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+            // Immediate update of current user state
+            setCurrentUser(docSnap.data() as UserProfile);
+        }
     });
 
+    return () => unsubscribeUserDoc();
+  }, [authUid]);
+
+  // --- Main Data Loading ---
+  useEffect(() => {
+    // 1. Users List Listener - PERFORMANCE OPTIMIZATION
+    // Only fetch all users if the current user is an admin. 
+    // Regular users don't need the full list loaded.
+    let unsubscribeUsers = () => {};
+    
+    if (currentUser?.role === 'admin') {
+        unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot: QuerySnapshot<DocumentData>) => {
+          const fetchedUsers: UserProfile[] = [];
+          snapshot.forEach((doc) => fetchedUsers.push(doc.data() as UserProfile));
+          setUsers(fetchedUsers);
+        });
+    }
+
+    // 2. Offers Listener
     const unsubscribeOffers = onSnapshot(collection(db, "offers"), (snapshot: QuerySnapshot<DocumentData>) => {
       const fetchedOffers: BarterOffer[] = [];
       snapshot.forEach((doc) => fetchedOffers.push(doc.data() as BarterOffer));
       setOffers(fetchedOffers);
-      setIsLoading(false);
+      setIsLoading(false); // Only stop loading spinner once offers are ready
     });
 
+    // 3. System Ads Listener
     const unsubscribeAds = onSnapshot(collection(db, "systemAds"), (snapshot: QuerySnapshot<DocumentData>) => {
       const fetchedAds: SystemAd[] = [];
       snapshot.forEach((doc) => fetchedAds.push(doc.data() as SystemAd));
       setSystemAds(fetchedAds);
     });
 
+    // 4. Messages Listener
     const unsubscribeMessages = onSnapshot(collection(db, "messages"), (snapshot: QuerySnapshot<DocumentData>) => {
         const fetchedMessages: Message[] = [];
         snapshot.forEach((doc) => fetchedMessages.push(doc.data() as Message));
         setMessages(fetchedMessages);
     });
 
-    // Listen to Taxonomy (Categories/Interests)
+    // 5. Taxonomy Listener
     const unsubscribeTaxonomy = onSnapshot(doc(db, "system_metadata", "taxonomy"), (docSnap) => {
         if (docSnap.exists()) {
             setTaxonomy(docSnap.data() as SystemTaxonomy);
@@ -121,20 +164,7 @@ export const App: React.FC = () => {
       unsubscribeMessages();
       unsubscribeTaxonomy();
     };
-  }, []);
-
-  // --- Auth Listener ---
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const foundUser = users.find(u => u.id === firebaseUser.uid);
-        if (foundUser) setCurrentUser(foundUser);
-      } else {
-        setCurrentUser(null);
-      }
-    });
-    return () => unsubscribe();
-  }, [users]); 
+  }, [currentUser?.role]); // Re-run if role changes (e.g. login as admin)
 
   // --- Computed Lists ---
   const availableInterests = React.useMemo(() => {
@@ -142,7 +172,6 @@ export const App: React.FC = () => {
   }, [taxonomy.approvedInterests]);
 
   const availableCategories = React.useMemo(() => {
-    // Show both Approved and Pending (if user added them)
     return Array.from(new Set([...(taxonomy.approvedCategories || CATEGORIES)])).sort();
   }, [taxonomy.approvedCategories]);
 
@@ -226,7 +255,6 @@ export const App: React.FC = () => {
   const checkForNewCategory = async (category: string) => {
       if (!category) return;
       const trimmedCat = category.trim();
-      // If category is not in approved list and not already in pending
       if (!taxonomy.approvedCategories.includes(trimmedCat) && !taxonomy.pendingCategories?.includes(trimmedCat)) {
           try {
               await updateDoc(doc(db, "system_metadata", "taxonomy"), {
@@ -252,20 +280,17 @@ export const App: React.FC = () => {
   };
 
   // --- Helper: Sync User Profile to Offers ---
-  // This ensures that when a user profile is updated (or approved), all their existing offers
-  // get the new name, avatar, etc.
   const syncUserToOffers = async (userId: string, updatedProfile: UserProfile) => {
       try {
-          // 1. Find all offers by this user
           const q = query(collection(db, "offers"), where("profileId", "==", userId));
           const querySnapshot = await getDocs(q);
 
           if (querySnapshot.empty) return;
 
-          // 2. Batch update
           const batch = writeBatch(db);
           querySnapshot.forEach((docSnapshot) => {
               const offerRef = doc(db, "offers", docSnapshot.id);
+              // Use the clean profile object to replace the existing one
               batch.update(offerRef, { profile: updatedProfile });
           });
 
@@ -276,38 +301,70 @@ export const App: React.FC = () => {
       }
   };
 
-  // --- Handlers (FIREBASE IMPLEMENTATION) ---
+  // --- Handlers ---
   const handleUpdateProfile = async (updatedProfileData: UserProfile) => {
       try {
-          // Check for new category
           if (updatedProfileData.mainField) {
-              await checkForNewCategory(updatedProfileData.mainField);
+              // Fire and forget category check
+              checkForNewCategory(updatedProfileData.mainField);
           }
 
           const isAdmin = currentUser?.role === 'admin';
           
           if (isAdmin) {
-              // Admin updates immediately
+              // --- ADMIN OPTIMIZATION: Instant UI Updates ---
               const { pendingUpdate, ...dataToSave } = updatedProfileData;
-              const finalData = {
+              
+              // 1. Create a CLEAN object for Local State (React) & Offer Sync
+              // We explicitly ensure 'pendingUpdate' is NOT in this object
+              const cleanProfileData = { ...dataToSave };
+              // Type assertion hack to delete optional property in a clean way for TS
+              if ('pendingUpdate' in cleanProfileData) {
+                  delete (cleanProfileData as any).pendingUpdate;
+              }
+
+              // 2. Create an object for Firestore that includes the deleteField instruction
+              const firestoreUpdateData = {
                   ...dataToSave,
                   pendingUpdate: deleteField()
               };
               
-              // 1. Update User Doc
-              await setDoc(doc(db, "users", updatedProfileData.id), finalData, { merge: true });
+              // 3. Update Local State Immediately (Optimistic UI) with CLEAN data
+              if (currentUser?.id === updatedProfileData.id) {
+                  setCurrentUser(cleanProfileData as UserProfile);
+              }
+              if (selectedProfile?.id === updatedProfileData.id) {
+                  setSelectedProfile(cleanProfileData as UserProfile);
+              }
+
+              // Optimistically update offers list in memory with CLEAN data
+              setOffers(prevOffers => prevOffers.map(o => 
+                  o.profileId === updatedProfileData.id ? { ...o, profile: cleanProfileData as UserProfile } : o
+              ));
+
+              // 4. Perform DB Writes in Background
+              await setDoc(doc(db, "users", updatedProfileData.id), firestoreUpdateData, { merge: true });
               
-              // 2. Sync to all offers immediately
-              await syncUserToOffers(updatedProfileData.id, finalData as UserProfile);
+              // 5. Sync offers in DB using the CLEAN data
+              // Important: We must pass the clean object, otherwise 'deleteField()' inside a nested object
+              // might be misinterpreted or cause issues if we are replacing the whole 'profile' map.
+              syncUserToOffers(updatedProfileData.id, cleanProfileData as UserProfile);
               
-              alert("הפרופיל עודכן בהצלחה (מנהל)");
           } else {
-              // Regular User -> Pending Update
+              // --- REGULAR USER: Pending Update Flow ---
               const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
               await updateDoc(doc(db, "users", updatedProfileData.id), {
                   pendingUpdate: dataToUpdate
               });
-              alert("השינויים נשלחו לאישור מנהל ויעודכנו באתר לאחר האישור.");
+
+              // Optimistic Pending State
+              const pendingProfile = { ...updatedProfileData, pendingUpdate: dataToUpdate };
+              if (currentUser?.id === updatedProfileData.id) {
+                   setCurrentUser(prev => prev ? ({ ...prev, pendingUpdate: dataToUpdate }) : null);
+              }
+              if (selectedProfile?.id === updatedProfileData.id) {
+                  setSelectedProfile(pendingProfile);
+              }
           }
       } catch (error) {
           console.error("Error updating profile:", error);
@@ -316,10 +373,10 @@ export const App: React.FC = () => {
   };
 
   const handleApproveUserUpdate = async (userId: string) => {
+      // Find the user. If we are admin, we have 'users' list populated.
       const user = users.find(u => u.id === userId);
       if (!user || !user.pendingUpdate) return;
 
-      // Check for new category in pending update
       if (user.pendingUpdate.mainField) {
          await checkForNewCategory(user.pendingUpdate.mainField);
       }
@@ -328,20 +385,21 @@ export const App: React.FC = () => {
       const finalData: UserProfile = {
           ...baseUserData,
           ...pendingUpdate,
-          // Remove pendingUpdate field from final object
       };
-      // Explicitly delete pendingUpdate from Firestore
+      
       const updatePayload = {
           ...finalData,
           pendingUpdate: deleteField()
       };
 
       try {
-          // 1. Update User Document
           await setDoc(doc(db, "users", userId), updatePayload, { merge: true });
-          
-          // 2. Sync updates to all offers belonging to this user
           await syncUserToOffers(userId, finalData);
+          
+          // Optimistic offers update
+          setOffers(prevOffers => prevOffers.map(o => 
+            o.profileId === userId ? { ...o, profile: finalData } : o
+          ));
 
           if (selectedProfile?.id === userId) {
               setSelectedProfile(finalData);
@@ -358,10 +416,11 @@ export const App: React.FC = () => {
             pendingUpdate: deleteField() 
         });
         
+        // Optimistic Revert
         const user = users.find(u => u.id === userId);
         if (user && selectedProfile?.id === userId) {
-             const originalUser = { ...user, pendingUpdate: undefined };
-             setSelectedProfile(originalUser);
+             const { pendingUpdate, ...cleanUser } = user;
+             setSelectedProfile(cleanUser as UserProfile);
         }
       } catch (error) { 
           console.error("Error rejecting update:", error);
@@ -371,7 +430,6 @@ export const App: React.FC = () => {
 
   const handleRegister = async (newUser: Partial<UserProfile>, pass: string) => {
     try {
-        // Check for new category
         if (newUser.mainField) {
             await checkForNewCategory(newUser.mainField);
         }
@@ -392,7 +450,7 @@ export const App: React.FC = () => {
             joinedAt: new Date().toISOString()
         };
         await setDoc(doc(db, "users", uid), userProfile);
-        setCurrentUser(userProfile);
+        // Note: currentUser will be set by the useEffect listener automatically
         setIsAuthModalOpen(false);
         if (!userProfile.portfolioUrl && (!userProfile.portfolioImages || userProfile.portfolioImages.length === 0)) {
             setIsCompleteProfileModalOpen(true);
@@ -400,7 +458,7 @@ export const App: React.FC = () => {
     } catch (error: any) { alert(`שגיאה בהרשמה: ${error.message}`); }
   };
 
-  // --- Admin Category Management Handlers ---
+  // --- Admin Taxonomy Handlers ---
   const handleApproveCategory = async (category: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
@@ -412,7 +470,6 @@ export const App: React.FC = () => {
 
   const handleRejectCategory = async (category: string) => {
       try {
-          // Just remove from pending
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
               pendingCategories: arrayRemove(category)
           });
@@ -421,28 +478,20 @@ export const App: React.FC = () => {
 
   const handleReassignCategory = async (oldCategory: string, newCategory: string) => {
       try {
-          // 1. Find all users with old category
           const q = query(collection(db, "users"), where("mainField", "==", oldCategory));
           const querySnapshot = await getDocs(q);
-          
-          // 2. Batch update users
           const batch = writeBatch(db);
           querySnapshot.forEach((doc) => {
               batch.update(doc.ref, { mainField: newCategory });
           });
           await batch.commit();
-
-          // 3. Remove old from pending
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
               pendingCategories: arrayRemove(oldCategory)
           });
-          
           alert(`עודכנו ${querySnapshot.size} משתמשים. התחום הוסר מהרשימה הממתינה.`);
-
-      } catch (e) { console.error("Error reassigning", e); alert("שגיאה בשינוי קטגוריה גורף"); }
+      } catch (e) { console.error(e); alert("שגיאה בשינוי קטגוריה גורף"); }
   };
 
-  // --- Admin Interest Management Handlers ---
   const handleApproveInterest = async (interest: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
@@ -478,7 +527,7 @@ export const App: React.FC = () => {
 
   const handleLogout = async () => {
     await signOut(auth);
-    setCurrentUser(null);
+    // State will be cleared by listeners
   };
 
   const handleAddOffer = async (newOffer: BarterOffer) => {
@@ -545,7 +594,6 @@ export const App: React.FC = () => {
       try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); }
   };
 
-  // --- Ad Manager Handlers ---
   const handleAddAd = async (newAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", newAd.id), newAd); } catch (error) { console.error(error); } };
   const handleEditAd = async (updatedAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", updatedAd.id), updatedAd); } catch (error) { console.error(error); } };
   const handleDeleteAd = async (adId: string) => { try { await deleteDoc(doc(db, "systemAds", adId)); } catch (error) { console.error(error); } };
@@ -554,25 +602,46 @@ export const App: React.FC = () => {
   const handleContact = (profile: UserProfile, offerTitle?: string) => {
     if (!currentUser) { setAuthStartOnRegister(false); setIsAuthModalOpen(true); return; }
     if (profile.id === currentUser.id) { alert("זוהי ההצעה שלך :)"); return; }
-    // Ensure we use the latest profile data from users array if available
-    const liveProfile = users.find(u => u.id === profile.id) || profile;
-    setSelectedProfile(liveProfile);
-    setInitialMessageSubject(offerTitle ? `התעניינות ב: ${offerTitle}` : '');
-    setIsMessagingModalOpen(true);
+    
+    // Performance fix: Use profile passed from offer, or fetch on demand
+    handleViewProfile(profile, true).then(() => {
+        setInitialMessageSubject(offerTitle ? `התעניינות ב: ${offerTitle}` : '');
+        setIsMessagingModalOpen(true);
+    });
   };
 
-  const handleViewProfile = (profile: UserProfile) => {
-    // IMPORTANT: Try to find the LIVE user data from the 'users' state.
-    // The profile passed from OfferCard might be stale (snapshot).
-    const liveProfile = users.find(u => u.id === profile.id);
+  const handleViewProfile = async (profile: UserProfile, openMessaging = false) => {
+    let profileToView = profile;
     
-    // If viewing myself, or if live profile found, use that. Fallback to passed profile.
-    const profileToView = (currentUser && profile.id === currentUser.id) 
-        ? currentUser 
-        : (liveProfile || profile);
-
+    // 1. If it's the current user, use the live state
+    if (currentUser && profile.id === currentUser.id) {
+        profileToView = currentUser;
+    } 
+    // 2. If we are admin, check the users list cache
+    else if (currentUser?.role === 'admin') {
+        const cachedUser = users.find(u => u.id === profile.id);
+        if (cachedUser) profileToView = cachedUser;
+    }
+    // 3. Regular user: If the profile object passed is sparse (from offer), 
+    // try to fetch fresh data if needed, or just use what we have.
+    // NOTE: Offers usually contain a good snapshot.
+    else {
+        // Optional: Fetch fresh data for regular users to ensure avatar/bio is up to date
+        // This is "on demand" fetching instead of loading ALL users at startup
+        try {
+             const userDoc = await getDoc(doc(db, "users", profile.id));
+             if (userDoc.exists()) {
+                 profileToView = userDoc.data() as UserProfile;
+             }
+        } catch (e) {
+            console.error("Could not fetch fresh profile", e);
+        }
+    }
+    
     setSelectedProfile(profileToView);
-    setIsProfileModalOpen(true);
+    if (!openMessaging) {
+        setIsProfileModalOpen(true);
+    }
   };
 
   const handleOpenCreate = () => {
@@ -603,7 +672,6 @@ export const App: React.FC = () => {
     const isAdmin = currentUser?.role === 'admin';
     if (offer.status !== 'active' && !isMine && !isAdmin) return false; 
 
-    // Defensive Extraction
     const title = offer.title || '';
     const offeredService = offer.offeredService || '';
     const requestedService = offer.requestedService || '';
@@ -665,7 +733,6 @@ export const App: React.FC = () => {
         onOpenMessages={handleOpenMessages}
         onOpenAuth={() => { setAuthStartOnRegister(false); setIsAuthModalOpen(true); }}
         onOpenProfile={() => { 
-            // When opening MY OWN profile, use currentUser (which has live updates/pendingUpdate)
             setSelectedProfile(currentUser); 
             setIsProfileModalOpen(true); 
         }}
