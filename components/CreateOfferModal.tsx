@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, Tag, Clock, Repeat, CheckCircle, Calendar } from 'lucide-react';
+import { X, Sparkles, Loader2, Tag, Clock, Repeat, CheckCircle, Calendar, AlertTriangle } from 'lucide-react';
 import { optimizeOfferDescription } from '../services/geminiService';
 import { BarterOffer, UserProfile } from '../types';
 
@@ -118,24 +117,37 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
   };
 
   const handlePublish = () => {
+    const isAdmin = currentUser.role === 'admin';
+    
+    // Construct valid fields to avoid 'undefined' errors in Firestore
+    const commonFields = {
+        title: formData.title,
+        offeredService: formData.offeredService,
+        requestedService: formData.requestedService,
+        location: formData.location,
+        description: formData.description,
+        tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
+        durationType: formData.durationType,
+        // Only include expirationDate if one-time AND it has a value.
+        // Using spread to conditionally add property.
+        ...(formData.durationType === 'one-time' && formData.expirationDate ? { expirationDate: formData.expirationDate } : {})
+    };
+
     if (editingOffer && onUpdateOffer) {
         // Update existing offer
         const updatedOffer: BarterOffer = {
             ...editingOffer,
-            title: formData.title,
-            offeredService: formData.offeredService,
-            requestedService: formData.requestedService,
-            location: formData.location,
-            description: formData.description,
-            tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
-            durationType: formData.durationType,
-            // Only add expiration if one-time
-            expirationDate: formData.durationType === 'one-time' ? formData.expirationDate : undefined,
-            status: editingOffer.status,
-            // Explicitly reset ratings on edit
+            ...commonFields,
+            // Reset ratings on edit
             ratings: [],
             averageRating: 0
         };
+        
+        // Explicitly remove expirationDate from object if switching to ongoing
+        if (formData.durationType === 'ongoing') {
+            delete (updatedOffer as any).expirationDate;
+        }
+
         onUpdateOffer(updatedOffer);
         onClose();
     } else {
@@ -144,16 +156,9 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             id: Date.now().toString(),
             profileId: currentUser.id,
             profile: currentUser,
-            title: formData.title || 'הצעה חדשה',
-            offeredService: formData.offeredService || 'שירות כללי',
-            requestedService: formData.requestedService || 'פתוח להצעות',
-            location: formData.location || 'מרחוק',
-            description: formData.description || '',
-            tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
-            durationType: formData.durationType,
-            // Only add expiration if one-time
-            expirationDate: formData.durationType === 'one-time' ? formData.expirationDate : undefined,
-            status: 'pending', // Default to pending
+            ...commonFields,
+            // Admin offers are active immediately. User offers are pending.
+            status: isAdmin ? 'active' : 'pending',
             createdAt: new Date().toISOString(),
             ratings: [],
             averageRating: 0
@@ -161,8 +166,12 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
         
         onAddOffer(newOffer);
         
-        // Show success message before closing
-        setShowSuccess(true);
+        // Show success message before closing (Only for users or if pending)
+        if (!isAdmin) {
+            setShowSuccess(true);
+        } else {
+            onClose();
+        }
     }
   };
 
@@ -361,12 +370,23 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
                             onChange={(e) => setFormData({...formData, description: e.target.value})}
                         ></textarea>
                     </div>
+
+                    {/* Warning about rating reset on edit */}
+                    {editingOffer && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                             <p className="text-xs text-amber-800">
+                                 <strong>שים לב:</strong> שמירת השינויים תאפס את הדירוגים והתגובות הקיימים להצעה זו, כדי לשמור על אמינות המערכת.
+                             </p>
+                        </div>
+                    )}
+
                     <button 
                         type="button" 
                         onClick={handlePublish}
                         className="w-full bg-brand-600 text-white rounded-xl py-3.5 font-bold hover:bg-brand-700 transition-colors shadow-sm mt-2"
                     >
-                        {editingOffer ? 'שמור שינויים (איפוס דירוג)' : 'שלח הצעה לאישור'}
+                        {editingOffer ? 'שמור שינויים (איפוס דירוג)' : (currentUser.role === 'admin' ? 'פרסם מידית (מנהל)' : 'שלח הצעה לאישור')}
                     </button>
                 </form>
             )}

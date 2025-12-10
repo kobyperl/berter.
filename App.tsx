@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 // Core Components
 import { Navbar } from './components/Navbar';
@@ -539,12 +537,23 @@ export const App: React.FC = () => {
       const isAdmin = currentUser?.role === 'admin';
       const offerToSave: BarterOffer = {
         ...updatedOffer,
+        // Admin edits remain active. User edits go to pending if not admin, but requirement focused on rating reset.
+        // We'll keep status logic simple: Admins don't need approval.
         status: isAdmin ? updatedOffer.status : 'pending',
         ratings: [], 
         averageRating: 0
       };
-      try { await setDoc(doc(db, "offers", updatedOffer.id), offerToSave, { merge: true }); } 
+      
+      // Removed merge: true. We overwrite the entire document.
+      // This is crucial for properly deleting fields (e.g., removing expirationDate when switching to ongoing).
+      // Since 'updatedOffer' is constructed from the complete existing document state + updates, this is safe.
+      try { await setDoc(doc(db, "offers", updatedOffer.id), offerToSave); } 
       catch (error) { console.error(error); }
+  };
+  
+  const handleEditOffer = (offer: BarterOffer) => {
+      setEditingOffer(offer);
+      setIsCreateModalOpen(true);
   };
   
   const handleRateOffer = async (offerId: string, score: number) => {
@@ -753,43 +762,53 @@ export const App: React.FC = () => {
         <AdBanner contextCategories={selectedCategories} systemAds={systemAds} currentUser={currentUser} />
         {/* Filters Bar */}
         <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 transition-all duration-300 mb-4 sticky top-16 z-30 ${isSticky ? 'py-2 px-3 sm:px-4' : 'p-3 sm:p-6'}`}>
-            <div className="flex flex-col md:flex-row gap-2 md:gap-4 items-center justify-between">
-                 <div className="flex items-center justify-between w-full gap-2">
+            <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-center justify-between">
+                 {/* Top Section: Label + Sort + View */}
+                 <div className="flex items-center justify-between w-full lg:w-auto gap-2 shrink-0">
                      <div className={`flex items-center gap-2 cursor-pointer ${isSticky ? 'flex-1' : ''}`} onClick={() => isSticky && setIsFilterOpen(!isFilterOpen)}>
                         <div className="bg-brand-100 p-2 rounded-lg text-brand-700 shrink-0"><Filter className="w-5 h-5" /></div>
                         <span className={`font-bold text-slate-800 whitespace-nowrap ${isSticky ? 'text-sm' : ''} ${isSticky && viewMode === 'compact' ? 'hidden sm:block' : ''}`}>{isSticky ? 'סינון' : 'סינון הצעות'}</span>
                         {isSticky && <div className="text-slate-400 mr-2">{isFilterOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}</div>}
                      </div>
+
                      <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-hide" onClick={(e) => e.stopPropagation()}>
-                         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 p-1.5 rounded-lg h-10">
-                            <div className="relative group flex items-center">
+                         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 p-1 rounded-xl h-[42px]">
+                            <div className="relative group flex items-center h-full">
                                 <ArrowUpDown className="w-4 h-4 text-slate-400 absolute right-2 pointer-events-none" />
-                                <select className="bg-transparent border-none text-xs sm:text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer pr-7 pl-1 py-0 outline-none appearance-none hover:text-brand-600 transition-colors w-full sm:w-auto" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                                <select className="bg-transparent border-none text-xs sm:text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer pr-8 pl-2 h-full outline-none appearance-none hover:text-brand-600 transition-colors w-full sm:w-auto" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
                                     <option value="newest">מודעות חדשות</option>
                                     <option value="deadline">מסתיימות בקרוב</option>
                                     <option value="rating">הכי מומלצות</option>
                                 </select>
                             </div>
                          </div>
-                         <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200 h-10 shrink-0">
+                         <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 h-[42px] shrink-0">
                             <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="w-4 h-4" /></button>
                             <button onClick={() => setViewMode('compact')} className={`p-1.5 rounded-md transition-all ${viewMode === 'compact' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><ListIcon className="w-4 h-4" /></button>
                          </div>
                      </div>
                  </div>
+                 
+                 {/* Inputs Section */}
                  {(!isSticky || isFilterOpen) && (
-                     <div className={`flex flex-col sm:flex-row gap-2 sm:gap-3 w-full flex-wrap items-center mt-2 sm:mt-4 ${isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}`}>
-                         <div className="flex flex-row gap-2 w-full sm:w-auto flex-1">
-                             <div className="relative group flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><input type="text" className="w-full pl-3 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" placeholder="חיפוש חופשי..." value={keywordInput} onChange={(e) => setKeywordInput(e.target.value)} onClick={(e) => e.stopPropagation()} /></div>
-                             <div className="relative group flex-1"><MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><input type="text" className="w-full pl-3 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" placeholder="חיפוש לפי עיר..." value={locationInput} onChange={(e) => setLocationInput(e.target.value)} onClick={(e) => e.stopPropagation()} /></div>
+                     <div className={`flex flex-col lg:flex-row gap-2 sm:gap-3 w-full lg:w-auto lg:flex-1 flex-wrap items-center mt-2 sm:mt-4 lg:mt-0 ${isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}`}>
+                         <div className="flex flex-row gap-2 w-full lg:w-auto flex-1">
+                             <div className="relative group flex-1">
+                                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                 <input type="text" className="w-full pl-3 pr-9 h-[42px] bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" placeholder="חיפוש חופשי..." value={keywordInput} onChange={(e) => setKeywordInput(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                             </div>
+                             <div className="relative group flex-1">
+                                 <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                 <input type="text" className="w-full pl-3 pr-9 h-[42px] bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" placeholder="חיפוש לפי עיר..." value={locationInput} onChange={(e) => setLocationInput(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                             </div>
                          </div>
-                         <div className="flex flex-row gap-2 w-full sm:w-auto">
-                            <div className="flex-1 sm:flex-none flex bg-slate-50 p-1 rounded-xl border border-slate-200 justify-center" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={() => setDurationFilter('all')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${durationFilter === 'all' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>הכל</button>
-                                <button onClick={() => setDurationFilter('one-time')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${durationFilter === 'one-time' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}><Clock className="w-3 h-3" /><span className="inline">חד פעמי</span></button>
-                                <button onClick={() => setDurationFilter('ongoing')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${durationFilter === 'ongoing' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Repeat className="w-3 h-3" /><span className="inline">מתמשך</span></button>
+                         <div className="flex flex-row gap-2 w-full lg:w-auto">
+                            <div className="flex-1 sm:flex-none flex bg-slate-50 p-1 rounded-xl border border-slate-200 justify-center h-[42px] items-center" onClick={(e) => e.stopPropagation()}>
+                                <button onClick={() => setDurationFilter('all')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center ${durationFilter === 'all' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>הכל</button>
+                                <button onClick={() => setDurationFilter('one-time')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center gap-1 ${durationFilter === 'one-time' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}><Clock className="w-3 h-3" /><span className="inline">חד פעמי</span></button>
+                                <button onClick={() => setDurationFilter('ongoing')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center gap-1 ${durationFilter === 'ongoing' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Repeat className="w-3 h-3" /><span className="inline">מתמשך</span></button>
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); handleResetFilters(); }} className="flex items-center justify-center gap-1 px-3 py-2.5 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors font-medium text-xs border border-transparent hover:border-red-200 shrink-0" title="נקה את כל הסינונים"><XIcon className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleResetFilters(); }} className="flex items-center justify-center gap-1 px-3 h-[42px] text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors font-medium text-xs border border-transparent hover:border-red-200 shrink-0" title="נקה את כל הסינונים"><XIcon className="w-4 h-4" /></button>
                          </div>
                      </div>
                  )}
@@ -813,7 +832,17 @@ export const App: React.FC = () => {
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredOffers.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} onContact={(profile) => handleContact(profile, offer.title)} onUserClick={handleViewProfile} onRate={handleRateOffer} currentUserId={currentUser?.id} viewMode={viewMode} onDelete={handleDeleteOffer} />
+                <OfferCard 
+                    key={offer.id} 
+                    offer={offer} 
+                    onContact={(profile) => handleContact(profile, offer.title)} 
+                    onUserClick={handleViewProfile} 
+                    onRate={handleRateOffer} 
+                    currentUserId={currentUser?.id} 
+                    viewMode={viewMode} 
+                    onDelete={handleDeleteOffer} 
+                    onEdit={handleEditOffer} // Pass edit handler
+                />
               ))}
               <div onClick={handleOpenCreate} className={`cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[150px] ${viewMode === 'grid' ? 'min-h-[350px]' : ''}`}>
                    <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform shadow-sm"><Plus className="w-8 h-8 text-brand-600" /></div>

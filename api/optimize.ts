@@ -58,7 +58,7 @@ export default async function handler(req, res) {
       - requestedService (Short 2-4 words)
       - location (City or 'Remote')
       - tags (Array of strings)
-      - durationType (Enum: 'one-time' or 'ongoing'. Logic: if text implies monthly, retainer, long-term, constant -> 'ongoing'. Else -> 'one-time')
+      - durationType (Enum: 'one-time' or 'ongoing'. Logic: if text implies monthly (חודשי), retainer (ריטיינר), long-term (לטווח ארוך), constant (קבוע), subscription (מנוי) -> 'ongoing'. Otherwise -> 'one-time')
       - expirationDate (YYYY-MM-DD, optional. Only include if a specific deadline is mentioned AND durationType is 'one-time')
     `;
 
