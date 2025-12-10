@@ -100,6 +100,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             requestedService: result.requestedService,
             location: result.location, // Auto-filled from AI
             tags: result.tags.join(', '),
+            // Auto-detect duration from AI, fallback to 'one-time' if unclear
+            durationType: result.durationType === 'ongoing' ? 'ongoing' : 'one-time',
             expirationDate: result.expirationDate || '' // Auto-filled from AI if deadline detected
         }));
         setStep(2);

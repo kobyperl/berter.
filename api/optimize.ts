@@ -58,7 +58,8 @@ export default async function handler(req, res) {
       - requestedService (Short 2-4 words)
       - location (City or 'Remote')
       - tags (Array of strings)
-      - expirationDate (YYYY-MM-DD, optional, only if a specific deadline is mentioned)
+      - durationType (Enum: 'one-time' or 'ongoing'. Logic: if text implies monthly, retainer, long-term, constant -> 'ongoing'. Else -> 'one-time')
+      - expirationDate (YYYY-MM-DD, optional. Only include if a specific deadline is mentioned AND durationType is 'one-time')
     `;
 
     // We use direct REST API fetch instead of the SDK to manually inject the 'Referer' header.

@@ -9,6 +9,7 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
     requestedService: string,
     location: string,
     tags: string[],
+    durationType: 'one-time' | 'ongoing',
     expirationDate?: string
 } | null> => {
   
