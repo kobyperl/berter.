@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Loader2, Tag, Clock, Repeat, CheckCircle, Calendar, AlertTriangle } from 'lucide-react';
 import { optimizeOfferDescription } from '../services/geminiService';
@@ -376,7 +377,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
                              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                              <p className="text-xs text-amber-800">
-                                 <strong>שים לב:</strong> שמירת השינויים תאפס את הדירוגים והתגובות הקיימים להצעה זו, כדי לשמור על אמינות המערכת.
+                                 <strong>שים לב:</strong> שמירת השינויים תאפס את הדירוגים הקיימים להצעה זו, כדי לשמור על אמינות המערכת.
                              </p>
                         </div>
                     )}
