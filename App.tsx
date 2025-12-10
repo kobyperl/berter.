@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 // Core Components
 import { Navbar } from './components/Navbar';
@@ -74,28 +75,23 @@ export const App: React.FC = () => {
   });
 
   // --- Auth Listener & Current User Sync ---
-  // We place this FIRST and INDEPENDENTLY to ensure user recognition happens 
-  // immediately, regardless of how long the main content takes to load.
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setAuthUid(firebaseUser ? firebaseUser.uid : null);
       if (!firebaseUser) {
           setCurrentUser(null);
-          // Clear Admin Data if logged out
           setUsers([]);
       }
     });
     return () => unsubscribeAuth();
   }, []);
 
-  // Dedicated listener for the current user's document
   useEffect(() => {
     if (!authUid) return;
 
     const userDocRef = doc(db, "users", authUid);
     const unsubscribeUserDoc = onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
-            // Immediate update of current user state
             setCurrentUser(docSnap.data() as UserProfile);
         }
     });
@@ -105,9 +101,6 @@ export const App: React.FC = () => {
 
   // --- Main Data Loading ---
   useEffect(() => {
-    // 1. Users List Listener - PERFORMANCE OPTIMIZATION
-    // Only fetch all users if the current user is an admin. 
-    // Regular users don't need the full list loaded.
     let unsubscribeUsers = () => {};
     
     if (currentUser?.role === 'admin') {
@@ -118,34 +111,29 @@ export const App: React.FC = () => {
         });
     }
 
-    // 2. Offers Listener
     const unsubscribeOffers = onSnapshot(collection(db, "offers"), (snapshot: QuerySnapshot<DocumentData>) => {
       const fetchedOffers: BarterOffer[] = [];
       snapshot.forEach((doc) => fetchedOffers.push(doc.data() as BarterOffer));
       setOffers(fetchedOffers);
-      setIsLoading(false); // Only stop loading spinner once offers are ready
+      setIsLoading(false); 
     });
 
-    // 3. System Ads Listener
     const unsubscribeAds = onSnapshot(collection(db, "systemAds"), (snapshot: QuerySnapshot<DocumentData>) => {
       const fetchedAds: SystemAd[] = [];
       snapshot.forEach((doc) => fetchedAds.push(doc.data() as SystemAd));
       setSystemAds(fetchedAds);
     });
 
-    // 4. Messages Listener
     const unsubscribeMessages = onSnapshot(collection(db, "messages"), (snapshot: QuerySnapshot<DocumentData>) => {
         const fetchedMessages: Message[] = [];
         snapshot.forEach((doc) => fetchedMessages.push(doc.data() as Message));
         setMessages(fetchedMessages);
     });
 
-    // 5. Taxonomy Listener
     const unsubscribeTaxonomy = onSnapshot(doc(db, "system_metadata", "taxonomy"), (docSnap) => {
         if (docSnap.exists()) {
             setTaxonomy(docSnap.data() as SystemTaxonomy);
         } else {
-            // Initialize if not exists
             setDoc(doc(db, "system_metadata", "taxonomy"), {
                 approvedCategories: CATEGORIES,
                 pendingCategories: [],
@@ -162,7 +150,7 @@ export const App: React.FC = () => {
       unsubscribeMessages();
       unsubscribeTaxonomy();
     };
-  }, [currentUser?.role]); // Re-run if role changes (e.g. login as admin)
+  }, [currentUser?.role]); 
 
   // --- Computed Lists ---
   const availableInterests = React.useMemo(() => {
@@ -193,6 +181,20 @@ export const App: React.FC = () => {
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [initialMessageSubject, setInitialMessageSubject] = useState<string>('');
+
+  // Main Feed View State
+  const [viewFilter, setViewFilter] = useState<'all' | 'for_you'>('all');
+
+  // Reorder categories: Selected first
+  const displayedCategories = React.useMemo(() => {
+      return [...availableCategories].sort((a, b) => {
+          const isASelected = selectedCategories.includes(a);
+          const isBSelected = selectedCategories.includes(b);
+          if (isASelected && !isBSelected) return -1;
+          if (!isASelected && isBSelected) return 1;
+          return a.localeCompare(b, 'he'); // Keep alphabetical relative order
+      });
+  }, [availableCategories, selectedCategories]);
   
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -203,40 +205,112 @@ export const App: React.FC = () => {
   const [durationFilter, setDurationFilter] = useState<'all' | 'one-time' | 'ongoing'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'deadline'>('newest');
 
-  // Sticky Filter
+  // Sticky Filter Logic
   const [isSticky, setIsSticky] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
-  const lastScrollY = useRef(0);
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
+  
+  const isStickyRef = useRef(isSticky);
+  const isFilterOpenRef = useRef(isFilterOpen);
+  const openStartScrollY = useRef(0);
+  const lastToggleTimeRef = useRef(0);
+  const filterBarRef = useRef<HTMLDivElement>(null);
+  
+  // Flag to prevent scroll events from closing the bar when we programmatically scroll
+  const isProgrammaticScroll = useRef(false);
+  const isFirstRender = useRef(true);
+
+  // Sync Refs
+  useEffect(() => { isStickyRef.current = isSticky; }, [isSticky]);
+  useEffect(() => { isFilterOpenRef.current = isFilterOpen; }, [isFilterOpen]);
 
   // --- Scroll & Sticky Logic ---
   useEffect(() => {
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const threshold = 100;
+      // If we are auto-scrolling, don't trigger close logic
+      if (isProgrammaticScroll.current) return;
 
-      if (currentScrollY > threshold) {
-        if (!isSticky) {
-          setIsSticky(true);
-          setIsFilterOpen(false);
-        }
-      } else {
-        if (isSticky) {
-          setIsSticky(false);
-          setIsFilterOpen(true);
-        }
+      const currentScrollY = window.scrollY;
+      const stickyOffset = filterBarRef.current ? filterBarRef.current.offsetTop - 64 : 600;
+      const isNowSticky = currentScrollY >= stickyOffset - 2;
+
+      // Update sticky state, BUT DO NOT auto-close/open just based on sticky state change
+      if (isNowSticky !== isStickyRef.current) {
+        setIsSticky(isNowSticky);
+        isStickyRef.current = isNowSticky; 
       }
 
-      if (isSticky && isFilterOpen) {
-          if (Math.abs(currentScrollY - lastScrollY.current) > 20) {
+      // Close ONLY if we are sticky, open, and user has scrolled significantly (60px) from the opening point
+      if (isNowSticky && isFilterOpenRef.current) {
+          if (Date.now() - lastToggleTimeRef.current < 500) return;
+          
+          const scrollDistance = Math.abs(currentScrollY - openStartScrollY.current);
+          if (scrollDistance > 60) {
               setIsFilterOpen(false);
+              isFilterOpenRef.current = false;
           }
       }
-      lastScrollY.current = currentScrollY;
     };
-    window.addEventListener('scroll', handleScroll);
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isSticky, isFilterOpen]);
+  }, []); 
+
+  // --- Auto Scroll to Results on Filter Change ---
+  useEffect(() => {
+    if (isFirstRender.current) {
+        isFirstRender.current = false;
+        return;
+    }
+
+    const scrollToFilters = () => {
+        if (!filterBarRef.current) return;
+
+        // Navbar is ~64px. Sticky threshold is roughly offsetTop - 64.
+        const stickyThreshold = filterBarRef.current.offsetTop - 64;
+        
+        // We scroll to stickyThreshold - 20. 
+        // This puts the filter bar at the top with a slight breathing room from the navbar shadow,
+        // and due to the mb-8 on the bar, creates a nice gap before results.
+        const targetY = stickyThreshold - 20;
+
+        // Only snap back if we are scrolled DOWN past the sticky threshold.
+        // This ensures that if the user is just filtering, they jump to the top of the list immediately.
+        if (window.scrollY > stickyThreshold) {
+            isProgrammaticScroll.current = true;
+            window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });
+            
+            // Sync state
+            openStartScrollY.current = Math.max(0, targetY);
+            lastToggleTimeRef.current = Date.now();
+            
+            // Reset lock shortly after
+            setTimeout(() => {
+                isProgrammaticScroll.current = false;
+            }, 100);
+        }
+    };
+
+    // Wait for render to settle
+    setTimeout(scrollToFilters, 0);
+
+  }, [selectedCategories, searchQuery, durationFilter, sortBy, keywordFilter, locationFilter]);
+
+  const toggleStickyBar = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Allow toggle if sticky OR if scrolled enough
+      if (isStickyRef.current || currentScrollY > 60) {
+          const newState = !isFilterOpenRef.current;
+          setIsFilterOpen(newState);
+          isFilterOpenRef.current = newState;
+          lastToggleTimeRef.current = Date.now(); 
+
+          if (newState) {
+              openStartScrollY.current = currentScrollY;
+          }
+      }
+  };
 
   // --- Debounce Filters ---
   useEffect(() => {
@@ -249,7 +323,9 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [keywordInput]);
 
-  // --- Helper: Check for New Category ---
+  // ... (Rest of the helper functions: checkForNewCategory, syncUserToOffers, etc. remain unchanged)
+  // Re-including them for completeness.
+
   const checkForNewCategory = async (category: string) => {
       if (!category) return;
       const trimmedCat = category.trim();
@@ -264,7 +340,6 @@ export const App: React.FC = () => {
       }
   };
 
-  // --- Helper: Check for New Interest ---
   const checkForNewInterest = async (interest: string) => {
       if (!interest) return;
       const trimmed = interest.trim();
@@ -277,161 +352,75 @@ export const App: React.FC = () => {
       }
   };
 
-  // --- Helper: Sync User Profile to Offers ---
   const syncUserToOffers = async (userId: string, updatedProfile: UserProfile) => {
       try {
           const q = query(collection(db, "offers"), where("profileId", "==", userId));
           const querySnapshot = await getDocs(q);
-
           if (querySnapshot.empty) return;
-
           const batch = writeBatch(db);
           querySnapshot.forEach((docSnapshot) => {
               const offerRef = doc(db, "offers", docSnapshot.id);
-              // Use the clean profile object to replace the existing one
               batch.update(offerRef, { profile: updatedProfile });
           });
-
           await batch.commit();
-          console.log(`Synced profile updates to ${querySnapshot.size} offers.`);
-      } catch (error) {
-          console.error("Error syncing profile to offers:", error);
-      }
+      } catch (error) { console.error("Error syncing profile:", error); }
   };
 
-  // --- Handlers ---
   const handleUpdateProfile = async (updatedProfileData: UserProfile) => {
       try {
-          if (updatedProfileData.mainField) {
-              // Fire and forget category check
-              checkForNewCategory(updatedProfileData.mainField);
-          }
-
+          if (updatedProfileData.mainField) checkForNewCategory(updatedProfileData.mainField);
           const isAdmin = currentUser?.role === 'admin';
-          
           if (isAdmin) {
-              // --- ADMIN OPTIMIZATION: Instant UI Updates ---
               const { pendingUpdate, ...dataToSave } = updatedProfileData;
-              
-              // 1. Create a CLEAN object for Local State (React) & Offer Sync
-              // We explicitly ensure 'pendingUpdate' is NOT in this object
               const cleanProfileData = { ...dataToSave };
-              // Type assertion hack to delete optional property in a clean way for TS
-              if ('pendingUpdate' in cleanProfileData) {
-                  delete (cleanProfileData as any).pendingUpdate;
-              }
-
-              // 2. Create an object for Firestore that includes the deleteField instruction
-              const firestoreUpdateData = {
-                  ...dataToSave,
-                  pendingUpdate: deleteField()
-              };
+              if ('pendingUpdate' in cleanProfileData) delete (cleanProfileData as any).pendingUpdate;
+              const firestoreUpdateData = { ...dataToSave, pendingUpdate: deleteField() };
               
-              // 3. Update Local State Immediately (Optimistic UI) with CLEAN data
-              if (currentUser?.id === updatedProfileData.id) {
-                  setCurrentUser(cleanProfileData as UserProfile);
-              }
-              if (selectedProfile?.id === updatedProfileData.id) {
-                  setSelectedProfile(cleanProfileData as UserProfile);
-              }
+              if (currentUser?.id === updatedProfileData.id) setCurrentUser(cleanProfileData as UserProfile);
+              if (selectedProfile?.id === updatedProfileData.id) setSelectedProfile(cleanProfileData as UserProfile);
+              setOffers(prevOffers => prevOffers.map(o => o.profileId === updatedProfileData.id ? { ...o, profile: cleanProfileData as UserProfile } : o));
 
-              // Optimistically update offers list in memory with CLEAN data
-              setOffers(prevOffers => prevOffers.map(o => 
-                  o.profileId === updatedProfileData.id ? { ...o, profile: cleanProfileData as UserProfile } : o
-              ));
-
-              // 4. Perform DB Writes in Background
               await setDoc(doc(db, "users", updatedProfileData.id), firestoreUpdateData, { merge: true });
-              
-              // 5. Sync offers in DB using the CLEAN data
-              // Important: We must pass the clean object, otherwise 'deleteField()' inside a nested object
-              // might be misinterpreted or cause issues if we are replacing the whole 'profile' map.
               syncUserToOffers(updatedProfileData.id, cleanProfileData as UserProfile);
-              
           } else {
-              // --- REGULAR USER: Pending Update Flow ---
               const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
-              await updateDoc(doc(db, "users", updatedProfileData.id), {
-                  pendingUpdate: dataToUpdate
-              });
-
-              // Optimistic Pending State
+              await updateDoc(doc(db, "users", updatedProfileData.id), { pendingUpdate: dataToUpdate });
               const pendingProfile = { ...updatedProfileData, pendingUpdate: dataToUpdate };
-              if (currentUser?.id === updatedProfileData.id) {
-                   setCurrentUser(prev => prev ? ({ ...prev, pendingUpdate: dataToUpdate }) : null);
-              }
-              if (selectedProfile?.id === updatedProfileData.id) {
-                  setSelectedProfile(pendingProfile);
-              }
+              if (currentUser?.id === updatedProfileData.id) setCurrentUser(prev => prev ? ({ ...prev, pendingUpdate: dataToUpdate }) : null);
+              if (selectedProfile?.id === updatedProfileData.id) setSelectedProfile(pendingProfile);
           }
-      } catch (error) {
-          console.error("Error updating profile:", error);
-          alert("שגיאה בעדכון הפרופיל");
-      }
+      } catch (error) { console.error(error); alert("שגיאה בעדכון הפרופיל"); }
   };
 
   const handleApproveUserUpdate = async (userId: string) => {
-      // Find the user. If we are admin, we have 'users' list populated.
       const user = users.find(u => u.id === userId);
       if (!user || !user.pendingUpdate) return;
-
-      if (user.pendingUpdate.mainField) {
-         await checkForNewCategory(user.pendingUpdate.mainField);
-      }
-
+      if (user.pendingUpdate.mainField) await checkForNewCategory(user.pendingUpdate.mainField);
       const { pendingUpdate, ...baseUserData } = user;
-      const finalData: UserProfile = {
-          ...baseUserData,
-          ...pendingUpdate,
-      };
-      
-      const updatePayload = {
-          ...finalData,
-          pendingUpdate: deleteField()
-      };
-
+      const finalData: UserProfile = { ...baseUserData, ...pendingUpdate };
+      const updatePayload = { ...finalData, pendingUpdate: deleteField() };
       try {
           await setDoc(doc(db, "users", userId), updatePayload, { merge: true });
           await syncUserToOffers(userId, finalData);
-          
-          // Optimistic offers update
-          setOffers(prevOffers => prevOffers.map(o => 
-            o.profileId === userId ? { ...o, profile: finalData } : o
-          ));
-
-          if (selectedProfile?.id === userId) {
-              setSelectedProfile(finalData);
-          }
-      } catch (error) { 
-          console.error("Error approving update:", error); 
-          alert("שגיאה באישור השינויים");
-      }
+          setOffers(prevOffers => prevOffers.map(o => o.profileId === userId ? { ...o, profile: finalData } : o));
+          if (selectedProfile?.id === userId) setSelectedProfile(finalData);
+      } catch (error) { console.error(error); alert("שגיאה באישור השינויים"); }
   };
 
   const handleRejectUserUpdate = async (userId: string) => {
       try {
-        await updateDoc(doc(db, "users", userId), { 
-            pendingUpdate: deleteField() 
-        });
-        
-        // Optimistic Revert
+        await updateDoc(doc(db, "users", userId), { pendingUpdate: deleteField() });
         const user = users.find(u => u.id === userId);
         if (user && selectedProfile?.id === userId) {
              const { pendingUpdate, ...cleanUser } = user;
              setSelectedProfile(cleanUser as UserProfile);
         }
-      } catch (error) { 
-          console.error("Error rejecting update:", error);
-          alert("שגיאה בדחיית השינויים");
-      }
+      } catch (error) { console.error(error); alert("שגיאה בדחיית השינויים"); }
   };
 
   const handleRegister = async (newUser: Partial<UserProfile>, pass: string) => {
     try {
-        if (newUser.mainField) {
-            await checkForNewCategory(newUser.mainField);
-        }
-
+        if (newUser.mainField) await checkForNewCategory(newUser.mainField);
         const userCredential = await createUserWithEmailAndPassword(auth, newUser.email!, pass);
         const uid = userCredential.user.uid;
         const userProfile: UserProfile = {
@@ -448,7 +437,6 @@ export const App: React.FC = () => {
             joinedAt: new Date().toISOString()
         };
         await setDoc(doc(db, "users", uid), userProfile);
-        // Note: currentUser will be set by the useEffect listener automatically
         setIsAuthModalOpen(false);
         if (!userProfile.portfolioUrl && (!userProfile.portfolioImages || userProfile.portfolioImages.length === 0)) {
             setIsCompleteProfileModalOpen(true);
@@ -456,7 +444,7 @@ export const App: React.FC = () => {
     } catch (error: any) { alert(`שגיאה בהרשמה: ${error.message}`); }
   };
 
-  // --- Admin Taxonomy Handlers ---
+  // Admin Taxonomy Handlers
   const handleApproveCategory = async (category: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
@@ -465,31 +453,22 @@ export const App: React.FC = () => {
           });
       } catch (e) { console.error(e); }
   };
-
   const handleRejectCategory = async (category: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-              pendingCategories: arrayRemove(category)
-          });
+          await updateDoc(doc(db, "system_metadata", "taxonomy"), { pendingCategories: arrayRemove(category) });
       } catch (e) { console.error(e); }
   };
-
   const handleReassignCategory = async (oldCategory: string, newCategory: string) => {
       try {
           const q = query(collection(db, "users"), where("mainField", "==", oldCategory));
           const querySnapshot = await getDocs(q);
           const batch = writeBatch(db);
-          querySnapshot.forEach((doc) => {
-              batch.update(doc.ref, { mainField: newCategory });
-          });
+          querySnapshot.forEach((doc) => { batch.update(doc.ref, { mainField: newCategory }); });
           await batch.commit();
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-              pendingCategories: arrayRemove(oldCategory)
-          });
-          alert(`עודכנו ${querySnapshot.size} משתמשים. התחום הוסר מהרשימה הממתינה.`);
-      } catch (e) { console.error(e); alert("שגיאה בשינוי קטגוריה גורף"); }
+          await updateDoc(doc(db, "system_metadata", "taxonomy"), { pendingCategories: arrayRemove(oldCategory) });
+          alert(`עודכנו ${querySnapshot.size} משתמשים.`);
+      } catch (e) { console.error(e); alert("שגיאה בשינוי קטגוריה"); }
   };
-
   const handleApproveInterest = async (interest: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
@@ -498,35 +477,26 @@ export const App: React.FC = () => {
           });
       } catch (e) { console.error(e); }
   };
-
   const handleRejectInterest = async (interest: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-              pendingInterests: arrayRemove(interest),
-              approvedInterests: arrayRemove(interest)
-          });
+          await updateDoc(doc(db, "system_metadata", "taxonomy"), { pendingInterests: arrayRemove(interest), approvedInterests: arrayRemove(interest) });
       } catch (e) { console.error(e); }
   };
 
-  // --- Other Handlers ---
   const handleLogin = async (email: string, pass: string) => {
     try {
         await signInWithEmailAndPassword(auth, email, pass);
         setIsAuthModalOpen(false);
-    } catch (error: any) { alert("שגיאה בהתחברות. בדוק את המייל והסיסמה."); }
+    } catch (error: any) { alert("שגיאה בהתחברות."); }
   };
 
   const handleCompleteProfile = (data: { portfolioUrl: string, portfolioImages: string[] }) => {
     if (!currentUser) return;
-    const updatedData: UserProfile = { ...currentUser, ...data };
-    handleUpdateProfile(updatedData);
+    handleUpdateProfile({ ...currentUser, ...data });
     setIsCompleteProfileModalOpen(false);
   };
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    // State will be cleared by listeners
-  };
+  const handleLogout = async () => { await signOut(auth); };
 
   const handleAddOffer = async (newOffer: BarterOffer) => {
     try { await setDoc(doc(db, "offers", newOffer.id), newOffer); } 
@@ -537,16 +507,10 @@ export const App: React.FC = () => {
       const isAdmin = currentUser?.role === 'admin';
       const offerToSave: BarterOffer = {
         ...updatedOffer,
-        // Admin edits remain active. User edits go to pending if not admin, but requirement focused on rating reset.
-        // We'll keep status logic simple: Admins don't need approval.
         status: isAdmin ? updatedOffer.status : 'pending',
         ratings: [], 
         averageRating: 0
       };
-      
-      // Removed merge: true. We overwrite the entire document.
-      // This is crucial for properly deleting fields (e.g., removing expirationDate when switching to ongoing).
-      // Since 'updatedOffer' is constructed from the complete existing document state + updates, this is safe.
       try { await setDoc(doc(db, "offers", updatedOffer.id), offerToSave); } 
       catch (error) { console.error(error); }
   };
@@ -560,23 +524,14 @@ export const App: React.FC = () => {
     if (!currentUser) return;
     const offer = offers.find(o => o.id === offerId);
     if (!offer) return;
-    const currentRatings = offer.ratings || [];
-    const filteredRatings = currentRatings.filter(r => r.userId !== currentUser.id);
-    const newRatings = [...filteredRatings, { userId: currentUser.id, score }];
-    const total = newRatings.reduce((sum, r) => sum + r.score, 0);
-    const average = parseFloat((total / newRatings.length).toFixed(1));
+    const newRatings = [...(offer.ratings || []).filter(r => r.userId !== currentUser.id), { userId: currentUser.id, score }];
+    const average = parseFloat((newRatings.reduce((sum, r) => sum + r.score, 0) / newRatings.length).toFixed(1));
     try { await updateDoc(doc(db, "offers", offerId), { ratings: newRatings, averageRating: average }); } 
     catch (error) { console.error(error); }
   };
 
-  const handleDeleteOffer = async (offerId: string) => {
-      try { await deleteDoc(doc(db, "offers", offerId)); } catch (error) { console.error(error); }
-  };
-
-  const handleApproveOffer = async (offerId: string) => {
-      try { await updateDoc(doc(db, "offers", offerId), { status: 'active' }); } catch (error) { console.error(error); }
-  };
-
+  const handleDeleteOffer = async (offerId: string) => { try { await deleteDoc(doc(db, "offers", offerId)); } catch (error) { console.error(error); } };
+  const handleApproveOffer = async (offerId: string) => { try { await updateDoc(doc(db, "offers", offerId), { status: 'active' }); } catch (error) { console.error(error); } };
   const handleBulkDelete = async (dateThreshold: string) => {
       const threshold = new Date(dateThreshold);
       const toDelete = offers.filter(o => new Date(o.createdAt) < threshold);
@@ -599,20 +554,14 @@ export const App: React.FC = () => {
     try { await setDoc(doc(db, "messages", newMessage.id), newMessage); } catch (error) { console.error(error); }
   };
 
-  const handleMarkAsRead = async (messageId: string) => {
-      try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); }
-  };
-
+  const handleMarkAsRead = async (messageId: string) => { try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); } };
   const handleAddAd = async (newAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", newAd.id), newAd); } catch (error) { console.error(error); } };
   const handleEditAd = async (updatedAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", updatedAd.id), updatedAd); } catch (error) { console.error(error); } };
   const handleDeleteAd = async (adId: string) => { try { await deleteDoc(doc(db, "systemAds", adId)); } catch (error) { console.error(error); } };
 
-  // --- Contact & Modals ---
   const handleContact = (profile: UserProfile, offerTitle?: string) => {
     if (!currentUser) { setAuthStartOnRegister(false); setIsAuthModalOpen(true); return; }
     if (profile.id === currentUser.id) { alert("זוהי ההצעה שלך :)"); return; }
-    
-    // Performance fix: Use profile passed from offer, or fetch on demand
     handleViewProfile(profile, true).then(() => {
         setInitialMessageSubject(offerTitle ? `התעניינות ב: ${offerTitle}` : '');
         setIsMessagingModalOpen(true);
@@ -621,36 +570,18 @@ export const App: React.FC = () => {
 
   const handleViewProfile = async (profile: UserProfile, openMessaging = false) => {
     let profileToView = profile;
-    
-    // 1. If it's the current user, use the live state
-    if (currentUser && profile.id === currentUser.id) {
-        profileToView = currentUser;
-    } 
-    // 2. If we are admin, check the users list cache
+    if (currentUser && profile.id === currentUser.id) profileToView = currentUser;
     else if (currentUser?.role === 'admin') {
         const cachedUser = users.find(u => u.id === profile.id);
         if (cachedUser) profileToView = cachedUser;
-    }
-    // 3. Regular user: If the profile object passed is sparse (from offer), 
-    // try to fetch fresh data if needed, or just use what we have.
-    // NOTE: Offers usually contain a good snapshot.
-    else {
-        // Optional: Fetch fresh data for regular users to ensure avatar/bio is up to date
-        // This is "on demand" fetching instead of loading ALL users at startup
+    } else {
         try {
              const userDoc = await getDoc(doc(db, "users", profile.id));
-             if (userDoc.exists()) {
-                 profileToView = userDoc.data() as UserProfile;
-             }
-        } catch (e) {
-            console.error("Could not fetch fresh profile", e);
-        }
+             if (userDoc.exists()) profileToView = userDoc.data() as UserProfile;
+        } catch (e) { console.error(e); }
     }
-    
     setSelectedProfile(profileToView);
-    if (!openMessaging) {
-        setIsProfileModalOpen(true);
-    }
+    if (!openMessaging) setIsProfileModalOpen(true);
   };
 
   const handleOpenCreate = () => {
@@ -677,10 +608,33 @@ export const App: React.FC = () => {
 
   // --- Filter & Sort Logic ---
   const filteredOffers = offers.filter(offer => {
+    // 1. Basic Status Filter (Only active, unless mine or admin)
     const isMine = currentUser && offer.profileId === currentUser.id;
     const isAdmin = currentUser?.role === 'admin';
     if (offer.status !== 'active' && !isMine && !isAdmin) return false; 
 
+    // 2. "For You" Feed Logic
+    if (viewFilter === 'for_you') {
+        if (!currentUser) return false; // Safety check
+        
+        // Logic A: They want what I do (My Profession is in their requested service)
+        const myProfession = currentUser.mainField;
+        const matchesMyProfession = 
+            offer.requestedService.includes(myProfession) || 
+            (offer.tags && offer.tags.some(t => t === myProfession));
+
+        // Logic B: They offer something that matches my interests
+        const myInterests = currentUser.interests || [];
+        const matchesMyInterests = 
+            myInterests.some(interest => 
+                offer.offeredService.includes(interest) || 
+                (offer.tags && offer.tags.includes(interest))
+            );
+
+        if (!matchesMyProfession && !matchesMyInterests) return false;
+    }
+
+    // 3. Standard Text Filters (Apply to both feeds)
     const title = offer.title || '';
     const offeredService = offer.offeredService || '';
     const requestedService = offer.requestedService || '';
@@ -695,7 +649,7 @@ export const App: React.FC = () => {
     }
     if (keywordFilter) {
         const query = keywordFilter.toLowerCase();
-        if (!(title.toLowerCase().includes(query) || offeredService.toLowerCase().includes(query) || requestedService.toLowerCase().includes(query))) return false;
+        if (!(title.toLowerCase().includes(query) || offeredService.toLowerCase().includes(query) || requestedService.toLowerCase().includes(query) || tags.some(t => (t || '').toLowerCase().includes(query)))) return false;
     }
     if (locationFilter && !location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
     if (durationFilter !== 'all' && offer.durationType !== durationFilter) return false;
@@ -753,6 +707,16 @@ export const App: React.FC = () => {
         onSearch={setSearchQuery}
         unreadCount={unreadCount}
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
+        activeFeed={viewFilter}
+        onNavigate={(feed) => {
+            if (feed === 'for_you' && !currentUser) {
+                setAuthStartOnRegister(false);
+                setIsAuthModalOpen(true);
+            } else {
+                setViewFilter(feed);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }}
       />
       <Hero 
         onOpenWhoIsItFor={() => setIsWhoIsItForOpen(true)}
@@ -760,22 +724,42 @@ export const App: React.FC = () => {
       />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
         <AdBanner contextCategories={selectedCategories} systemAds={systemAds} currentUser={currentUser} />
+        
+        {/* Feed Title (Only when active filter is 'For You') */}
+        {viewFilter === 'for_you' && (
+            <div className="mb-6 animate-in fade-in slide-in-from-top-4">
+                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <span className="bg-brand-100 p-2 rounded-full text-brand-600"><Plus className="w-5 h-5" /></span>
+                    הצעות שנבחרו במיוחד בשבילך
+                </h2>
+                <p className="text-slate-500 mt-1">
+                    רשימה מותאמת אישית לפי תחום העיסוק ({currentUser?.mainField}) ותחומי העניין שלך.
+                </p>
+            </div>
+        )}
+
         {/* Filters Bar */}
-        <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 transition-all duration-300 mb-4 sticky top-16 z-30 ${isSticky ? 'py-2 px-3 sm:px-4' : 'p-3 sm:p-6'}`}>
-            <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-center justify-between">
-                 {/* Top Section: Label + Sort + View */}
-                 <div className="flex items-center justify-between w-full lg:w-auto gap-2 shrink-0">
-                     <div className={`flex items-center gap-2 cursor-pointer ${isSticky ? 'flex-1' : ''}`} onClick={() => isSticky && setIsFilterOpen(!isFilterOpen)}>
+        <div 
+          ref={filterBarRef}
+          className={`bg-white rounded-2xl shadow-sm border border-slate-200 transition-all duration-300 mb-8 sticky top-16 z-30 ${isSticky ? 'py-2 px-3 sm:px-4 cursor-pointer' : 'p-3 sm:p-6'}`}
+          onClick={toggleStickyBar}
+        >
+            <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-start lg:items-center justify-between">
+
+                 {/* RIGHT SIDE (RTL): Filter Toggle & Mobile Controls */}
+                 <div className="flex items-center justify-between w-full lg:w-auto shrink-0">
+                     <div className={`flex items-center gap-2 select-none ${isSticky ? 'flex-1 lg:flex-none' : ''}`}>
                         <div className="bg-brand-100 p-2 rounded-lg text-brand-700 shrink-0"><Filter className="w-5 h-5" /></div>
-                        <span className={`font-bold text-slate-800 whitespace-nowrap ${isSticky ? 'text-sm' : ''} ${isSticky && viewMode === 'compact' ? 'hidden sm:block' : ''}`}>{isSticky ? 'סינון' : 'סינון הצעות'}</span>
+                        <span className={`font-bold text-slate-800 whitespace-nowrap ${isSticky ? 'text-sm' : ''}`}>{isSticky ? 'סינון' : 'סינון הצעות'}</span>
                         {isSticky && <div className="text-slate-400 mr-2">{isFilterOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}</div>}
                      </div>
 
-                     <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-hide" onClick={(e) => e.stopPropagation()}>
+                     {/* MOBILE ONLY: Sort/View Controls */}
+                     <div className="flex lg:hidden items-center gap-2 overflow-x-auto scrollbar-hide" onClick={(e) => e.stopPropagation()}>
                          <div className="flex items-center gap-2 bg-white border border-slate-300 p-1 rounded-xl h-[42px]">
                             <div className="relative group flex items-center h-full">
                                 <ArrowUpDown className="w-4 h-4 text-slate-400 absolute right-2 pointer-events-none" />
-                                <select className="bg-transparent border-none text-xs sm:text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer pr-8 pl-2 h-full outline-none appearance-none hover:text-brand-600 transition-colors w-full sm:w-auto" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                                <select className="bg-transparent border-none text-xs font-bold text-slate-700 focus:ring-0 cursor-pointer pr-8 pl-2 h-full outline-none appearance-none w-full" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
                                     <option value="newest">מודעות חדשות</option>
                                     <option value="deadline">מסתיימות בקרוב</option>
                                     <option value="rating">הכי מומלצות</option>
@@ -788,38 +772,94 @@ export const App: React.FC = () => {
                          </div>
                      </div>
                  </div>
-                 
-                 {/* Inputs Section */}
-                 {(!isSticky || isFilterOpen) && (
-                     <div className={`flex flex-col lg:flex-row gap-2 sm:gap-3 w-full lg:w-auto lg:flex-1 flex-wrap items-center mt-2 sm:mt-4 lg:mt-0 ${isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}`}>
-                         <div className="flex flex-row gap-2 w-full lg:w-auto flex-1">
-                             <div className="relative group flex-1">
+
+                 {/* LEFT SIDE (RTL): Desktop Controls & Inputs */}
+                 <div 
+                    className={`flex flex-col lg:flex-row gap-2 w-full lg:w-auto lg:justify-end items-center ${(!isSticky || isFilterOpen) ? 'flex' : 'hidden lg:flex'}`}
+                 >
+
+                     {/* Inputs Group */}
+                     {(!isSticky || isFilterOpen) && (
+                         <div 
+                            className={`flex flex-col lg:flex-row gap-2 w-full lg:w-auto items-center ${isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}`}
+                         >
+                             {/* Keyword Search */}
+                             <div className="relative group w-full lg:w-44">
                                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                 <input type="text" className="w-full pl-3 pr-9 h-[42px] bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" placeholder="חיפוש חופשי..." value={keywordInput} onChange={(e) => setKeywordInput(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                                 <input 
+                                    type="text" 
+                                    className="w-full pl-3 pr-9 h-[42px] bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" 
+                                    placeholder="חיפוש חופשי..." 
+                                    value={keywordInput} 
+                                    onChange={(e) => setKeywordInput(e.target.value)} 
+                                    onClick={(e) => e.stopPropagation()} 
+                                />
                              </div>
-                             <div className="relative group flex-1">
+
+                             {/* Location Search */}
+                             <div className="relative group w-full lg:w-44">
                                  <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                 <input type="text" className="w-full pl-3 pr-9 h-[42px] bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" placeholder="חיפוש לפי עיר..." value={locationInput} onChange={(e) => setLocationInput(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                                 <input 
+                                    type="text" 
+                                    className="w-full pl-3 pr-9 h-[42px] bg-white border border-slate-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all shadow-sm" 
+                                    placeholder="חיפוש לפי עיר..." 
+                                    value={locationInput} 
+                                    onChange={(e) => setLocationInput(e.target.value)} 
+                                    onClick={(e) => e.stopPropagation()} 
+                                />
+                             </div>
+
+                             {/* Duration & Reset */}
+                             <div className="flex flex-row gap-2 w-full lg:w-auto">
+                                <div className="flex-1 sm:flex-none flex bg-white p-1 rounded-xl border border-slate-300 justify-center h-[42px] items-center" onClick={(e) => e.stopPropagation()}>
+                                    <button onClick={() => setDurationFilter('all')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center ${durationFilter === 'all' ? 'bg-slate-100 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>הכל</button>
+                                    <button onClick={() => setDurationFilter('one-time')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center gap-1 ${durationFilter === 'one-time' ? 'bg-slate-100 shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}><Clock className="w-3 h-3" /><span className="hidden xl:inline">חד פעמי</span><span className="xl:hidden">פרויקט</span></button>
+                                    <button onClick={() => setDurationFilter('ongoing')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center gap-1 ${durationFilter === 'ongoing' ? 'bg-slate-100 shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Repeat className="w-3 h-3" /><span className="hidden xl:inline">מתמשך</span><span className="xl:hidden">ריטיינר</span></button>
+                                </div>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleResetFilters(); }} 
+                                    className="flex items-center justify-center gap-1 px-3 h-[42px] text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors font-medium text-xs border border-transparent hover:border-red-200 shrink-0" 
+                                    title="נקה את כל הסינונים"
+                                >
+                                    <XIcon className="w-4 h-4" />
+                                </button>
                              </div>
                          </div>
-                         <div className="flex flex-row gap-2 w-full lg:w-auto">
-                            <div className="flex-1 sm:flex-none flex bg-white p-1 rounded-xl border border-slate-300 justify-center h-[42px] items-center" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={() => setDurationFilter('all')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center ${durationFilter === 'all' ? 'bg-slate-100 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>הכל</button>
-                                <button onClick={() => setDurationFilter('one-time')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center gap-1 ${durationFilter === 'one-time' ? 'bg-slate-100 shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}><Clock className="w-3 h-3" /><span className="inline">חד פעמי</span></button>
-                                <button onClick={() => setDurationFilter('ongoing')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center gap-1 ${durationFilter === 'ongoing' ? 'bg-slate-100 shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Repeat className="w-3 h-3" /><span className="inline">מתמשך</span></button>
+                     )}
+
+                     {/* DESKTOP ONLY: Sort/View Controls */}
+                     <div 
+                        className="hidden lg:flex items-center gap-2 ml-2"
+                        onClick={(e) => e.stopPropagation()} 
+                     >
+                         <div className="flex items-center gap-2 bg-white border border-slate-300 p-1 rounded-xl h-[42px]">
+                            <div className="relative group flex items-center h-full">
+                                <ArrowUpDown className="w-4 h-4 text-slate-400 absolute right-2 pointer-events-none" />
+                                <select className="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 cursor-pointer pr-8 pl-2 h-full outline-none appearance-none hover:text-brand-600 transition-colors" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                                    <option value="newest">מודעות חדשות</option>
+                                    <option value="deadline">מסתיימות בקרוב</option>
+                                    <option value="rating">הכי מומלצות</option>
+                                </select>
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); handleResetFilters(); }} className="flex items-center justify-center gap-1 px-3 h-[42px] text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors font-medium text-xs border border-transparent hover:border-red-200 shrink-0" title="נקה את כל הסינונים"><XIcon className="w-4 h-4" /></button>
+                         </div>
+                         <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-300 h-[42px] shrink-0">
+                            <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-slate-100 text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid className="w-4 h-4" /></button>
+                            <button onClick={() => setViewMode('compact')} className={`p-1.5 rounded-md transition-all ${viewMode === 'compact' ? 'bg-slate-100 text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><ListIcon className="w-4 h-4" /></button>
                          </div>
                      </div>
-                 )}
+
+                 </div>
             </div>
             {(!isSticky || isFilterOpen) && (
-                <div className={isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}>
+                <div 
+                    className={isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div className="h-px bg-slate-100 my-2 sm:my-3 w-full"></div>
-                    <div className="relative w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative w-full overflow-hidden">
                         <div className="flex gap-2 overflow-x-auto pb-2 pt-2 scrollbar-hide select-none">
                             <button onClick={() => toggleCategory('הכל')} className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all border ${selectedCategories.length === 0 ? 'bg-slate-900 text-white border-slate-900 shadow-md transform scale-105' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>הכל</button>
-                            {availableCategories.map(category => (
+                            {displayedCategories.map(category => (
                                 <button key={category} onClick={() => toggleCategory(category)} className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all border flex items-center gap-2 ${selectedCategories.includes(category) ? 'bg-brand-600 text-white border-brand-600 shadow-md transform scale-105' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>{category}</button>
                             ))}
                         </div>
@@ -830,29 +870,58 @@ export const App: React.FC = () => {
         {isLoading ? (
             <div className="flex items-center justify-center py-20"><Loader2 className="w-10 h-10 text-brand-500 animate-spin" /></div>
         ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredOffers.map((offer) => (
-                <OfferCard 
-                    key={offer.id} 
-                    offer={offer} 
-                    onContact={(profile) => handleContact(profile, offer.title)} 
-                    onUserClick={(profile) => handleViewProfile(profile)} 
-                    onRate={handleRateOffer} 
-                    currentUserId={currentUser?.id} 
-                    viewMode={viewMode} 
-                    onDelete={handleDeleteOffer} 
-                    onEdit={handleEditOffer} // Pass edit handler
-                />
-              ))}
-              <div onClick={handleOpenCreate} className={`cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[150px] ${viewMode === 'grid' ? 'min-h-[350px]' : ''}`}>
-                   <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform shadow-sm"><Plus className="w-8 h-8 text-brand-600" /></div>
-                   <h3 className="text-xl font-bold text-slate-800">יש לך כישרון להציע?</h3>
-                   <p className="text-slate-500 mt-2 max-w-xs text-sm">הצטרף למאות בעלי עסקים שכבר מחליפים שירותים וחוסכים כסף.</p>
-                   <span className="mt-4 text-brand-600 font-bold bg-white px-4 py-2 rounded-full shadow-sm text-sm group-hover:shadow-md transition-shadow">פרסם הצעה חדשה &rarr;</span>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+              {filteredOffers.length > 0 ? (
+                  filteredOffers.map((offer) => (
+                    <OfferCard 
+                        key={offer.id} 
+                        offer={offer} 
+                        onContact={(profile) => handleContact(profile, offer.title)} 
+                        onUserClick={(profile) => handleViewProfile(profile)} 
+                        onRate={handleRateOffer} 
+                        currentUserId={currentUser?.id} 
+                        viewMode={viewMode} 
+                        onDelete={handleDeleteOffer} 
+                        onEdit={handleEditOffer} 
+                    />
+                  ))
+              ) : (
+                  // Empty State for Personalized View
+                  viewFilter === 'for_you' ? (
+                      <div className="col-span-full text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm">
+                          <div className="bg-brand-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                              <Search className="w-8 h-8 text-brand-600" />
+                          </div>
+                          <h3 className="text-xl font-bold text-slate-800 mb-2">עדיין לא נמצאו התאמות מושלמות</h3>
+                          <p className="text-slate-500 max-w-md mx-auto mb-6">
+                              אנחנו מחפשים כל הזמן הצעות שמתאימות למקצוע שלך ({currentUser?.mainField}) או לתחומי העניין שלך.
+                              כדאי לוודא שפרופיל המשתמש שלך מעודכן עם כל תחומי העניין!
+                          </p>
+                          <button 
+                            onClick={() => {
+                                setSelectedProfile(currentUser);
+                                setIsProfileModalOpen(true);
+                            }}
+                            className="text-brand-600 font-bold hover:underline"
+                          >
+                              עדכן פרופיל אישי
+                          </button>
+                      </div>
+                  ) : null
+              )}
+              
+              {/* Promo Card always visible in grid */}
+              {(viewFilter === 'all' || filteredOffers.length > 0) && (
+                  <div onClick={handleOpenCreate} className={`cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[150px] ${viewMode === 'grid' ? 'min-h-[350px]' : ''}`}>
+                       <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform shadow-sm"><Plus className="w-8 h-8 text-brand-600" /></div>
+                       <h3 className="text-xl font-bold text-slate-800">יש לך כישרון להציע?</h3>
+                       <p className="text-slate-500 mt-2 max-w-xs text-sm">הצטרף למאות בעלי עסקים שכבר מחליפים שירותים וחוסכים כסף.</p>
+                       <span className="mt-4 text-brand-600 font-bold bg-white px-4 py-2 rounded-full shadow-sm text-sm group-hover:shadow-md transition-shadow">פרסם הצעה חדשה &rarr;</span>
+                  </div>
+              )}
             </div>
         )}
-        {!isLoading && filteredOffers.length === 0 && (
+        {!isLoading && filteredOffers.length === 0 && viewFilter === 'all' && (
           <div className="text-center py-10 col-span-full"><h3 className="text-lg font-bold text-slate-700">לא נמצאו הצעות תואמות לסינון</h3><button onClick={handleResetFilters} className="mt-2 text-brand-600 font-bold hover:underline text-sm">נקה סינונים</button></div>
         )}
       </main>
@@ -871,7 +940,7 @@ export const App: React.FC = () => {
         users={users} 
         availableCategories={availableCategories} 
         availableInterests={availableInterests} 
-        onAddCategory={(cat) => checkForNewCategory(cat)} // Fix: use helper to trigger approval logic
+        onAddCategory={(cat) => checkForNewCategory(cat)} 
         onAddInterest={(int) => checkForNewInterest(int)}
         onDeleteCategory={handleRejectCategory}
         onDeleteInterest={handleRejectInterest}

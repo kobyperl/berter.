@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       - offeredService (Short 2-4 words)
       - requestedService (Short 2-4 words)
       - location (City or 'Remote')
-      - tags (Array of strings)
+      - tags (Array of strings. CRITICAL INSTRUCTION: Limit to maximum 10 tags. Identify relevant hobbies, interests, or soft skills mentioned in the text that could match user interests (e.g. sports, cooking, music, gaming) and include them as tags. Also include professional tags.)
       - durationType (Enum: 'one-time' or 'ongoing'. Logic: if text implies monthly (חודשי), retainer (ריטיינר), long-term (לטווח ארוך), constant (קבוע), subscription (מנוי) -> 'ongoing'. Otherwise -> 'one-time')
       - expirationDate (YYYY-MM-DD, optional. Only include if a specific deadline is mentioned AND durationType is 'one-time')
     `;

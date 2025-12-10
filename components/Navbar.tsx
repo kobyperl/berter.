@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3 } from 'lucide-react';
+import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3, Home, Heart } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface NavbarProps {
@@ -17,6 +17,8 @@ interface NavbarProps {
   onSearch: (query: string) => void;
   unreadCount: number;
   onOpenHowItWorks: () => void;
+  activeFeed?: 'all' | 'for_you';
+  onNavigate?: (feed: 'all' | 'for_you') => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -32,7 +34,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onSearch,
   unreadCount,
-  onOpenHowItWorks
+  onOpenHowItWorks,
+  activeFeed = 'all',
+  onNavigate
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -42,7 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex justify-between h-16">
           <div className="flex items-center flex-1">
             {/* Logo */}
-            <div className="flex-shrink-0 flex items-center gap-2 cursor-pointer">
+            <div className="flex-shrink-0 flex items-center gap-2 cursor-pointer" onClick={() => onNavigate && onNavigate('all')}>
               <div className="bg-brand-600 p-1.5 rounded-lg">
                 <ArrowRightLeft className="h-6 w-6 text-white" />
               </div>
@@ -50,8 +54,34 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-bold text-xl text-slate-800 tracking-tight md:hidden">Barter</span>
             </div>
             
-            {/* Search Bar - Desktop */}
-            <div className="hidden md:flex items-center mr-8 flex-1 max-w-lg">
+            {/* Desktop Navigation Links */}
+            <div className="hidden md:flex items-center mr-8 space-x-1 space-x-reverse">
+                <button
+                    onClick={() => onNavigate && onNavigate('all')}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors ${
+                        activeFeed === 'all' 
+                        ? 'bg-slate-100 text-slate-900' 
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                    <Home className="w-4 h-4" />
+                    ראשי
+                </button>
+                <button
+                    onClick={() => onNavigate && onNavigate('for_you')}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors ${
+                        activeFeed === 'for_you' 
+                        ? 'bg-brand-50 text-brand-700' 
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                    <Heart className="w-4 h-4" />
+                    במיוחד בשבילך
+                </button>
+            </div>
+
+            {/* Search Bar - Desktop (Reduced Width to w-64) */}
+            <div className="hidden md:flex items-center mr-6 w-64">
                <div className="relative w-full">
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <Search className="h-4 w-4 text-slate-400" />
@@ -59,17 +89,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <input
                     type="text"
                     className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm transition duration-150 ease-in-out"
-                    placeholder="חיפוש שירות, מקצוע או מילת מפתח..."
+                    placeholder="חיפוש..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
                </div>
             </div>
 
-            {/* Desktop Nav Links */}
-            <div className="hidden md:flex md:space-x-8 md:space-x-reverse mr-4">
+            {/* How it works Link */}
+            <div className="hidden lg:flex mr-4">
               <button 
                 onClick={onOpenHowItWorks}
-                className="border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                className="text-slate-400 hover:text-slate-600 text-xs font-medium"
               >
                 איך זה עובד?
               </button>
@@ -207,6 +237,24 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="sm:hidden bg-white border-t border-slate-200 absolute w-full left-0 shadow-xl z-50 animate-in slide-in-from-top-2 duration-200">
             <div className="pt-2 pb-4 px-4 space-y-2">
                 
+                {/* Mobile Navigation Links */}
+                <div className="flex gap-2 mb-4">
+                    <button
+                        onClick={() => { onNavigate && onNavigate('all'); setIsMenuOpen(false); }}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'all' ? 'bg-slate-100 text-slate-900' : 'bg-slate-50 text-slate-500'}`}
+                    >
+                        <Home className="w-4 h-4" />
+                        ראשי
+                    </button>
+                    <button
+                        onClick={() => { onNavigate && onNavigate('for_you'); setIsMenuOpen(false); }}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'for_you' ? 'bg-brand-50 text-brand-700' : 'bg-slate-50 text-slate-500'}`}
+                    >
+                        <Heart className="w-4 h-4" />
+                        בשבילך
+                    </button>
+                </div>
+
                 {/* Mobile Search */}
                 <div className="relative mb-4">
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
