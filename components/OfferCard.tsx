@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { MapPin, Calendar, MessageCircle, ChevronDown, ChevronUp, Star, Trash2, Clock, Repeat, EyeOff } from 'lucide-react';
+import { MapPin, Calendar, MessageCircle, ChevronDown, ChevronUp, Star, Trash2, Clock, Repeat, EyeOff, Edit } from 'lucide-react';
 import { BarterOffer, UserProfile } from '../types';
 
-interface OfferCardProps {
+export interface OfferCardProps {
   offer: BarterOffer;
   onContact: (profile: UserProfile) => void;
   onUserClick: (profile: UserProfile) => void;
   onRate?: (offerId: string, rating: number) => void;
   onDelete?: (offerId: string) => void;
+  onEdit?: (offer: BarterOffer) => void; // New Prop for editing
   currentUserId?: string;
   viewMode?: 'grid' | 'compact';
 }
@@ -18,6 +19,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
     onUserClick, 
     onRate, 
     onDelete,
+    onEdit,
     currentUserId,
     viewMode = 'grid' 
 }) => {
@@ -181,30 +183,60 @@ export const OfferCard: React.FC<OfferCardProps> = ({
 
                         {/* Chevron / Mobile Actions - Pushed to the far left (End) */}
                         <div className="flex flex-col items-end justify-between h-full pl-1">
-                            {/* Mobile Delete */}
-                            {onDelete && isOwner && (
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id);
-                                    }}
-                                    className="sm:hidden text-slate-400 hover:text-red-500 mb-2"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            )}
-                            {/* Desktop Delete */}
-                            {onDelete && isOwner && (
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id);
-                                    }}
-                                    className="hidden sm:block p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full mb-2"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            )}
+                            {/* Mobile Actions */}
+                            <div className="flex flex-col gap-2 sm:hidden">
+                                {onEdit && isOwner && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEdit(offer);
+                                        }}
+                                        className="text-slate-400 hover:text-blue-500"
+                                    >
+                                        <Edit className="w-4 h-4" />
+                                    </button>
+                                )}
+                                {onDelete && isOwner && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id);
+                                        }}
+                                        className="text-slate-400 hover:text-red-500"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Desktop Actions */}
+                            <div className="hidden sm:flex flex-col gap-1">
+                                {onEdit && isOwner && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEdit(offer);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-full"
+                                        title="ערוך הצעה"
+                                    >
+                                        <Edit className="w-4 h-4" />
+                                    </button>
+                                )}
+                                {onDelete && isOwner && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full"
+                                        title="מחק הצעה"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+                            
                             <div className="text-slate-400 mt-auto">
                                 {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                             </div>
@@ -318,6 +350,19 @@ export const OfferCard: React.FC<OfferCardProps> = ({
             </div>
             <div className="flex gap-2">
                 
+                {onEdit && isOwner && (
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(offer);
+                        }}
+                        className="text-slate-400 hover:text-blue-500 transition-colors"
+                        title="ערוך הצעה"
+                    >
+                        <Edit className="w-4 h-4" />
+                    </button>
+                )}
+
                 {onDelete && isOwner && (
                     <button 
                         onClick={(e) => {
