@@ -9,6 +9,7 @@ interface NavbarProps {
   onOpenMessages: () => void;
   onOpenAuth: () => void;
   onOpenProfile: () => void;
+  onLogout: () => void; // Added missing prop
   // Unified Admin Action
   onOpenAdminDashboard?: () => void;
   // Stats for Badges
