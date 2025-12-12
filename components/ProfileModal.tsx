@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Briefcase, ExternalLink, Heart, Pencil, Save, Plus, Image as ImageIcon, Camera, Upload, Tag, AlertCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { UserProfile, BarterOffer, ExpertiseLevel } from '../types';
@@ -14,7 +11,7 @@ interface ProfileModalProps {
   currentUser: UserProfile | null;
   userOffers: BarterOffer[];
   onDeleteOffer: (offerId: string) => void;
-  onUpdateProfile: (profile: UserProfile) => void;
+  onUpdateProfile: (profile: UserProfile) => Promise<void>;
   onContact: (profile: UserProfile) => void;
   onRate?: (offerId: string, rating: number) => void;
   availableCategories: string[];
@@ -79,6 +76,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [editFormData, setEditFormData] = useState<UserProfile | null>(null);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // New saving state
+  const [showPendingApproval, setShowPendingApproval] = useState(false);
   
   // State for adding new interests
   const [interestInput, setInterestInput] = useState('');
@@ -107,17 +106,35 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         setEditFormData(displayProfile);
     }
     setIsEditing(false);
+    setShowPendingApproval(false); // Reset popup
     setInterestInput('');
+    setIsSaving(false);
   }, [profile, isOpen, isOwnProfile, isAdmin]);
 
   if (!isOpen) return null;
   if (!displayProfile) return null; // Handle null profile safely
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editFormData) {
-        onUpdateProfile(editFormData);
-        setIsEditing(false);
+        setIsSaving(true);
+        try {
+            await onUpdateProfile(editFormData);
+            
+            if (isAdmin) {
+                // Admin: Immediate close, no popup
+                setIsEditing(false);
+                setShowPendingApproval(false);
+            } else {
+                // User: Show Popup
+                setShowPendingApproval(true);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("שגיאה בשמירת הפרופיל");
+        } finally {
+            setIsSaving(false);
+        }
     }
   };
 
@@ -200,10 +217,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       });
   };
 
+  // Popup Component for Pending Approval
+  if (showPendingApproval && !isAdmin) {
+      return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900 bg-opacity-75">
+            <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center animate-in fade-in zoom-in shadow-2xl">
+                <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                    <CheckCircle className="w-8 h-8 text-yellow-600" />
+                </div>
+                <h3 className="text-2xl font-bold text-slate-800 mb-2">השינויים נשמרו!</h3>
+                <p className="text-slate-600 mb-6 leading-relaxed">
+                    העדכון הועבר לבדיקת מנהל המערכת ויופיע באתר לכולם מיד לאחר האישור.
+                </p>
+                <button 
+                    onClick={() => {
+                        setShowPendingApproval(false);
+                        setIsEditing(false); // Go back to "view mode" (previewing pending changes)
+                    }}
+                    className="bg-brand-600 text-white font-bold py-3 px-8 rounded-xl w-full hover:bg-brand-700 transition-colors shadow-lg"
+                >
+                    מצוין, תודה
+                </button>
+            </div>
+        </div>
+      );
+  }
+
   const inputClassName = "w-full bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl p-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm";
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={onClose}></div>
 
@@ -341,7 +384,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 </button>
                              </div>
 
-                             <div className="flex flex-wrap gap-2 min-h-[400px] items-center">
+                             <div className="flex flex-wrap gap-2 min-h-[40px] items-center">
                                  {editFormData.interests?.map((interest, idx) => (
                                      <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-sm flex items-center gap-1 shadow-sm group hover:border-red-200">
                                          {interest}
@@ -435,10 +478,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                              </button>
                              <button 
                                 type="submit"
-                                disabled={isUploading}
+                                disabled={isUploading || isSaving}
                                 className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
                              >
-                                 <Save className="w-4 h-4" />
+                                 {isSaving ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                 ) : (
+                                    <Save className="w-4 h-4" />
+                                 )}
                                  {isAdmin ? 'שמור ועדכן מידית' : 'שמור (שלח לאישור)'}
                              </button>
                          </div>
@@ -554,7 +601,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         </div>
 
                          {/* Pending Changes Review Section (Bottom) */}
-                         {(isOwnProfile || isAdmin) && profile?.pendingUpdate && (
+                         {/* Crucial fix: Don't show this if I am an admin viewing my own profile, as changes are instant */}
+                         {profile?.pendingUpdate && (!isOwnProfile || !isAdmin) && (
                              <div className="mt-8 border-t-2 border-yellow-200 pt-6 animate-in slide-in-from-bottom-2">
                                 {isAdmin ? (
                                     <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">

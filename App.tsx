@@ -12,13 +12,10 @@ import { CreateOfferModal } from './components/CreateOfferModal';
 import { MessagingModal } from './components/MessagingModal';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
-import { UsersListModal } from './components/UsersListModal';
-import { AdminOffersModal } from './components/AdminOffersModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { WhoIsItForModal } from './components/WhoIsItForModal';
 import { SearchTipsModal } from './components/SearchTipsModal';
-import { AdminAdManager } from './components/AdminAdManager';
-import { AdminAnalyticsModal } from './components/AdminAnalyticsModal';
+import { AdminDashboardModal } from './components/AdminDashboardModal'; // New Unified Modal
 import { AccessibilityModal } from './components/AccessibilityModal';
 import { CookieConsentModal } from './components/CookieConsentModal';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
@@ -78,7 +75,24 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setAuthUid(firebaseUser ? firebaseUser.uid : null);
-      if (!firebaseUser) {
+      
+      if (firebaseUser) {
+          // PERFORMANCE FIX: Optimistic Update
+          setCurrentUser(prev => {
+              if (prev && prev.id === firebaseUser.uid) return prev;
+              
+              return {
+                  id: firebaseUser.uid,
+                  name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'משתמש',
+                  email: firebaseUser.email || '',
+                  avatarUrl: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.email}&background=random`,
+                  role: 'user', 
+                  expertise: ExpertiseLevel.MID,
+                  mainField: '', 
+                  portfolioUrl: ''
+              };
+          });
+      } else {
           setCurrentUser(null);
           setUsers([]);
       }
@@ -89,10 +103,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!authUid) return;
 
+    // Fetch full profile from Firestore
     const userDocRef = doc(db, "users", authUid);
     const unsubscribeUserDoc = onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
-            setCurrentUser(docSnap.data() as UserProfile);
+            const firestoreData = docSnap.data() as UserProfile;
+            setCurrentUser(firestoreData);
         }
     });
 
@@ -169,10 +185,10 @@ export const App: React.FC = () => {
   const [isCompleteProfileModalOpen, setIsCompleteProfileModalOpen] = useState(false);
   const [isMessagingModalOpen, setIsMessagingModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
-  const [isAdminOffersOpen, setIsAdminOffersOpen] = useState(false);
-  const [isAdManagerOpen, setIsAdManagerOpen] = useState(false);
-  const [isAdminAnalyticsOpen, setIsAdminAnalyticsOpen] = useState(false);
+  
+  // New Unified Admin Dashboard State
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+  
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isWhoIsItForOpen, setIsWhoIsItForOpen] = useState(false);
   const [isSearchTipsOpen, setIsSearchTipsOpen] = useState(false);
@@ -216,7 +232,6 @@ export const App: React.FC = () => {
   const lastToggleTimeRef = useRef(0);
   const filterBarRef = useRef<HTMLDivElement>(null);
   
-  // Flag to prevent scroll events from closing the bar when we programmatically scroll
   const isProgrammaticScroll = useRef(false);
   const isFirstRender = useRef(true);
 
@@ -227,23 +242,18 @@ export const App: React.FC = () => {
   // --- Scroll & Sticky Logic ---
   useEffect(() => {
     const handleScroll = () => {
-      // If we are auto-scrolling, don't trigger close logic
       if (isProgrammaticScroll.current) return;
-
       const currentScrollY = window.scrollY;
       const stickyOffset = filterBarRef.current ? filterBarRef.current.offsetTop - 64 : 600;
       const isNowSticky = currentScrollY >= stickyOffset - 2;
 
-      // Update sticky state, BUT DO NOT auto-close/open just based on sticky state change
       if (isNowSticky !== isStickyRef.current) {
         setIsSticky(isNowSticky);
         isStickyRef.current = isNowSticky; 
       }
 
-      // Close ONLY if we are sticky, open, and user has scrolled significantly (60px) from the opening point
       if (isNowSticky && isFilterOpenRef.current) {
           if (Date.now() - lastToggleTimeRef.current < 500) return;
-          
           const scrollDistance = Math.abs(currentScrollY - openStartScrollY.current);
           if (scrollDistance > 60) {
               setIsFilterOpen(false);
@@ -251,7 +261,6 @@ export const App: React.FC = () => {
           }
       }
     };
-
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []); 
@@ -262,53 +271,29 @@ export const App: React.FC = () => {
         isFirstRender.current = false;
         return;
     }
-
     const scrollToFilters = () => {
         if (!filterBarRef.current) return;
-
-        // Navbar is ~64px. Sticky threshold is roughly offsetTop - 64.
         const stickyThreshold = filterBarRef.current.offsetTop - 64;
-        
-        // We scroll to stickyThreshold - 20. 
-        // This puts the filter bar at the top with a slight breathing room from the navbar shadow,
-        // and due to the mb-8 on the bar, creates a nice gap before results.
         const targetY = stickyThreshold - 20;
-
-        // Only snap back if we are scrolled DOWN past the sticky threshold.
-        // This ensures that if the user is just filtering, they jump to the top of the list immediately.
         if (window.scrollY > stickyThreshold) {
             isProgrammaticScroll.current = true;
             window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });
-            
-            // Sync state
             openStartScrollY.current = Math.max(0, targetY);
             lastToggleTimeRef.current = Date.now();
-            
-            // Reset lock shortly after
-            setTimeout(() => {
-                isProgrammaticScroll.current = false;
-            }, 100);
+            setTimeout(() => { isProgrammaticScroll.current = false; }, 100);
         }
     };
-
-    // Wait for render to settle
     setTimeout(scrollToFilters, 0);
-
   }, [selectedCategories, searchQuery, durationFilter, sortBy, keywordFilter, locationFilter]);
 
   const toggleStickyBar = () => {
       const currentScrollY = window.scrollY;
-      
-      // Allow toggle if sticky OR if scrolled enough
       if (isStickyRef.current || currentScrollY > 60) {
           const newState = !isFilterOpenRef.current;
           setIsFilterOpen(newState);
           isFilterOpenRef.current = newState;
           lastToggleTimeRef.current = Date.now(); 
-
-          if (newState) {
-              openStartScrollY.current = currentScrollY;
-          }
+          if (newState) openStartScrollY.current = currentScrollY;
       }
   };
 
@@ -323,9 +308,6 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [keywordInput]);
 
-  // ... (Rest of the helper functions: checkForNewCategory, syncUserToOffers, etc. remain unchanged)
-  // Re-including them for completeness.
-
   const checkForNewCategory = async (category: string) => {
       if (!category) return;
       const trimmedCat = category.trim();
@@ -334,9 +316,7 @@ export const App: React.FC = () => {
               await updateDoc(doc(db, "system_metadata", "taxonomy"), {
                   pendingCategories: arrayUnion(trimmedCat)
               });
-          } catch (error) {
-              console.error("Error adding pending category", error);
-          }
+          } catch (error) { console.error("Error adding pending category", error); }
       }
   };
 
@@ -453,11 +433,17 @@ export const App: React.FC = () => {
           });
       } catch (e) { console.error(e); }
   };
+  
+  // This handles both rejecting a pending category AND deleting an existing approved category
   const handleRejectCategory = async (category: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), { pendingCategories: arrayRemove(category) });
+          await updateDoc(doc(db, "system_metadata", "taxonomy"), { 
+              pendingCategories: arrayRemove(category),
+              approvedCategories: arrayRemove(category) // Updated to remove from both lists
+          });
       } catch (e) { console.error(e); }
   };
+  
   const handleReassignCategory = async (oldCategory: string, newCategory: string) => {
       try {
           const q = query(collection(db, "users"), where("mainField", "==", oldCategory));
@@ -487,7 +473,7 @@ export const App: React.FC = () => {
     try {
         await signInWithEmailAndPassword(auth, email, pass);
         setIsAuthModalOpen(false);
-    } catch (error: any) { alert("שגיאה בהתחברות."); }
+    } catch (error: any) { alert("שגיאה בהתחברות: " + error.message); }
   };
 
   const handleCompleteProfile = (data: { portfolioUrl: string, portfolioImages: string[] }) => {
@@ -518,6 +504,8 @@ export const App: React.FC = () => {
   const handleEditOffer = (offer: BarterOffer) => {
       setEditingOffer(offer);
       setIsCreateModalOpen(true);
+      // Close admin dashboard if editing an offer from there
+      setIsAdminDashboardOpen(false);
   };
   
   const handleRateOffer = async (offerId: string, score: number) => {
@@ -530,7 +518,11 @@ export const App: React.FC = () => {
     catch (error) { console.error(error); }
   };
 
-  const handleDeleteOffer = async (offerId: string) => { try { await deleteDoc(doc(db, "offers", offerId)); } catch (error) { console.error(error); } };
+  const handleDeleteOffer = async (offerId: string) => { 
+      try { await deleteDoc(doc(db, "offers", offerId)); } 
+      catch (error) { console.error(error); alert("שגיאה במחיקת המודעה"); } 
+  };
+  
   const handleApproveOffer = async (offerId: string) => { try { await updateDoc(doc(db, "offers", offerId), { status: 'active' }); } catch (error) { console.error(error); } };
   const handleBulkDelete = async (dateThreshold: string) => {
       const threshold = new Date(dateThreshold);
@@ -557,7 +549,30 @@ export const App: React.FC = () => {
   const handleMarkAsRead = async (messageId: string) => { try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); } };
   const handleAddAd = async (newAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", newAd.id), newAd); } catch (error) { console.error(error); } };
   const handleEditAd = async (updatedAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", updatedAd.id), updatedAd); } catch (error) { console.error(error); } };
-  const handleDeleteAd = async (adId: string) => { try { await deleteDoc(doc(db, "systemAds", adId)); } catch (error) { console.error(error); } };
+  const handleDeleteAd = async (adId: string) => { 
+      try { await deleteDoc(doc(db, "systemAds", adId)); } 
+      catch (error) { console.error(error); alert("שגיאה במחיקת הקמפיין"); } 
+  };
+
+  // Robust User Deletion Handler
+  const handleDeleteUser = async (userId: string) => {
+      try {
+          // 1. Delete user doc
+          await deleteDoc(doc(db, "users", userId));
+          
+          // 2. Cleanup: Delete user's offers
+          const q = query(collection(db, "offers"), where("profileId", "==", userId));
+          const querySnapshot = await getDocs(q);
+          const batch = writeBatch(db);
+          querySnapshot.forEach((doc) => {
+              batch.delete(doc.ref);
+          });
+          await batch.commit();
+      } catch (error) {
+          console.error("Error deleting user:", error);
+          alert("שגיאה במחיקת המשתמש");
+      }
+  };
 
   const handleContact = (profile: UserProfile, offerTitle?: string) => {
     if (!currentUser) { setAuthStartOnRegister(false); setIsAuthModalOpen(true); return; }
@@ -582,6 +597,8 @@ export const App: React.FC = () => {
     }
     setSelectedProfile(profileToView);
     if (!openMessaging) setIsProfileModalOpen(true);
+    // If opening from admin dashboard, we might want to close dashboard or keep it open?
+    // Current behavior: Modals stack. That's fine.
   };
 
   const handleOpenCreate = () => {
@@ -606,6 +623,12 @@ export const App: React.FC = () => {
       setSearchQuery(''); setKeywordFilter(''); setKeywordInput(''); setLocationFilter(''); setLocationInput(''); setDurationFilter('all'); setSelectedCategories([]);
   };
 
+  // --- Calculations for Admin Badges ---
+  const pendingUserUpdatesCount = users.filter(u => u.pendingUpdate).length;
+  const pendingOffersCount = offers.filter(o => o.status === 'pending').length;
+  const pendingTaxonomyCount = (taxonomy.pendingCategories?.length || 0) + (taxonomy.pendingInterests?.length || 0);
+  const totalAdminPending = pendingUserUpdatesCount + pendingOffersCount + pendingTaxonomyCount;
+
   // --- Filter & Sort Logic ---
   const filteredOffers = offers.filter(offer => {
     // 1. Basic Status Filter (Only active, unless mine or admin)
@@ -616,14 +639,11 @@ export const App: React.FC = () => {
     // 2. "For You" Feed Logic
     if (viewFilter === 'for_you') {
         if (!currentUser) return false; // Safety check
-        
-        // Logic A: They want what I do (My Profession is in their requested service)
         const myProfession = currentUser.mainField;
         const matchesMyProfession = 
             offer.requestedService.includes(myProfession) || 
             (offer.tags && offer.tags.some(t => t === myProfession));
 
-        // Logic B: They offer something that matches my interests
         const myInterests = currentUser.interests || [];
         const matchesMyInterests = 
             myInterests.some(interest => 
@@ -634,27 +654,40 @@ export const App: React.FC = () => {
         if (!matchesMyProfession && !matchesMyInterests) return false;
     }
 
-    // 3. Standard Text Filters (Apply to both feeds)
+    // 3. Standard Text Filters
     const title = offer.title || '';
     const offeredService = offer.offeredService || '';
     const requestedService = offer.requestedService || '';
     const description = offer.description || '';
     const location = offer.location || '';
     const tags = Array.isArray(offer.tags) ? offer.tags : [];
-    const mainField = offer.profile?.mainField || '';
 
     if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        if (!(title.toLowerCase().includes(query) || offeredService.toLowerCase().includes(query) || requestedService.toLowerCase().includes(query) || description.toLowerCase().includes(query) || tags.some(t => (t || '').toLowerCase().includes(query)))) return false;
+        if (!(title.toLowerCase().includes(query) || 
+              offeredService.toLowerCase().includes(query) || 
+              requestedService.toLowerCase().includes(query) || 
+              description.toLowerCase().includes(query) || 
+              tags.some(t => (t || '').toLowerCase().includes(query)))) return false;
     }
     if (keywordFilter) {
         const query = keywordFilter.toLowerCase();
-        if (!(title.toLowerCase().includes(query) || offeredService.toLowerCase().includes(query) || requestedService.toLowerCase().includes(query) || tags.some(t => (t || '').toLowerCase().includes(query)))) return false;
+        if (!(title.toLowerCase().includes(query) || 
+              offeredService.toLowerCase().includes(query) || 
+              requestedService.toLowerCase().includes(query) || 
+              tags.some(t => (t || '').toLowerCase().includes(query)))) return false;
     }
     if (locationFilter && !location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
     if (durationFilter !== 'all' && offer.durationType !== durationFilter) return false;
+    
+    // Category Filter
     if (selectedCategories.length > 0) {
-        if (!(selectedCategories.includes(mainField) || tags.some(tag => selectedCategories.includes(tag || '')))) return false;
+        const matchesCategory = selectedCategories.some(cat => 
+            tags.includes(cat) || 
+            offeredService.includes(cat) ||
+            tags.some(t => t.includes(cat)) 
+        );
+        if (!matchesCategory) return false;
     }
     return true;
   }).sort((a, b) => {
@@ -699,10 +732,10 @@ export const App: React.FC = () => {
             setSelectedProfile(currentUser); 
             setIsProfileModalOpen(true); 
         }}
-        onOpenUserManagement={() => setIsUserManagementOpen(true)}
-        onOpenAdminOffers={() => setIsAdminOffersOpen(true)}
-        onOpenAdManager={() => setIsAdManagerOpen(true)}
-        onOpenAnalytics={() => setIsAdminAnalyticsOpen(true)}
+        // Unified Action
+        onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
+        adminPendingCount={totalAdminPending}
+
         onLogout={handleLogout}
         onSearch={setSearchQuery}
         unreadCount={unreadCount}
@@ -718,14 +751,18 @@ export const App: React.FC = () => {
             }
         }}
       />
-      <Hero 
-        onOpenWhoIsItFor={() => setIsWhoIsItForOpen(true)}
-        onOpenSearchTips={() => setIsSearchTipsOpen(true)}
-      />
+      
+      {/* Hero Section - Only Visible on 'All' Feed */}
+      {viewFilter === 'all' && (
+        <Hero 
+            onOpenWhoIsItFor={() => setIsWhoIsItForOpen(true)}
+            onOpenSearchTips={() => setIsSearchTipsOpen(true)}
+        />
+      )}
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
         <AdBanner contextCategories={selectedCategories} systemAds={systemAds} currentUser={currentUser} />
         
-        {/* Feed Title (Only when active filter is 'For You') */}
         {viewFilter === 'for_you' && (
             <div className="mb-6 animate-in fade-in slide-in-from-top-4">
                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -745,16 +782,12 @@ export const App: React.FC = () => {
           onClick={toggleStickyBar}
         >
             <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-start lg:items-center justify-between">
-
-                 {/* RIGHT SIDE (RTL): Filter Toggle & Mobile Controls */}
                  <div className="flex items-center justify-between w-full lg:w-auto shrink-0">
                      <div className={`flex items-center gap-2 select-none ${isSticky ? 'flex-1 lg:flex-none' : ''}`}>
                         <div className="bg-brand-100 p-2 rounded-lg text-brand-700 shrink-0"><Filter className="w-5 h-5" /></div>
                         <span className={`font-bold text-slate-800 whitespace-nowrap ${isSticky ? 'text-sm' : ''}`}>{isSticky ? 'סינון' : 'סינון הצעות'}</span>
                         {isSticky && <div className="text-slate-400 mr-2">{isFilterOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}</div>}
                      </div>
-
-                     {/* MOBILE ONLY: Sort/View Controls */}
                      <div className="flex lg:hidden items-center gap-2 overflow-x-auto scrollbar-hide" onClick={(e) => e.stopPropagation()}>
                          <div className="flex items-center gap-2 bg-white border border-slate-300 p-1 rounded-xl h-[42px]">
                             <div className="relative group flex items-center h-full">
@@ -773,17 +806,13 @@ export const App: React.FC = () => {
                      </div>
                  </div>
 
-                 {/* LEFT SIDE (RTL): Desktop Controls & Inputs */}
                  <div 
                     className={`flex flex-col lg:flex-row gap-2 w-full lg:w-auto lg:justify-end items-center ${(!isSticky || isFilterOpen) ? 'flex' : 'hidden lg:flex'}`}
                  >
-
-                     {/* Inputs Group */}
                      {(!isSticky || isFilterOpen) && (
                          <div 
                             className={`flex flex-col lg:flex-row gap-2 w-full lg:w-auto items-center ${isSticky ? 'animate-in fade-in slide-in-from-top-2' : ''}`}
                          >
-                             {/* Keyword Search */}
                              <div className="relative group w-full lg:w-44">
                                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                  <input 
@@ -795,8 +824,6 @@ export const App: React.FC = () => {
                                     onClick={(e) => e.stopPropagation()} 
                                 />
                              </div>
-
-                             {/* Location Search */}
                              <div className="relative group w-full lg:w-44">
                                  <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                  <input 
@@ -808,8 +835,6 @@ export const App: React.FC = () => {
                                     onClick={(e) => e.stopPropagation()} 
                                 />
                              </div>
-
-                             {/* Duration & Reset */}
                              <div className="flex flex-row gap-2 w-full lg:w-auto">
                                 <div className="flex-1 sm:flex-none flex bg-white p-1 rounded-xl border border-slate-300 justify-center h-[42px] items-center" onClick={(e) => e.stopPropagation()}>
                                     <button onClick={() => setDurationFilter('all')} className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all h-full flex items-center justify-center ${durationFilter === 'all' ? 'bg-slate-100 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>הכל</button>
@@ -827,7 +852,6 @@ export const App: React.FC = () => {
                          </div>
                      )}
 
-                     {/* DESKTOP ONLY: Sort/View Controls */}
                      <div 
                         className="hidden lg:flex items-center gap-2 ml-2"
                         onClick={(e) => e.stopPropagation()} 
@@ -886,7 +910,6 @@ export const App: React.FC = () => {
                     />
                   ))
               ) : (
-                  // Empty State for Personalized View
                   viewFilter === 'for_you' ? (
                       <div className="col-span-full text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm">
                           <div className="bg-brand-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -910,7 +933,6 @@ export const App: React.FC = () => {
                   ) : null
               )}
               
-              {/* Promo Card always visible in grid */}
               {(viewFilter === 'all' || filteredOffers.length > 0) && (
                   <div onClick={handleOpenCreate} className={`cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[150px] ${viewMode === 'grid' ? 'min-h-[350px]' : ''}`}>
                        <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform shadow-sm"><Plus className="w-8 h-8 text-brand-600" /></div>
@@ -931,27 +953,41 @@ export const App: React.FC = () => {
       <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onAddOffer={handleAddOffer} onUpdateOffer={handleUpdateOffer} currentUser={currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:'', portfolioUrl:''}, id: 'temp' }} editingOffer={editingOffer} />
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={currentUser?.id || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={handleMarkAsRead} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} />
-      <UsersListModal isOpen={isUserManagementOpen} onClose={() => setIsUserManagementOpen(false)} users={users} currentUser={currentUser} onDeleteUser={(id) => deleteDoc(doc(db, "users", id))} onApproveUpdate={handleApproveUserUpdate} onRejectUpdate={handleRejectUserUpdate} onViewProfile={handleViewProfile} />
-      <AdminOffersModal isOpen={isAdminOffersOpen} onClose={() => setIsAdminOffersOpen(false)} offers={offers} onDeleteOffer={handleDeleteOffer} onBulkDelete={handleBulkDelete} onApproveOffer={handleApproveOffer} onEditOffer={(offer) => { setEditingOffer(offer); setIsCreateModalOpen(true); setIsAdminOffersOpen(false); }} onViewProfile={handleViewProfile} />
-      <AdminAdManager isOpen={isAdManagerOpen} onClose={() => setIsAdManagerOpen(false)} ads={systemAds} availableInterests={availableInterests} availableCategories={availableCategories} onAddAd={handleAddAd} onEditAd={handleEditAd} onDeleteAd={handleDeleteAd} />
-      <AdminAnalyticsModal 
-        isOpen={isAdminAnalyticsOpen} 
-        onClose={() => setIsAdminAnalyticsOpen(false)} 
-        users={users} 
-        availableCategories={availableCategories} 
-        availableInterests={availableInterests} 
-        onAddCategory={(cat) => checkForNewCategory(cat)} 
+      
+      {/* New Unified Admin Dashboard */}
+      <AdminDashboardModal 
+        isOpen={isAdminDashboardOpen}
+        onClose={() => setIsAdminDashboardOpen(false)}
+        users={users}
+        currentUser={currentUser}
+        onDeleteUser={handleDeleteUser}
+        onApproveUpdate={handleApproveUserUpdate}
+        onRejectUpdate={handleRejectUserUpdate}
+        offers={offers}
+        onDeleteOffer={handleDeleteOffer}
+        onBulkDelete={handleBulkDelete}
+        onApproveOffer={handleApproveOffer}
+        onEditOffer={handleEditOffer}
+        availableCategories={availableCategories}
+        availableInterests={availableInterests}
+        pendingCategories={taxonomy.pendingCategories}
+        pendingInterests={taxonomy.pendingInterests || []}
+        onAddCategory={(cat) => checkForNewCategory(cat)}
         onAddInterest={(int) => checkForNewInterest(int)}
         onDeleteCategory={handleRejectCategory}
         onDeleteInterest={handleRejectInterest}
-        pendingCategories={taxonomy.pendingCategories}
-        pendingInterests={taxonomy.pendingInterests}
         onApproveCategory={handleApproveCategory}
         onRejectCategory={handleRejectCategory}
         onReassignCategory={handleReassignCategory}
         onApproveInterest={handleApproveInterest}
         onRejectInterest={handleRejectInterest}
+        ads={systemAds}
+        onAddAd={handleAddAd}
+        onEditAd={handleEditAd}
+        onDeleteAd={handleDeleteAd}
+        onViewProfile={handleViewProfile}
       />
+
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => { setAuthStartOnRegister(true); setIsAuthModalOpen(true); }} />
       <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} onStartSearching={() => { setIsSearchTipsOpen(false); window.scrollTo({ top: 600, behavior: 'smooth' }); }} />

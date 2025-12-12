@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Mail, Lock, Briefcase, CheckCircle2, Heart, Plus, Tag, Camera, Image as ImageIcon, Trash2, Loader2, Upload } from 'lucide-react';
 import { UserProfile, ExpertiseLevel } from '../types';
@@ -7,7 +8,7 @@ import { UserProfile, ExpertiseLevel } from '../types';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (email: string, pass: string) => void;
+  onLogin: (email: string, pass: string) => Promise<void>; // Updated signature to Promise for await
   onRegister: (user: Partial<UserProfile>, pass: string) => void;
   startOnRegister?: boolean;
   availableCategories: string[];
@@ -53,11 +54,13 @@ const compressImage = (file: File): Promise<string> => {
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, onRegister, startOnRegister = false, availableCategories, availableInterests }) => {
   const [isLoginMode, setIsLoginMode] = useState(!startOnRegister);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // New Loading State
   
   // Reset mode when isOpen changes or startOnRegister changes
   useEffect(() => {
     if (isOpen) {
         setIsLoginMode(!startOnRegister);
+        setIsSubmitting(false);
     }
   }, [isOpen, startOnRegister]);
   
@@ -145,47 +148,57 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
       setPortfolioImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     
-    if (isLoginMode) {
-      onLogin(email, password);
-    } else {
-      // Validation Logic
-      if (!mainField.trim()) {
-        alert("חובה לבחור או להקליד תחום עיסוק ראשי");
-        return;
-      }
-      if (interestsList.length < 2) {
-        alert("חובה לבחור לפחות 2 תחומי עניין");
-        return;
-      }
-      if (!acceptedPrivacy) {
-          alert("חובה לאשר את מדיניות הפרטיות כדי להירשם");
-          return;
-      }
+    try {
+        if (isLoginMode) {
+          await onLogin(email, password);
+          // If successful, the modal will likely close via parent props
+        } else {
+          // Validation Logic
+          if (!mainField.trim()) {
+            alert("חובה לבחור או להקליד תחום עיסוק ראשי");
+            setIsSubmitting(false);
+            return;
+          }
+          if (interestsList.length < 2) {
+            alert("חובה לבחור לפחות 2 תחומי עניין");
+            setIsSubmitting(false);
+            return;
+          }
+          if (!acceptedPrivacy) {
+              alert("חובה לאשר את מדיניות הפרטיות כדי להירשם");
+              setIsSubmitting(false);
+              return;
+          }
 
-      // Register Logic
-      const newUser: Partial<UserProfile> = {
-        name: `${firstName} ${lastName}`,
-        email,
-        mainField: mainField.trim(),
-        portfolioUrl,
-        portfolioImages: portfolioImages, // Pass uploaded images
-        expertise: ExpertiseLevel.MID,
-        // Use uploaded avatar or generate random one
-        avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
-        interests: interestsList
-      };
-      
-      onRegister(newUser, password);
-      
-      // Email Simulation Feedback
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-        onClose();
-      }, 3000);
+          // Register Logic
+          const newUser: Partial<UserProfile> = {
+            name: `${firstName} ${lastName}`,
+            email,
+            mainField: mainField.trim(),
+            portfolioUrl,
+            portfolioImages: portfolioImages, // Pass uploaded images
+            expertise: ExpertiseLevel.MID,
+            // Use uploaded avatar or generate random one
+            avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
+            interests: interestsList
+          };
+          
+          await onRegister(newUser, password);
+          
+          // Email Simulation Feedback
+          setShowSuccess(true);
+          setTimeout(() => {
+            setShowSuccess(false);
+            onClose();
+          }, 3000);
+        }
+    } catch (err) {
+        console.error(err);
+        setIsSubmitting(false);
     }
   };
 
@@ -474,10 +487,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
 
                     <button 
                         type="submit" 
-                        disabled={!isLoginMode && (!acceptedPrivacy || interestsList.length < 2 || !mainField || isUploading)}
-                        className="w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-sm mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isSubmitting || (!isLoginMode && (!acceptedPrivacy || interestsList.length < 2 || !mainField || isUploading))}
+                        className="w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-sm mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                        {isLoginMode ? 'התחבר' : 'הירשם בחינם'}
+                        {isSubmitting && <Loader2 className="w-5 h-5 animate-spin" />}
+                        {isLoginMode ? (isSubmitting ? 'מתחבר...' : 'התחבר') : (isSubmitting ? 'נרשם...' : 'הירשם בחינם')}
                     </button>
                 </form>
 

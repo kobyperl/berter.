@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, Tag, Clock, Repeat, CheckCircle, Calendar, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Sparkles, Loader2, Tag, Clock, Repeat, CheckCircle, Calendar, AlertTriangle, Mic, Square } from 'lucide-react';
 import { optimizeOfferDescription } from '../services/geminiService';
 import { BarterOffer, UserProfile } from '../types';
 
@@ -25,6 +25,11 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
   const [roughText, setRoughText] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false); // Success feedback
+  
+  // Voice Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [interimText, setInterimText] = useState(''); // Text being spoken but not finalized
+  const recognitionRef = useRef<any>(null);
 
   const [formData, setFormData] = useState<{
       title: string;
@@ -77,17 +82,96 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     }
   }, [editingOffer, isOpen]);
 
+  // Cleanup speech recognition on unmount or close
+  useEffect(() => {
+      return () => {
+          if (recognitionRef.current) {
+              recognitionRef.current.stop();
+          }
+      };
+  }, []);
+
+  const toggleRecording = () => {
+      if (isRecording) {
+          recognitionRef.current?.stop();
+          // State updated in onend
+          return;
+      }
+
+      // Browser compatibility check
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+          alert("הדפדפן שלך אינו תומך בזיהוי דיבור. נסה להשתמש ב-Chrome.");
+          return;
+      }
+
+      try {
+          const recognition = new SpeechRecognition();
+          recognition.lang = 'he-IL'; // Hebrew
+          recognition.continuous = true; // Don't stop after one sentence
+          recognition.interimResults = true; // Show results while speaking
+
+          recognition.onstart = () => {
+              setIsRecording(true);
+              setInterimText('');
+          };
+
+          recognition.onresult = (event: any) => {
+              let currentInterim = '';
+              
+              for (let i = event.resultIndex; i < event.results.length; ++i) {
+                  const transcript = event.results[i][0].transcript;
+                  if (event.results[i].isFinal) {
+                      setRoughText(prev => {
+                          const spacer = (prev.length > 0 && !prev.endsWith(' ')) ? ' ' : '';
+                          return prev + spacer + transcript;
+                      });
+                      setInterimText(''); 
+                  } else {
+                      currentInterim += transcript;
+                  }
+              }
+              
+              if (currentInterim) {
+                  setInterimText(currentInterim);
+              }
+          };
+
+          recognition.onerror = (event: any) => {
+              console.error("Speech recognition error", event.error);
+              if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                  alert("אין גישה למיקרופון או שירות הדיבור חסום. אנא בדוק הגדרות דפדפן וודא שהאתר מאובטח.");
+              }
+              // Don't stop manually here for 'no-speech', let onend handle cleanup
+          };
+
+          recognition.onend = () => {
+              setIsRecording(false);
+              setInterimText('');
+          };
+
+          recognitionRef.current = recognition;
+          recognition.start();
+      } catch (e) {
+          console.error("Failed to start recognition", e);
+          setIsRecording(false);
+      }
+  };
+
   if (!isOpen) return null;
 
   // Improved Input Styles
   const inputClassName = "w-full bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm";
 
   const handleAiAssist = async () => {
-    if (!roughText) return;
+    // Commit any interim text if exists before sending
+    const textToSend = roughText + (interimText ? ' ' + interimText : '');
+    
+    if (!textToSend.trim()) return;
     setIsAiLoading(true);
     
     // Simulate parsing rough text into structured fields via Gemini
-    const result = await optimizeOfferDescription(roughText);
+    const result = await optimizeOfferDescription(textToSend);
     
     setIsAiLoading(false);
     
@@ -98,7 +182,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             description: result.description,
             offeredService: result.offeredService,
             requestedService: result.requestedService,
-            location: result.location, // Auto-filled from AI
+            location: result.location || 'כל הארץ', // Default location if AI returns empty or null
             tags: result.tags.join(', '),
             // Auto-detect duration from AI, fallback to 'one-time' if unclear
             durationType: result.durationType === 'ongoing' ? 'ongoing' : 'one-time',
@@ -108,10 +192,11 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     } else {
         setFormData(prev => ({
             ...prev,
-            description: roughText,
+            description: textToSend,
             title: "הצעה חדשה",
             offeredService: "שירות מוצע",
-            requestedService: "שירות מבוקש"
+            requestedService: "שירות מבוקש",
+            location: "כל הארץ"
         }));
         setStep(2);
     }
@@ -125,7 +210,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
         title: formData.title,
         offeredService: formData.offeredService,
         requestedService: formData.requestedService,
-        location: formData.location,
+        location: formData.location || 'כל הארץ',
         description: formData.description,
         tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
         durationType: formData.durationType,
@@ -223,18 +308,46 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             {step === 1 ? (
                 <div className="space-y-4">
                     <p className="text-sm text-slate-600 leading-relaxed">
-                        היעזר ב-AI כדי לנסח הצעה מקצועית. פשוט כתוב לנו בשפה חופשית מה אתה נותן, מה אתה מחפש, <strong>ואם יש דד-ליין או מיקום ספציפי</strong>.
+                        היעזר ב-AI כדי לנסח הצעה מקצועית. נא לכתוב או להקליט בשפה חופשית מה את/ה נותן/ת, מה את/ה מחפש/ת, <strong>ואם יש דד-ליין או מיקום ספציפי</strong>.
                     </p>
-                    <textarea 
-                        className="w-full bg-white border border-slate-300 rounded-xl p-4 text-slate-900 placeholder-slate-400 text-sm focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all min-h-[140px] shadow-sm"
-                        placeholder='דוגמה: "אני בונה אתרים ומחפש ייעוץ משפטי עד סוף החודש בתל אביב..."'
-                        value={roughText}
-                        onChange={(e) => setRoughText(e.target.value)}
-                    ></textarea>
+                    
+                    <div className="relative">
+                        <textarea 
+                            className="w-full bg-white border border-slate-300 rounded-xl p-4 pb-10 text-slate-900 placeholder-slate-400 text-sm focus:ring-2 focus:ring-brand-200 focus:border-brand-500 outline-none transition-all min-h-[140px] shadow-sm"
+                            placeholder='דוגמה: "אני בונה אתרים ומחפש ייעוץ משפטי עד סוף החודש בתל אביב..."'
+                            value={roughText + (isRecording && interimText ? ' ' + interimText : '')}
+                            onChange={(e) => {
+                                setRoughText(e.target.value);
+                                // If user types manually, clear interim to avoid duplication if recording resumes
+                                setInterimText('');
+                            }}
+                        ></textarea>
+                        
+                        {/* Recording Button - Updated Colors (Mint Green) */}
+                        <button 
+                            type="button"
+                            onClick={toggleRecording}
+                            className={`absolute bottom-3 left-3 p-2 rounded-full transition-all shadow-sm flex items-center justify-center z-10 ${
+                                isRecording 
+                                ? 'bg-brand-500 text-white animate-pulse' 
+                                : 'bg-slate-100 text-slate-500 hover:text-brand-600 hover:bg-brand-50 border border-slate-200'
+                            }`}
+                            title={isRecording ? 'עצור הקלטה' : 'הקלט הצעה קולית'}
+                        >
+                            {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-4 h-4" />}
+                        </button>
+                        
+                        {isRecording && (
+                            <span className="absolute bottom-4 left-14 text-xs text-brand-600 font-medium animate-pulse flex items-center gap-1">
+                                <span className="w-2 h-2 bg-brand-500 rounded-full"></span>
+                                מקליט...
+                            </span>
+                        )}
+                    </div>
                     
                     <button 
                         onClick={handleAiAssist}
-                        disabled={!roughText || isAiLoading}
+                        disabled={(!roughText && !interimText) || isAiLoading}
                         className="w-full bg-brand-600 text-white border-2 border-brand-700 rounded-xl py-3.5 flex items-center justify-center gap-2 hover:bg-brand-700 disabled:opacity-50 transition-all font-bold text-base shadow-sm hover:shadow-md active:scale-95"
                     >
                         {isAiLoading ? (

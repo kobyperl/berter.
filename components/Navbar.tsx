@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3, Home, Heart } from 'lucide-react';
+import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3, Home, Heart, Settings } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface NavbarProps {
@@ -9,13 +9,13 @@ interface NavbarProps {
   onOpenMessages: () => void;
   onOpenAuth: () => void;
   onOpenProfile: () => void;
-  onOpenUserManagement?: () => void;
-  onOpenAdminOffers?: () => void;
-  onOpenAdManager?: () => void;
-  onOpenAnalytics?: () => void;
-  onLogout: () => void;
-  onSearch: (query: string) => void;
+  // Unified Admin Action
+  onOpenAdminDashboard?: () => void;
+  // Stats for Badges
   unreadCount: number;
+  adminPendingCount?: number; 
+  
+  onSearch: (query: string) => void;
   onOpenHowItWorks: () => void;
   activeFeed?: 'all' | 'for_you';
   onNavigate?: (feed: 'all' | 'for_you') => void;
@@ -27,13 +27,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenMessages, 
   onOpenAuth,
   onOpenProfile,
-  onOpenUserManagement,
-  onOpenAdminOffers,
-  onOpenAdManager,
-  onOpenAnalytics,
+  onOpenAdminDashboard,
   onLogout,
   onSearch,
   unreadCount,
+  adminPendingCount = 0,
   onOpenHowItWorks,
   activeFeed = 'all',
   onNavigate
@@ -124,49 +122,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {currentUser ? (
               <>
-                {/* Admin Buttons - Desktop */}
-                {currentUser.role === 'admin' && (
-                  <div className="hidden lg:flex items-center gap-2 border-l border-slate-200 pl-2 ml-2">
-                     {onOpenUserManagement && (
+                {/* Admin Button - Unified */}
+                {currentUser.role === 'admin' && onOpenAdminDashboard && (
+                  <div className="hidden lg:flex items-center border-l border-slate-200 pl-2 ml-2">
                         <button 
-                          onClick={onOpenUserManagement}
-                          className="flex items-center gap-1 text-slate-600 hover:text-amber-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                          title="ניהול משתמשים"
+                          onClick={onOpenAdminDashboard}
+                          className="flex items-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-bold transition-all shadow-sm border border-slate-200 relative"
+                          title="ניהול מערכת"
                         >
-                          <Shield className="w-4 h-4" />
-                          <span className="hidden xl:inline">משתמשים</span>
+                          <Settings className="w-4 h-4" />
+                          <span>ניהול</span>
+                          {adminPendingCount > 0 && (
+                              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 h-4 min-w-[1rem] flex items-center justify-center rounded-full border-2 border-white">
+                                  {adminPendingCount}
+                              </span>
+                          )}
                         </button>
-                     )}
-                     {onOpenAdminOffers && (
-                        <button 
-                          onClick={onOpenAdminOffers}
-                          className="flex items-center gap-1 text-slate-600 hover:text-red-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                          title="ניהול תוכן"
-                        >
-                          <FileText className="w-4 h-4" />
-                          <span className="hidden xl:inline">תוכן</span>
-                        </button>
-                     )}
-                     {onOpenAnalytics && (
-                        <button 
-                          onClick={onOpenAnalytics}
-                          className="flex items-center gap-1 text-slate-600 hover:text-blue-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                          title="ניתוח נתונים"
-                        >
-                          <BarChart3 className="w-4 h-4" />
-                          <span className="hidden xl:inline">נתונים</span>
-                        </button>
-                     )}
-                     {onOpenAdManager && (
-                        <button 
-                          onClick={onOpenAdManager}
-                          className="flex items-center gap-1 text-slate-600 hover:text-purple-700 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                          title="ניהול פרסומות"
-                        >
-                          <Megaphone className="w-4 h-4" />
-                          <span className="hidden xl:inline">פרסומות</span>
-                        </button>
-                     )}
                   </div>
                 )}
 
@@ -284,56 +255,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </div>
                          </div>
                          
-                         {currentUser.role === 'admin' && (
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                                {onOpenUserManagement && (
-                                    <button 
-                                      onClick={() => {
-                                        onOpenUserManagement();
-                                        setIsMenuOpen(false);
-                                      }}
-                                      className="flex items-center justify-center gap-2 p-2 text-amber-600 bg-amber-50 rounded-lg text-sm font-bold"
-                                    >
-                                      <Shield className="w-4 h-4" />
-                                      משתמשים
-                                    </button>
-                                )}
-                                {onOpenAdminOffers && (
-                                    <button 
-                                      onClick={() => {
-                                        onOpenAdminOffers();
-                                        setIsMenuOpen(false);
-                                      }}
-                                      className="flex items-center justify-center gap-2 p-2 text-red-600 bg-red-50 rounded-lg text-sm font-bold"
-                                    >
-                                      <FileText className="w-4 h-4" />
-                                      תוכן
-                                    </button>
-                                )}
-                                {onOpenAnalytics && (
-                                    <button 
-                                      onClick={() => {
-                                        onOpenAnalytics();
-                                        setIsMenuOpen(false);
-                                      }}
-                                      className="flex items-center justify-center gap-2 p-2 text-blue-600 bg-blue-50 rounded-lg text-sm font-bold"
-                                    >
-                                      <BarChart3 className="w-4 h-4" />
-                                      נתונים
-                                    </button>
-                                )}
-                                {onOpenAdManager && (
-                                    <button 
-                                      onClick={() => {
-                                        onOpenAdManager();
-                                        setIsMenuOpen(false);
-                                      }}
-                                      className="flex items-center justify-center gap-2 p-2 text-purple-600 bg-purple-50 rounded-lg text-sm font-bold"
-                                    >
-                                      <Megaphone className="w-4 h-4" />
-                                      פרסומות
-                                    </button>
-                                )}
+                         {currentUser.role === 'admin' && onOpenAdminDashboard && (
+                            <div className="mt-2">
+                                <button 
+                                  onClick={() => {
+                                    onOpenAdminDashboard();
+                                    setIsMenuOpen(false);
+                                  }}
+                                  className="w-full flex items-center justify-center gap-2 p-3 text-white bg-slate-900 rounded-xl text-sm font-bold shadow-sm relative"
+                                >
+                                  <Settings className="w-4 h-4" />
+                                  ניהול מערכת
+                                  {adminPendingCount > 0 && (
+                                      <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">
+                                          {adminPendingCount} עדכונים
+                                      </span>
+                                  )}
+                                </button>
                             </div>
                          )}
                     </div>

@@ -17,26 +17,30 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
   // State for the Expanded Ad Modal
   const [expandedAd, setExpandedAd] = useState<SystemAd | null>(null);
   
-  // Filtering Logic
+  // Filtering & Sorting Logic
   useEffect(() => {
     if (!systemAds) return;
 
+    // 1. Filter: Determine which ads are eligible to be shown at all
     const filtered = systemAds.filter(ad => {
         if (!ad.isActive) return false;
         
-        // 1. Global Ads always show
+        // Always show Global
         if (ad.targetCategories.includes('Global')) return true;
 
-        // 2. Context Match (Multi-category support)
+        // Show if matches Context (Search filters)
         if (contextCategories.length > 0) {
             const hasContextMatch = ad.targetCategories.some(cat => contextCategories.includes(cat));
             if (hasContextMatch) return true;
         }
 
-        // 3. Personal Targeting
+        // Show if matches User Profile
         if (currentUser) {
+            // Match Profession (Usage Category)
             if (ad.targetCategories.includes(currentUser.mainField)) return true;
-            if (currentUser.interests && currentUser.interests.length > 0 && ad.targetInterests && ad.targetInterests.length > 0) {
+            
+            // Match Interests (Subject Category)
+            if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
                 const hasInterestOverlap = ad.targetInterests.some(interest => 
                     currentUser.interests?.some(userInterest => userInterest.includes(interest) || interest.includes(userInterest))
                 );
@@ -46,7 +50,44 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
         return false;
     });
 
-    setRelevantAds(filtered);
+    // 2. Sort: Explicit Priority Order
+    // Priority 1: Usage Category (Profession) - Score 30
+    // Priority 2: Subject Category (Interests) - Score 20
+    // Priority 3: General (Global) - Score 10
+    const sorted = filtered.sort((a, b) => {
+        const getPriorityScore = (ad: SystemAd) => {
+            let score = 0; 
+
+            // Base Score: Global (General)
+            if (ad.targetCategories.includes('Global')) {
+                score = 10;
+            }
+
+            if (currentUser) {
+                // Higher Score: Subject Category (Interests)
+                if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
+                     const hasInterestOverlap = ad.targetInterests.some(interest => 
+                        currentUser.interests?.some(userInterest => userInterest.includes(interest) || interest.includes(userInterest))
+                    );
+                    if (hasInterestOverlap) {
+                        score = 20; // Overrides Global
+                    }
+                }
+
+                // Highest Score: Usage Category (Profession)
+                if (ad.targetCategories.includes(currentUser.mainField)) {
+                    score = 30; // Overrides Interest & Global
+                }
+            }
+            
+            return score;
+        };
+
+        // Sort descending (30 -> 20 -> 10 -> 0)
+        return getPriorityScore(b) - getPriorityScore(a);
+    });
+
+    setRelevantAds(sorted);
   }, [contextCategories, systemAds, currentUser]);
 
   // Continuous Auto-Scroll Logic
