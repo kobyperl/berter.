@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3, Home, Heart, Settings } from 'lucide-react';
 import { UserProfile } from '../types';
+import { AdminEmailButton } from './AdminEmailButton'; // Import
 
 interface NavbarProps {
   currentUser: UserProfile | null;
@@ -9,13 +10,13 @@ interface NavbarProps {
   onOpenMessages: () => void;
   onOpenAuth: () => void;
   onOpenProfile: () => void;
-  onLogout: () => void; // Added missing prop
-  // Unified Admin Action
+  onLogout: () => void;
+  // Admin Actions
   onOpenAdminDashboard?: () => void;
-  // Stats for Badges
+  onOpenEmailCenter?: () => void; // New Prop
+  
   unreadCount: number;
   adminPendingCount?: number; 
-  
   onSearch: (query: string) => void;
   onOpenHowItWorks: () => void;
   activeFeed?: 'all' | 'for_you';
@@ -29,6 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenProfile,
   onOpenAdminDashboard,
+  onOpenEmailCenter, // Destructure
   onLogout,
   onSearch,
   unreadCount,
@@ -79,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
             </div>
 
-            {/* Search Bar - Desktop (Reduced Width to w-64) */}
+            {/* Search Bar - Desktop */}
             <div className="hidden md:flex items-center mr-6 w-64">
                <div className="relative w-full">
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -107,7 +109,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           
           <div className="flex items-center gap-2 sm:gap-4">
             
-            {/* Messages Button - Visible to Everyone */}
+            {/* Messages Button */}
             <button 
               onClick={onOpenMessages}
               className="relative p-2 text-slate-500 hover:text-brand-600 hover:bg-slate-100 rounded-full transition-colors"
@@ -123,22 +125,26 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {currentUser ? (
               <>
-                {/* Admin Button - Unified */}
-                {currentUser.role === 'admin' && onOpenAdminDashboard && (
+                {/* Admin Buttons - Unified & Email */}
+                {currentUser.role === 'admin' && (
                   <div className="hidden lg:flex items-center border-l border-slate-200 pl-2 ml-2">
-                        <button 
-                          onClick={onOpenAdminDashboard}
-                          className="flex items-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-bold transition-all shadow-sm border border-slate-200 relative"
-                          title="ניהול מערכת"
-                        >
-                          <Settings className="w-4 h-4" />
-                          <span className="leading-none">ניהול</span>
-                          {adminPendingCount > 0 && (
-                              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 h-4 min-w-[1rem] flex items-center justify-center rounded-full border-2 border-white">
-                                  {adminPendingCount}
-                              </span>
-                          )}
-                        </button>
+                        {onOpenEmailCenter && <AdminEmailButton onClick={onOpenEmailCenter} />}
+                        
+                        {onOpenAdminDashboard && (
+                            <button 
+                              onClick={onOpenAdminDashboard}
+                              className="flex items-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-bold transition-all shadow-sm border border-slate-200 relative ml-2"
+                              title="ניהול מערכת"
+                            >
+                              <Settings className="w-4 h-4" />
+                              <span className="leading-none">ניהול</span>
+                              {adminPendingCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 h-4 min-w-[1rem] flex items-center justify-center rounded-full border-2 border-white">
+                                      {adminPendingCount}
+                                  </span>
+                              )}
+                            </button>
+                        )}
                   </div>
                 )}
 
@@ -177,7 +183,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Post Offer - Visible to Everyone */}
+            {/* Post Offer */}
             <button 
               onClick={onOpenCreateModal}
               className="bg-brand-600 hover:bg-brand-700 text-white px-3 sm:px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm transition-colors"
@@ -187,7 +193,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="inline leading-none">פרסם הצעה</span>
             </button>
 
-            {/* Mobile Menu Button - Visible on small screens */}
+            {/* Mobile Menu Button */}
             <div className="flex items-center sm:hidden ml-1">
               <button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -209,7 +215,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="sm:hidden bg-white border-t border-slate-200 absolute w-full left-0 shadow-xl z-50 animate-in slide-in-from-top-2 duration-200">
             <div className="pt-2 pb-4 px-4 space-y-2">
                 
-                {/* Mobile Navigation Links */}
                 <div className="flex gap-2 mb-4">
                     <button
                         onClick={() => { onNavigate && onNavigate('all'); setIsMenuOpen(false); }}
@@ -227,7 +232,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </button>
                 </div>
 
-                {/* Mobile Search */}
                 <div className="relative mb-4">
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <Search className="h-4 w-4 text-slate-400" />
@@ -256,23 +260,37 @@ export const Navbar: React.FC<NavbarProps> = ({
                             </div>
                          </div>
                          
-                         {currentUser.role === 'admin' && onOpenAdminDashboard && (
-                            <div className="mt-2">
-                                <button 
-                                  onClick={() => {
-                                    onOpenAdminDashboard();
-                                    setIsMenuOpen(false);
-                                  }}
-                                  className="w-full flex items-center justify-center gap-2 p-3 text-white bg-slate-900 rounded-xl text-sm font-bold shadow-sm relative"
-                                >
-                                  <Settings className="w-4 h-4" />
-                                  ניהול מערכת
-                                  {adminPendingCount > 0 && (
-                                      <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">
-                                          {adminPendingCount} עדכונים
-                                      </span>
-                                  )}
-                                </button>
+                         {currentUser.role === 'admin' && (
+                            <div className="mt-2 space-y-2">
+                                {onOpenAdminDashboard && (
+                                    <button 
+                                      onClick={() => {
+                                        onOpenAdminDashboard();
+                                        setIsMenuOpen(false);
+                                      }}
+                                      className="w-full flex items-center justify-center gap-2 p-3 text-white bg-slate-900 rounded-xl text-sm font-bold shadow-sm relative"
+                                    >
+                                      <Settings className="w-4 h-4" />
+                                      ניהול מערכת
+                                      {adminPendingCount > 0 && (
+                                          <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">
+                                              {adminPendingCount} עדכונים
+                                          </span>
+                                      )}
+                                    </button>
+                                )}
+                                {onOpenEmailCenter && (
+                                    <button
+                                        onClick={() => {
+                                            onOpenEmailCenter();
+                                            setIsMenuOpen(false);
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 p-3 text-slate-700 bg-emerald-100 rounded-xl text-sm font-bold"
+                                    >
+                                        <MessageSquare className="w-4 h-4" />
+                                        ניהול אימיילים
+                                    </button>
+                                )}
                             </div>
                          )}
                     </div>

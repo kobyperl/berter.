@@ -15,10 +15,15 @@ import { ProfileModal } from './components/ProfileModal';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { WhoIsItForModal } from './components/WhoIsItForModal';
 import { SearchTipsModal } from './components/SearchTipsModal';
-import { AdminDashboardModal } from './components/AdminDashboardModal'; // New Unified Modal
+import { AdminDashboardModal } from './components/AdminDashboardModal'; 
+import { AdminAdManager } from './components/AdminAdManager';
+import { AdminAnalyticsModal } from './components/AdminAnalyticsModal';
+import { UsersListModal } from './components/UsersListModal';
+import { AdminOffersModal } from './components/AdminOffersModal';
 import { AccessibilityModal } from './components/AccessibilityModal';
 import { CookieConsentModal } from './components/CookieConsentModal';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
+import { EmailCenterModal } from './components/EmailCenterModal'; // New Import
 
 // Data & Types
 import { CATEGORIES, COMMON_INTERESTS, ADMIN_EMAIL } from './constants';
@@ -56,14 +61,13 @@ export const App: React.FC = () => {
   // --- Data State ---
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [authUid, setAuthUid] = useState<string | null>(null); // Separate auth state
+  const [authUid, setAuthUid] = useState<string | null>(null);
 
   const [offers, setOffers] = useState<BarterOffer[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [systemAds, setSystemAds] = useState<SystemAd[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // System Taxonomy State (Categories/Sectors)
   const [taxonomy, setTaxonomy] = useState<SystemTaxonomy>({
       approvedCategories: [],
       pendingCategories: [],
@@ -77,7 +81,6 @@ export const App: React.FC = () => {
       setAuthUid(firebaseUser ? firebaseUser.uid : null);
       
       if (firebaseUser) {
-          // PERFORMANCE FIX: Optimistic Update
           setCurrentUser(prev => {
               if (prev && prev.id === firebaseUser.uid) return prev;
               
@@ -103,7 +106,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!authUid) return;
 
-    // Fetch full profile from Firestore
     const userDocRef = doc(db, "users", authUid);
     const unsubscribeUserDoc = onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
@@ -186,8 +188,9 @@ export const App: React.FC = () => {
   const [isMessagingModalOpen, setIsMessagingModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   
-  // New Unified Admin Dashboard State
+  // Admin UI States
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+  const [isEmailCenterOpen, setIsEmailCenterOpen] = useState(false); // New State
   
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isWhoIsItForOpen, setIsWhoIsItForOpen] = useState(false);
@@ -198,21 +201,18 @@ export const App: React.FC = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [initialMessageSubject, setInitialMessageSubject] = useState<string>('');
 
-  // Main Feed View State
   const [viewFilter, setViewFilter] = useState<'all' | 'for_you'>('all');
 
-  // Reorder categories: Selected first
   const displayedCategories = React.useMemo(() => {
       return [...availableCategories].sort((a, b) => {
           const isASelected = selectedCategories.includes(a);
           const isBSelected = selectedCategories.includes(b);
           if (isASelected && !isBSelected) return -1;
           if (!isASelected && isBSelected) return 1;
-          return a.localeCompare(b, 'he'); // Keep alphabetical relative order
+          return a.localeCompare(b, 'he'); 
       });
   }, [availableCategories, selectedCategories]);
   
-  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [locationInput, setLocationInput] = useState<string>('');
   const [keywordInput, setKeywordInput] = useState<string>('');
@@ -221,7 +221,6 @@ export const App: React.FC = () => {
   const [durationFilter, setDurationFilter] = useState<'all' | 'one-time' | 'ongoing'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'deadline'>('newest');
 
-  // Sticky Filter Logic
   const [isSticky, setIsSticky] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
@@ -235,11 +234,9 @@ export const App: React.FC = () => {
   const isProgrammaticScroll = useRef(false);
   const isFirstRender = useRef(true);
 
-  // Sync Refs
   useEffect(() => { isStickyRef.current = isSticky; }, [isSticky]);
   useEffect(() => { isFilterOpenRef.current = isFilterOpen; }, [isFilterOpen]);
 
-  // --- Scroll & Sticky Logic ---
   useEffect(() => {
     const handleScroll = () => {
       if (isProgrammaticScroll.current) return;
@@ -265,7 +262,6 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []); 
 
-  // --- Auto Scroll to Results on Filter Change ---
   useEffect(() => {
     if (isFirstRender.current) {
         isFirstRender.current = false;
@@ -297,7 +293,6 @@ export const App: React.FC = () => {
       }
   };
 
-  // --- Debounce Filters ---
   useEffect(() => {
     const timer = setTimeout(() => setLocationFilter(locationInput), 300);
     return () => clearTimeout(timer);
@@ -418,13 +413,24 @@ export const App: React.FC = () => {
         };
         await setDoc(doc(db, "users", uid), userProfile);
         setIsAuthModalOpen(false);
+        
+        // Trigger Welcome Email (Integration)
+        fetch('/api/emails/send', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                type: 'welcome',
+                to: newUser.email,
+                data: { userName: newUser.name }
+            })
+        }).catch(err => console.warn('Failed to send welcome email', err));
+
         if (!userProfile.portfolioUrl && (!userProfile.portfolioImages || userProfile.portfolioImages.length === 0)) {
             setIsCompleteProfileModalOpen(true);
         }
     } catch (error: any) { alert(`שגיאה בהרשמה: ${error.message}`); }
   };
 
-  // Admin Taxonomy Handlers
   const handleApproveCategory = async (category: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), {
@@ -434,12 +440,11 @@ export const App: React.FC = () => {
       } catch (e) { console.error(e); }
   };
   
-  // This handles both rejecting a pending category AND deleting an existing approved category
   const handleRejectCategory = async (category: string) => {
       try {
           await updateDoc(doc(db, "system_metadata", "taxonomy"), { 
               pendingCategories: arrayRemove(category),
-              approvedCategories: arrayRemove(category) // Updated to remove from both lists
+              approvedCategories: arrayRemove(category) 
           });
       } catch (e) { console.error(e); }
   };
@@ -504,7 +509,6 @@ export const App: React.FC = () => {
   const handleEditOffer = (offer: BarterOffer) => {
       setEditingOffer(offer);
       setIsCreateModalOpen(true);
-      // Close admin dashboard if editing an offer from there
       setIsAdminDashboardOpen(false);
   };
   
@@ -543,7 +547,27 @@ export const App: React.FC = () => {
       timestamp: new Date().toISOString(),
       isRead: false
     };
-    try { await setDoc(doc(db, "messages", newMessage.id), newMessage); } catch (error) { console.error(error); }
+    try { 
+        await setDoc(doc(db, "messages", newMessage.id), newMessage);
+        
+        // Trigger Email Alert (Integration)
+        // Find recipient email (optimized: in real app, better to fetch from DB)
+        // For now, assume we can get it if admin or just trigger logic on backend
+        // Here we send the trigger to backend, backend should look up email
+        fetch('/api/emails/send', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                type: 'chat_alert',
+                to: receiverId, // Backend will resolve ID to Email
+                data: { 
+                    userName: receiverName,
+                    senderName: currentUser?.name || 'משתמש'
+                }
+            })
+        }).catch(e => console.error("Email trigger failed", e));
+
+    } catch (error) { console.error(error); }
   };
 
   const handleMarkAsRead = async (messageId: string) => { try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); } };
@@ -554,13 +578,9 @@ export const App: React.FC = () => {
       catch (error) { console.error(error); alert("שגיאה במחיקת הקמפיין"); } 
   };
 
-  // Robust User Deletion Handler
   const handleDeleteUser = async (userId: string) => {
       try {
-          // 1. Delete user doc
           await deleteDoc(doc(db, "users", userId));
-          
-          // 2. Cleanup: Delete user's offers
           const q = query(collection(db, "offers"), where("profileId", "==", userId));
           const querySnapshot = await getDocs(q);
           const batch = writeBatch(db);
@@ -597,8 +617,6 @@ export const App: React.FC = () => {
     }
     setSelectedProfile(profileToView);
     if (!openMessaging) setIsProfileModalOpen(true);
-    // If opening from admin dashboard, we might want to close dashboard or keep it open?
-    // Current behavior: Modals stack. That's fine.
   };
 
   const handleOpenCreate = () => {
@@ -623,22 +641,18 @@ export const App: React.FC = () => {
       setSearchQuery(''); setKeywordFilter(''); setKeywordInput(''); setLocationFilter(''); setLocationInput(''); setDurationFilter('all'); setSelectedCategories([]);
   };
 
-  // --- Calculations for Admin Badges ---
   const pendingUserUpdatesCount = users.filter(u => u.pendingUpdate).length;
   const pendingOffersCount = offers.filter(o => o.status === 'pending').length;
   const pendingTaxonomyCount = (taxonomy.pendingCategories?.length || 0) + (taxonomy.pendingInterests?.length || 0);
   const totalAdminPending = pendingUserUpdatesCount + pendingOffersCount + pendingTaxonomyCount;
 
-  // --- Filter & Sort Logic ---
   const filteredOffers = offers.filter(offer => {
-    // 1. Basic Status Filter (Only active, unless mine or admin)
     const isMine = currentUser && offer.profileId === currentUser.id;
     const isAdmin = currentUser?.role === 'admin';
     if (offer.status !== 'active' && !isMine && !isAdmin) return false; 
 
-    // 2. "For You" Feed Logic
     if (viewFilter === 'for_you') {
-        if (!currentUser) return false; // Safety check
+        if (!currentUser) return false; 
         const myProfession = currentUser.mainField;
         const matchesMyProfession = 
             offer.requestedService.includes(myProfession) || 
@@ -654,7 +668,6 @@ export const App: React.FC = () => {
         if (!matchesMyProfession && !matchesMyInterests) return false;
     }
 
-    // 3. Standard Text Filters
     const title = offer.title || '';
     const offeredService = offer.offeredService || '';
     const requestedService = offer.requestedService || '';
@@ -680,7 +693,6 @@ export const App: React.FC = () => {
     if (locationFilter && !location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
     if (durationFilter !== 'all' && offer.durationType !== durationFilter) return false;
     
-    // Category Filter
     if (selectedCategories.length > 0) {
         const matchesCategory = selectedCategories.some(cat => 
             tags.includes(cat) || 
@@ -732,10 +744,11 @@ export const App: React.FC = () => {
             setSelectedProfile(currentUser); 
             setIsProfileModalOpen(true); 
         }}
-        // Unified Action
+        // Updated Props
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
+        onOpenEmailCenter={() => setIsEmailCenterOpen(true)} // Pass the handler
+        
         adminPendingCount={totalAdminPending}
-
         onLogout={handleLogout}
         onSearch={setSearchQuery}
         unreadCount={unreadCount}
@@ -752,7 +765,6 @@ export const App: React.FC = () => {
         }}
       />
       
-      {/* Hero Section - Only Visible on 'All' Feed */}
       {viewFilter === 'all' && (
         <Hero 
             currentUser={currentUser}
@@ -955,7 +967,7 @@ export const App: React.FC = () => {
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={currentUser?.id || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={handleMarkAsRead} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} />
       
-      {/* New Unified Admin Dashboard */}
+      {/* Existing Admin Dashboard */}
       <AdminDashboardModal 
         isOpen={isAdminDashboardOpen}
         onClose={() => setIsAdminDashboardOpen(false)}
@@ -987,6 +999,12 @@ export const App: React.FC = () => {
         onEditAd={handleEditAd}
         onDeleteAd={handleDeleteAd}
         onViewProfile={handleViewProfile}
+      />
+
+      {/* New Email Control Center Modal */}
+      <EmailCenterModal 
+        isOpen={isEmailCenterOpen} 
+        onClose={() => setIsEmailCenterOpen(false)} 
       />
 
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
