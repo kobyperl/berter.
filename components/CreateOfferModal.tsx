@@ -29,7 +29,9 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [interimText, setInterimText] = useState(''); // Text being spoken but not finalized
+  
   const recognitionRef = useRef<any>(null);
+  const isRecordingRef = useRef(false); // Track recording state for callbacks
 
   const [formData, setFormData] = useState<{
       title: string;
@@ -85,6 +87,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
   // Cleanup speech recognition on unmount or close
   useEffect(() => {
       return () => {
+          isRecordingRef.current = false;
           if (recognitionRef.current) {
               recognitionRef.current.stop();
           }
@@ -93,8 +96,9 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
 
   const toggleRecording = () => {
       if (isRecording) {
+          isRecordingRef.current = false;
           recognitionRef.current?.stop();
-          // State updated in onend
+          setIsRecording(false);
           return;
       }
 
@@ -108,46 +112,61 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
       try {
           const recognition = new SpeechRecognition();
           recognition.lang = 'he-IL'; // Hebrew
-          recognition.continuous = true; // Don't stop after one sentence
-          recognition.interimResults = true; // Show results while speaking
+          // Use false to process sentence-by-sentence manually, preventing duplication bugs on mobile
+          recognition.continuous = false; 
+          recognition.interimResults = true; 
 
           recognition.onstart = () => {
               setIsRecording(true);
+              isRecordingRef.current = true;
               setInterimText('');
           };
 
           recognition.onresult = (event: any) => {
-              let currentInterim = '';
-              
+              let finalTranscript = '';
+              let interimTranscript = '';
+
               for (let i = event.resultIndex; i < event.results.length; ++i) {
-                  const transcript = event.results[i][0].transcript;
                   if (event.results[i].isFinal) {
-                      setRoughText(prev => {
-                          const spacer = (prev.length > 0 && !prev.endsWith(' ')) ? ' ' : '';
-                          return prev + spacer + transcript;
-                      });
-                      setInterimText(''); 
+                      finalTranscript += event.results[i][0].transcript;
                   } else {
-                      currentInterim += transcript;
+                      interimTranscript += event.results[i][0].transcript;
                   }
               }
-              
-              if (currentInterim) {
-                  setInterimText(currentInterim);
+
+              if (finalTranscript) {
+                  setRoughText(prev => {
+                      const spacer = (prev.length > 0 && !prev.endsWith(' ')) ? ' ' : '';
+                      return prev + spacer + finalTranscript.trim();
+                  });
               }
+              setInterimText(interimTranscript);
           };
 
           recognition.onerror = (event: any) => {
-              console.error("Speech recognition error", event.error);
+              // Ignore 'no-speech' errors as we restart automatically, but handle permissions
               if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                  alert("אין גישה למיקרופון או שירות הדיבור חסום. אנא בדוק הגדרות דפדפן וודא שהאתר מאובטח.");
+                  console.error("Speech recognition error", event.error);
+                  isRecordingRef.current = false;
+                  setIsRecording(false);
+                  alert("אין גישה למיקרופון. אנא בדוק הגדרות דפדפן.");
               }
-              // Don't stop manually here for 'no-speech', let onend handle cleanup
           };
 
           recognition.onend = () => {
-              setIsRecording(false);
-              setInterimText('');
+              // Manual Continuous Loop: If still "recording", restart the engine
+              if (isRecordingRef.current) {
+                  try {
+                      recognition.start();
+                  } catch (e) {
+                      // Safety catch if start fails
+                      setIsRecording(false);
+                      isRecordingRef.current = false;
+                  }
+              } else {
+                  setIsRecording(false);
+                  setInterimText('');
+              }
           };
 
           recognitionRef.current = recognition;
@@ -155,6 +174,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
       } catch (e) {
           console.error("Failed to start recognition", e);
           setIsRecording(false);
+          isRecordingRef.current = false;
       }
   };
 

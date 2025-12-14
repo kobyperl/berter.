@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import { ExternalLink, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ExternalLink, ChevronLeft, ChevronRight, X, ArrowRight } from 'lucide-react';
 import { SystemAd, UserProfile } from '../types';
 
 interface AdBannerProps {
@@ -270,9 +270,17 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                                 {expandedAd.ctaText}
                                 <ExternalLink className="w-5 h-5" />
                              </button>
-                             <p className="text-xs text-slate-400 mt-3 animate-pulse">
-                                לחץ כאן למעבר לאתר
-                             </p>
+                             
+                             <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedAd(null);
+                                }}
+                                className="mt-4 text-xs text-slate-400 hover:text-slate-600 font-medium flex items-center justify-center gap-1 mx-auto transition-colors"
+                             >
+                                <ArrowRight className="w-3 h-3" />
+                                חזרה לאתר
+                             </button>
                         </div>
                     </div>
                 </div>
