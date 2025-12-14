@@ -19,7 +19,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                 <span className="block">הכלכלה החדשה של</span>{' '}
                 <span className="block text-brand-600 mt-1">העצמאים בישראל</span>
               </h1>
-              <p className="mt-6 text-base text-slate-500 font-light sm:mt-8 sm:text-lg sm:max-w-xl md:mt-8 md:text-xl leading-relaxed">
+              <p className="mt-6 text-base text-slate-500 font-normal sm:mt-8 sm:text-lg sm:max-w-xl md:mt-8 md:text-xl leading-relaxed">
                 השתמשו בכישורים שלכם כדי לשלם על שירותים עסקיים. 
                 בלי להוציא מזומן, בלי עמלות נסתרות. 
                 נטוורקינג עסקי אמיתי שמייצר ערך מהיום הראשון.
@@ -63,7 +63,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                 </div>
                 <div>
                     <h3 className="font-bold text-slate-900 text-lg mb-1">חוסכים בהוצאות העסק</h3>
-                    <p className="text-slate-500 text-sm font-light leading-relaxed">
+                    <p className="text-slate-500 text-sm font-normal leading-relaxed line-clamp-2 min-h-[2.5rem]">
                         משתמשים בכישרון שלכם כמטבע עבור הסוחר. מקבלים שירותים שווים בלי להוציא שקל מהחזרים.
                     </p>
                 </div>
@@ -76,7 +76,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                 </div>
                 <div>
                     <h3 className="font-bold text-slate-900 text-lg mb-1">קהילה עסקית איכותית</h3>
-                    <p className="text-slate-500 text-sm font-light leading-relaxed">
+                    <p className="text-slate-500 text-sm font-normal leading-relaxed line-clamp-2 min-h-[2.5rem]">
                         נבחרת של פרילנסרים ובעלי עסקים מנוסים. כאן תמצאו שותפים רציניים לעבודה, לא חובבנים.
                     </p>
                 </div>
@@ -89,7 +89,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                 </div>
                 <div>
                     <h3 className="font-bold text-slate-900 text-lg mb-1">הזדמנויות צמיחה</h3>
-                    <p className="text-slate-500 text-sm font-light leading-relaxed">
+                    <p className="text-slate-500 text-sm font-normal leading-relaxed line-clamp-2 min-h-[2.5rem]">
                          הדרך הנכונה להגדיל את היקף העבודות, לייצר קשרים אסטרטגיים ולפרוץ לשווקים חדשים.
                     </p>
                 </div>

@@ -64,7 +64,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                 >
                     <Home className="w-4 h-4" />
-                    ראשי
+                    <span className="leading-none">ראשי</span>
                 </button>
                 <button
                     onClick={() => onNavigate && onNavigate('for_you')}
@@ -75,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                 >
                     <Heart className="w-4 h-4" />
-                    במיוחד בשבילך
+                    <span className="leading-none">במיוחד בשבילך</span>
                 </button>
             </div>
 
@@ -87,7 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-light transition duration-150 ease-in-out"
+                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-normal transition duration-150 ease-in-out"
                     placeholder="חיפוש..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
@@ -132,7 +132,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           title="ניהול מערכת"
                         >
                           <Settings className="w-4 h-4" />
-                          <span>ניהול</span>
+                          <span className="leading-none">ניהול</span>
                           {adminPendingCount > 0 && (
                               <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 h-4 min-w-[1rem] flex items-center justify-center rounded-full border-2 border-white">
                                   {adminPendingCount}
@@ -184,7 +184,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title={currentUser ? "פרסם הצעה חדשה" : "הירשם לפרסום הצעה"}
             >
               <PlusCircle className="w-4 h-4" />
-              <span className="inline">פרסם הצעה</span>
+              <span className="inline leading-none">פרסם הצעה</span>
             </button>
 
             {/* Mobile Menu Button - Visible on small screens */}
@@ -234,7 +234,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-light"
+                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-normal"
                     placeholder="חיפוש שירות..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
