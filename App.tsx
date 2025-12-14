@@ -755,6 +755,7 @@ export const App: React.FC = () => {
       {/* Hero Section - Only Visible on 'All' Feed */}
       {viewFilter === 'all' && (
         <Hero 
+            currentUser={currentUser}
             onOpenWhoIsItFor={() => setIsWhoIsItForOpen(true)}
             onOpenSearchTips={() => setIsSearchTipsOpen(true)}
         />
