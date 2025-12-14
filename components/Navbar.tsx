@@ -49,15 +49,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="bg-brand-600 p-1.5 rounded-lg">
                 <ArrowRightLeft className="h-6 w-6 text-white" />
               </div>
-              <span className="font-black text-xl text-slate-800 tracking-tight hidden md:block">Barter.org.il</span>
-              <span className="font-black text-xl text-slate-800 tracking-tight md:hidden">Barter</span>
+              <span className="font-extrabold text-xl text-slate-800 tracking-tight hidden md:block">Barter.org.il</span>
+              <span className="font-extrabold text-xl text-slate-800 tracking-tight md:hidden">Barter</span>
             </div>
             
             {/* Desktop Navigation Links */}
             <div className="hidden md:flex items-center mr-8 space-x-1 space-x-reverse">
                 <button
                     onClick={() => onNavigate && onNavigate('all')}
-                    className={`px-3 py-2 rounded-lg text-sm font-extrabold flex items-center gap-1.5 transition-colors ${
+                    className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors ${
                         activeFeed === 'all' 
                         ? 'bg-slate-100 text-slate-900' 
                         : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -68,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
                 <button
                     onClick={() => onNavigate && onNavigate('for_you')}
-                    className={`px-3 py-2 rounded-lg text-sm font-extrabold flex items-center gap-1.5 transition-colors ${
+                    className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors ${
                         activeFeed === 'for_you' 
                         ? 'bg-brand-50 text-brand-700' 
                         : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -87,7 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-thin transition duration-150 ease-in-out"
+                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-light transition duration-150 ease-in-out"
                     placeholder="חיפוש..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
@@ -98,7 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="hidden lg:flex mr-4">
               <button 
                 onClick={onOpenHowItWorks}
-                className="text-slate-400 hover:text-slate-600 text-xs font-extrabold"
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
               >
                 איך זה עובד?
               </button>
@@ -128,7 +128,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="hidden lg:flex items-center border-l border-slate-200 pl-2 ml-2">
                         <button 
                           onClick={onOpenAdminDashboard}
-                          className="flex items-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-extrabold transition-all shadow-sm border border-slate-200 relative"
+                          className="flex items-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-bold transition-all shadow-sm border border-slate-200 relative"
                           title="ניהול מערכת"
                         >
                           <Settings className="w-4 h-4" />
@@ -153,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         alt={currentUser.name} 
                         className="w-8 h-8 rounded-full border border-slate-200 object-cover aspect-square"
                       />
-                      <span className="text-sm font-extrabold text-slate-700 hidden lg:block">
+                      <span className="text-sm font-bold text-slate-700 hidden lg:block">
                         {currentUser.name}
                       </span>
                    </button>
@@ -170,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="hidden sm:flex items-center gap-4">
                 <button 
                   onClick={onOpenAuth}
-                  className="text-sm font-extrabold text-slate-600 hover:text-brand-600"
+                  className="text-sm font-bold text-slate-600 hover:text-brand-600"
                 >
                   התחברות / הרשמה
                 </button>
@@ -180,7 +180,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Post Offer - Visible to Everyone */}
             <button 
               onClick={onOpenCreateModal}
-              className="bg-brand-600 hover:bg-brand-700 text-white px-3 sm:px-4 py-2 rounded-full text-sm font-extrabold flex items-center gap-2 shadow-sm transition-colors"
+              className="bg-brand-600 hover:bg-brand-700 text-white px-3 sm:px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm transition-colors"
               title={currentUser ? "פרסם הצעה חדשה" : "הירשם לפרסום הצעה"}
             >
               <PlusCircle className="w-4 h-4" />
@@ -213,14 +213,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="flex gap-2 mb-4">
                     <button
                         onClick={() => { onNavigate && onNavigate('all'); setIsMenuOpen(false); }}
-                        className={`flex-1 py-2 rounded-lg text-sm font-extrabold flex justify-center items-center gap-2 ${activeFeed === 'all' ? 'bg-slate-100 text-slate-900' : 'bg-slate-50 text-slate-500'}`}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'all' ? 'bg-slate-100 text-slate-900' : 'bg-slate-50 text-slate-500'}`}
                     >
                         <Home className="w-4 h-4" />
                         ראשי
                     </button>
                     <button
                         onClick={() => { onNavigate && onNavigate('for_you'); setIsMenuOpen(false); }}
-                        className={`flex-1 py-2 rounded-lg text-sm font-extrabold flex justify-center items-center gap-2 ${activeFeed === 'for_you' ? 'bg-brand-50 text-brand-700' : 'bg-slate-50 text-slate-500'}`}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'for_you' ? 'bg-brand-50 text-brand-700' : 'bg-slate-50 text-slate-500'}`}
                     >
                         <Heart className="w-4 h-4" />
                         בשבילך
@@ -234,7 +234,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-thin"
+                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-light"
                     placeholder="חיפוש שירות..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
@@ -251,7 +251,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                          >
                             <img src={currentUser.avatarUrl} alt="" className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" />
                             <div>
-                                <div className="font-extrabold text-slate-800">{currentUser.name}</div>
+                                <div className="font-bold text-slate-800">{currentUser.name}</div>
                                 <div className="text-xs text-brand-600 font-medium">הצג פרופיל אישי</div>
                             </div>
                          </div>
@@ -263,7 +263,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                     onOpenAdminDashboard();
                                     setIsMenuOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-center gap-2 p-3 text-white bg-slate-900 rounded-xl text-sm font-extrabold shadow-sm relative"
+                                  className="w-full flex items-center justify-center gap-2 p-3 text-white bg-slate-900 rounded-xl text-sm font-bold shadow-sm relative"
                                 >
                                   <Settings className="w-4 h-4" />
                                   ניהול מערכת
@@ -280,7 +280,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="border-b border-slate-100 pb-3 mb-3">
                         <button 
                             onClick={() => { onOpenAuth(); setIsMenuOpen(false); }}
-                            className="w-full bg-slate-900 text-white py-2 rounded-lg font-extrabold text-sm"
+                            className="w-full bg-slate-900 text-white py-2 rounded-lg font-bold text-sm"
                         >
                             התחברות / הרשמה
                         </button>
@@ -292,7 +292,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         onOpenHowItWorks();
                         setIsMenuOpen(false);
                     }}
-                    className="block w-full text-right px-3 py-2 rounded-md text-base font-extrabold text-slate-700 hover:bg-slate-50"
+                    className="block w-full text-right px-3 py-2 rounded-md text-base font-bold text-slate-700 hover:bg-slate-50"
                 >
                     איך זה עובד?
                 </button>
@@ -300,7 +300,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {currentUser && (
                     <button 
                         onClick={() => { onLogout(); setIsMenuOpen(false); }}
-                        className="w-full text-right flex items-center gap-2 px-3 py-2 text-base font-extrabold text-red-600 hover:bg-red-50 rounded-md mt-4"
+                        className="w-full text-right flex items-center gap-2 px-3 py-2 text-base font-bold text-red-600 hover:bg-red-50 rounded-md mt-4"
                     >
                         <LogOut className="w-4 h-4" />
                         התנתק מהמערכת
