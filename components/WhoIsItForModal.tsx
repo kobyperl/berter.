@@ -26,13 +26,13 @@ export const WhoIsItForModal: React.FC<WhoIsItForModalProps> = ({ isOpen, onClos
                         <Users className="w-10 h-10 text-white" />
                     </div>
                 </div>
-                <h3 className="text-2xl font-bold text-center">
+                <h3 className="text-2xl font-extrabold text-center">
                     למי הקהילה מתאימה?
                 </h3>
             </div>
             
             <div className="p-8">
-                <p className="text-lg text-slate-600 text-center mb-8 leading-relaxed max-w-2xl mx-auto">
+                <p className="text-lg text-slate-600 font-thin text-center mb-8 leading-relaxed max-w-2xl mx-auto">
                     הפלטפורמה נועדה לכל אדם שיש לו כישרון, ידע או מקצוע, ורוצה למנף אותו כדי לקבל ערך חדש.
                     <span className="block font-bold text-brand-600 mt-1">זה הרבה מעבר לעסקים - זו החלפת כישורים אנושית.</span>
                 </p>
@@ -40,44 +40,44 @@ export const WhoIsItForModal: React.FC<WhoIsItForModalProps> = ({ isOpen, onClos
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                     {/* Card 1: Classic Professionals */}
                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 hover:border-brand-200 transition-colors">
-                        <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <h4 className="font-extrabold text-slate-900 mb-2 flex items-center gap-2">
                             <Briefcase className="w-5 h-5 text-blue-600" />
                             מקצועות דיגיטל ועסקים
                         </h4>
-                        <p className="text-sm text-slate-600 leading-relaxed">
+                        <p className="text-sm text-slate-600 font-thin leading-relaxed">
                             בונים אתרים, מעצבים גרפיים, עורכי דין, רואי חשבון ויועצים עסקיים שרוצים להגדיל את מעגל הלקוחות ולחסוך הוצאות.
                         </p>
                     </div>
 
                     {/* Card 2: Wellness & Care */}
                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 hover:border-brand-200 transition-colors">
-                        <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <h4 className="font-extrabold text-slate-900 mb-2 flex items-center gap-2">
                             <Baby className="w-5 h-5 text-pink-500" />
                             טיפול, בריאות ומשפחה
                         </h4>
-                        <p className="text-sm text-slate-600 leading-relaxed">
+                        <p className="text-sm text-slate-600 font-thin leading-relaxed">
                             דולות ותומכות לידה, מדריכות הורים, מאמני כושר, מטפלים אלטרנטיביים, יועצות שינה וקלינאיות תקשורת.
                         </p>
                     </div>
 
                     {/* Card 3: Education & Creators */}
                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 hover:border-brand-200 transition-colors">
-                        <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <h4 className="font-extrabold text-slate-900 mb-2 flex items-center gap-2">
                             <GraduationCap className="w-5 h-5 text-amber-500" />
                             יוצרי תוכן והדרכה
                         </h4>
-                        <p className="text-sm text-slate-600 leading-relaxed">
+                        <p className="text-sm text-slate-600 font-thin leading-relaxed">
                             בעלי קורסים דיגיטליים, מורים פרטיים, מרצים, מנחי סדנאות ויוצרי תוכן שמעוניינים להחליף ידע תמורת שירותים.
                         </p>
                     </div>
 
                     {/* Card 4: Skill Exchange (The Creative Part) */}
                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 hover:border-brand-200 transition-colors">
-                        <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <h4 className="font-extrabold text-slate-900 mb-2 flex items-center gap-2">
                             <Music className="w-5 h-5 text-purple-500" />
                             החלפת כישרונות ותחביבים
                         </h4>
-                        <p className="text-sm text-slate-600 leading-relaxed">
+                        <p className="text-sm text-slate-600 font-thin leading-relaxed">
                             יש לכם כישרון נוסף מעבר למקצוע? זה המקום!
                             למשל: <span className="font-semibold text-slate-800">רופאה שמלמדת פסנתר תמורת שיעורי סינית</span>, או הייטקיסט שאופה עוגות מעוצבות תמורת צילום מקצועי.
                         </p>
@@ -91,20 +91,20 @@ export const WhoIsItForModal: React.FC<WhoIsItForModalProps> = ({ isOpen, onClos
                 </div>
 
                 <div className="border-t border-slate-100 pt-6">
-                    <h4 className="font-bold text-slate-900 mb-4 text-center">איך זה עובד בפועל?</h4>
+                    <h4 className="font-extrabold text-slate-900 mb-4 text-center">איך זה עובד בפועל?</h4>
                     <ol className="space-y-4 max-w-md mx-auto text-sm">
                         <li className="flex gap-4">
                             <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-slate-700 font-bold rounded-full flex items-center justify-center">1</span>
                             <div>
                                 <span className="font-bold block text-slate-800">מגדירים מה נותנים</span>
-                                <span className="text-slate-500">זה יכול להיות השירות המקצועי שלכם, או תחביב שאתם מצטיינים בו.</span>
+                                <span className="text-slate-500 font-thin">זה יכול להיות השירות המקצועי שלכם, או תחביב שאתם מצטיינים בו.</span>
                             </div>
                         </li>
                         <li className="flex gap-4">
                             <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-slate-700 font-bold rounded-full flex items-center justify-center">2</span>
                             <div>
                                 <span className="font-bold block text-slate-800">מגדירים מה מחפשים</span>
-                                <span className="text-slate-500">שיעור פרטי? עזרה בעסק? טיפול מפנק? הכל הולך.</span>
+                                <span className="text-slate-500 font-thin">שיעור פרטי? עזרה בעסק? טיפול מפנק? הכל הולך.</span>
                             </div>
                         </li>
                     </ol>
@@ -116,7 +116,7 @@ export const WhoIsItForModal: React.FC<WhoIsItForModalProps> = ({ isOpen, onClos
                             onClose();
                             onOpenAuth();
                         }}
-                        className="bg-slate-900 text-white font-bold py-3 px-10 rounded-full hover:bg-slate-800 transition-colors shadow-lg flex items-center gap-2 mx-auto"
+                        className="bg-slate-900 text-white font-extrabold py-3 px-10 rounded-full hover:bg-slate-800 transition-colors shadow-lg flex items-center gap-2 mx-auto"
                     >
                         הירשם והצטרף לקהילה
                         <ArrowLeft className="w-4 h-4" />

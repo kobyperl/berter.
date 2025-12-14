@@ -190,8 +190,8 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
 
                                 <div className="flex-1 p-3 flex flex-col justify-between">
                                     <div>
-                                        <h3 className="font-bold text-slate-800 text-base leading-tight mb-1">{ad.title}</h3>
-                                        <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed">{ad.description}</p>
+                                        <h3 className="font-extrabold text-slate-800 text-base leading-tight mb-1">{ad.title}</h3>
+                                        <p className="text-slate-500 text-xs font-thin line-clamp-2 leading-relaxed">{ad.description}</p>
                                     </div>
                                     
                                     <div className="flex items-center justify-between pt-1">
@@ -261,12 +261,12 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                     {/* Content Section */}
                     <div className="p-6 text-center relative -mt-10 z-10">
                         <div className="bg-white rounded-xl p-6 shadow-lg border border-slate-100">
-                             <h3 className="text-2xl font-bold text-slate-900 mb-3">{expandedAd.title}</h3>
-                             <p className="text-slate-600 mb-6 leading-relaxed text-sm">
+                             <h3 className="text-2xl font-extrabold text-slate-900 mb-3">{expandedAd.title}</h3>
+                             <p className="text-slate-600 mb-6 leading-relaxed text-sm font-thin">
                                 {expandedAd.description}
                              </p>
                              
-                             <button className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95 text-lg">
+                             <button className="w-full bg-brand-600 hover:bg-brand-700 text-white font-extrabold py-3.5 rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95 text-lg">
                                 {expandedAd.ctaText}
                                 <ExternalLink className="w-5 h-5" />
                              </button>
@@ -277,7 +277,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                                     setExpandedAd(null);
                                 }}
                                 className="mt-4 text-xs text-slate-400 hover:text-slate-600 font-medium flex items-center justify-center gap-1 mx-auto transition-colors"
-                             >
+                            >
                                 <ArrowRight className="w-3 h-3" />
                                 חזרה לאתר
                              </button>

@@ -21,7 +21,7 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                 <button onClick={onClose} className="absolute top-4 left-4 text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10">
                     <X className="w-6 h-6" />
                 </button>
-                <h3 className="text-2xl font-bold text-center">
+                <h3 className="text-2xl font-extrabold text-center">
                     איך מוצאים שותף מושלם?
                 </h3>
             </div>
@@ -33,8 +33,8 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                             <Search className="w-6 h-6" />
                         </div>
                         <div>
-                            <h4 className="font-bold text-slate-800 text-lg">1. חיפוש חכם</h4>
-                            <p className="text-sm text-slate-600 leading-relaxed">
+                            <h4 className="font-extrabold text-slate-800 text-lg">1. חיפוש חכם</h4>
+                            <p className="text-sm text-slate-600 font-thin leading-relaxed">
                                 השתמשו בסרגל החיפוש כדי למצוא מילות מפתח ספציפיות (למשל "וורדפרס" או "עריכת דין").
                             </p>
                         </div>
@@ -45,8 +45,8 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                             <Filter className="w-6 h-6" />
                         </div>
                         <div>
-                            <h4 className="font-bold text-slate-800 text-lg">2. סינון ממוקד</h4>
-                            <p className="text-sm text-slate-600 leading-relaxed">
+                            <h4 className="font-extrabold text-slate-800 text-lg">2. סינון ממוקד</h4>
+                            <p className="text-sm text-slate-600 font-thin leading-relaxed">
                                 בחרו קטגוריה ראשית מהתפריט או סננו לפי "חד פעמי" / "מתמשך" כדי לדייק את התוצאות.
                             </p>
                         </div>
@@ -57,8 +57,8 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                             <MessageCircle className="w-6 h-6" />
                         </div>
                         <div>
-                            <h4 className="font-bold text-slate-800 text-lg">3. פנייה אישית</h4>
-                            <p className="text-sm text-slate-600 leading-relaxed">
+                            <h4 className="font-extrabold text-slate-800 text-lg">3. פנייה אישית</h4>
+                            <p className="text-sm text-slate-600 font-thin leading-relaxed">
                                 מצאתם הצעה מעניינת? שלחו הודעה מפורטת. הציגו את עצמכם ומה הערך שאתם נותנים בתמורה.
                             </p>
                         </div>
@@ -68,7 +68,7 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                 <div className="mt-10 text-center">
                     <button 
                         onClick={onStartSearching}
-                        className="bg-brand-600 text-white font-bold py-3.5 px-10 rounded-full hover:bg-brand-700 transition-transform active:scale-95 shadow-lg flex items-center gap-2 mx-auto"
+                        className="bg-brand-600 text-white font-extrabold py-3.5 px-10 rounded-full hover:bg-brand-700 transition-transform active:scale-95 shadow-lg flex items-center gap-2 mx-auto"
                     >
                         קחו אותי ללוח ההצעות
                         <ArrowLeft className="w-4 h-4" />

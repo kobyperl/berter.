@@ -15,11 +15,11 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
       <div className="w-full lg:w-[55%] bg-white z-20 flex flex-col justify-center relative order-1 lg:order-1">
           <main className="w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8 lg:py-24 flex flex-col items-end text-right mr-auto"> 
             <div className="w-full pl-0 lg:pl-10">
-              <h1 className="text-4xl tracking-tight font-extrabold text-slate-900 sm:text-5xl md:text-6xl leading-tight">
+              <h1 className="text-4xl tracking-tight font-black text-slate-900 sm:text-5xl md:text-6xl leading-tight">
                 <span className="block">הכלכלה החדשה של</span>{' '}
                 <span className="block text-brand-600 mt-1">העצמאים בישראל</span>
               </h1>
-              <p className="mt-6 text-base text-slate-500 sm:mt-8 sm:text-lg sm:max-w-xl md:mt-8 md:text-xl leading-relaxed">
+              <p className="mt-6 text-base text-slate-500 font-thin sm:mt-8 sm:text-lg sm:max-w-xl md:mt-8 md:text-xl leading-relaxed">
                 השתמשו בכישורים שלכם כדי לשלם על שירותים עסקיים. 
                 בלי להוציא מזומן, בלי עמלות נסתרות. 
                 נטוורקינג עסקי אמיתי שמייצר ערך מהיום הראשון.
@@ -29,7 +29,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                 <div className="rounded-md shadow">
                   <button 
                     onClick={onOpenSearchTips}
-                    className="w-full flex items-center justify-center px-8 py-4 border border-transparent text-base font-bold rounded-lg text-white bg-brand-600 hover:bg-brand-700 md:text-lg transition-all active:scale-95"
+                    className="w-full flex items-center justify-center px-8 py-4 border border-transparent text-base font-extrabold rounded-lg text-white bg-brand-600 hover:bg-brand-700 md:text-lg transition-all active:scale-95"
                   >
                     מצאו שותף לברטר
                   </button>
@@ -37,7 +37,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                 <div className="mt-0 sm:mt-0">
                   <button 
                     onClick={onOpenWhoIsItFor}
-                    className="w-full flex items-center justify-center px-8 py-4 border border-slate-200 text-base font-bold rounded-lg text-brand-700 bg-brand-50 hover:bg-brand-100 md:text-lg transition-all active:scale-95"
+                    className="w-full flex items-center justify-center px-8 py-4 border border-slate-200 text-base font-extrabold rounded-lg text-brand-700 bg-brand-50 hover:bg-brand-100 md:text-lg transition-all active:scale-95"
                   >
                     הרשמו והצטרפו לקהילה
                   </button>
@@ -62,8 +62,8 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                     <Wallet className="w-6 h-6 text-emerald-600" />
                 </div>
                 <div>
-                    <h3 className="font-bold text-slate-900 text-lg mb-1">חוסכים בהוצאות העסק</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">
+                    <h3 className="font-extrabold text-slate-900 text-lg mb-1">חוסכים בהוצאות העסק</h3>
+                    <p className="text-slate-500 text-sm font-thin leading-relaxed">
                         משתמשים בכישרון שלכם כמטבע עבור הסוחר. מקבלים שירותים שווים בלי להוציא שקל מהחזרים.
                     </p>
                 </div>
@@ -75,8 +75,8 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                     <Users className="w-6 h-6 text-indigo-600" />
                 </div>
                 <div>
-                    <h3 className="font-bold text-slate-900 text-lg mb-1">קהילה עסקית איכותית</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">
+                    <h3 className="font-extrabold text-slate-900 text-lg mb-1">קהילה עסקית איכותית</h3>
+                    <p className="text-slate-500 text-sm font-thin leading-relaxed">
                         נבחרת של פרילנסרים ובעלי עסקים מנוסים. כאן תמצאו שותפים רציניים לעבודה, לא חובבנים.
                     </p>
                 </div>
@@ -88,8 +88,8 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips }
                     <TrendingUp className="w-6 h-6 text-rose-600" />
                 </div>
                 <div>
-                    <h3 className="font-bold text-slate-900 text-lg mb-1">הזדמנויות צמיחה</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">
+                    <h3 className="font-extrabold text-slate-900 text-lg mb-1">הזדמנויות צמיחה</h3>
+                    <p className="text-slate-500 text-sm font-thin leading-relaxed">
                          הדרך הנכונה להגדיל את היקף העבודות, לייצר קשרים אסטרטגיים ולפרוץ לשווקים חדשים.
                     </p>
                 </div>

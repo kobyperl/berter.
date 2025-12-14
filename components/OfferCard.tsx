@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { MapPin, Calendar, MessageCircle, ChevronDown, ChevronUp, Star, Trash2, Clock, Repeat, EyeOff, Edit } from 'lucide-react';
 import { BarterOffer, UserProfile } from '../types';
@@ -135,7 +136,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                             {/* Title & Meta Row */}
                             <div className="flex flex-col mb-1.5 gap-1">
                                 <div>
-                                    <h4 className={`font-bold text-lg leading-snug flex items-center gap-2 ${isExpired ? 'text-slate-500' : 'text-slate-900'}`}>
+                                    <h4 className={`font-extrabold text-lg leading-snug flex items-center gap-2 ${isExpired ? 'text-slate-500' : 'text-slate-900'}`}>
                                         {offer.title}
                                         {isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">פג תוקף</span>}
                                         {isPending && (
@@ -171,11 +172,11 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                             {/* Services - Requester Top, Provider Bottom. Stacked Vertically */}
                             <div className="flex flex-col gap-1.5 w-full mt-1">
                                 <div className="flex items-start gap-1.5 min-w-0">
-                                    <span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-indigo-600'}`}>מבקש/ת:</span>
+                                    <span className={`text-xs font-extrabold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-indigo-600'}`}>מבקש/ת:</span>
                                     <span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.requestedService}</span>
                                 </div>
                                 <div className="flex items-start gap-1.5 min-w-0">
-                                    <span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-emerald-600'}`}>נותן/ת:</span>
+                                    <span className={`text-xs font-extrabold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-emerald-600'}`}>נותן/ת:</span>
                                     <span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.offeredService}</span>
                                 </div>
                             </div>
@@ -250,7 +251,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                 <div className="px-3 pb-3 pt-0 animate-in slide-in-from-top-2">
                     <div className="h-px bg-slate-100 mb-3 w-full"></div>
                     
-                    <p className="text-sm text-slate-600 mb-3 leading-relaxed bg-slate-50 p-3 rounded-lg">
+                    <p className="text-sm text-slate-600 mb-3 leading-relaxed bg-slate-50 p-3 rounded-lg font-thin">
                         {offer.description}
                     </p>
 
@@ -269,7 +270,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                                     onContact(offer.profile);
                                 }}
                                 disabled={isExpired}
-                                className={`text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}
+                                className={`text-white text-xs font-extrabold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}
                             >
                                 <MessageCircle className="w-3.5 h-3.5" />
                                 {isExpired ? 'מודעה לא פעילה' : 'שלח הודעה'}
@@ -342,7 +343,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                     className={`w-10 h-10 rounded-full object-cover border group-hover:border-brand-500 transition-colors ${isHighRated ? 'border-yellow-400' : 'border-slate-100'}`}
                 />
                 <div>
-                    <h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4>
+                    <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4>
                     <span className="text-xs text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full font-medium">
                         {offer.profile.expertise}
                     </span>
@@ -383,24 +384,24 @@ export const OfferCard: React.FC<OfferCardProps> = ({
             {renderStars()}
         </div>
 
-        <h3 className={`text-lg font-bold mb-3 leading-tight min-h-[3.5rem] pr-1 ${isExpired ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+        <h3 className={`text-lg font-extrabold mb-3 leading-tight min-h-[3.5rem] pr-1 ${isExpired ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
             {offer.title}
         </h3>
 
         <div className="space-y-2 mb-3">
             <div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-slate-100 border-slate-200' : 'bg-emerald-50 border-emerald-100'}`}>
-                <span className={`block text-xs font-bold mb-1 ${isExpired ? 'text-slate-500' : 'text-emerald-600'}`}>נותן/ת:</span>
+                <span className={`block text-xs font-extrabold mb-1 ${isExpired ? 'text-slate-500' : 'text-emerald-600'}`}>נותן/ת:</span>
                 <p className="text-sm text-slate-700 font-medium">{offer.offeredService}</p>
             </div>
             <div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-slate-100 border-slate-200' : 'bg-indigo-50 border-indigo-100'}`}>
-                <span className={`block text-xs font-bold mb-1 ${isExpired ? 'text-slate-500' : 'text-indigo-600'}`}>מבקש/ת:</span>
+                <span className={`block text-xs font-extrabold mb-1 ${isExpired ? 'text-slate-500' : 'text-indigo-600'}`}>מבקש/ת:</span>
                 <p className="text-sm text-slate-700 font-medium">{offer.requestedService}</p>
             </div>
         </div>
 
         {/* Scrollable Description Area */}
         <div className="h-20 overflow-y-auto mb-2 custom-scrollbar">
-            <p className="text-sm text-slate-500 leading-relaxed">
+            <p className="text-sm text-slate-500 leading-relaxed font-thin">
                 {offer.description}
             </p>
         </div>
@@ -431,7 +432,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
          <button 
             onClick={() => onContact(offer.profile)}
             disabled={isExpired}
-            className={`text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shrink-0 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}
+            className={`text-white text-sm font-extrabold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shrink-0 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}
          >
             <MessageCircle className="w-4 h-4" />
             {isExpired ? 'לא רלוונטי' : 'שלח הודעה'}
