@@ -92,11 +92,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Using the verified domain sender address
     const fromEmail = 'Barter IL <info@barter.org.il>';
     
-    console.log(`Sending email [${type}] from ${fromEmail} to ${to}`);
+    // Safety check: Ensure 'to' is an array
+    const recipients = Array.isArray(to) ? to : [to];
+
+    console.log(`Sending email [${type}] from ${fromEmail} to ${recipients.join(', ')}`);
 
     const { data: emailData, error } = await resend.emails.send({
       from: fromEmail,
-      to: [to],
+      to: recipients,
       subject: subject,
       html: generateEmailHtml(type, data),
     });

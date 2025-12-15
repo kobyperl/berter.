@@ -551,47 +551,52 @@ export const App: React.FC = () => {
         // 1. Save Message to Firestore
         await setDoc(doc(db, "messages", newMessage.id), newMessage);
         
-        // 2. Send Email Notification (Async, robust)
-        try {
-            console.log(`[Email Notification] Lookup user: ${receiverId}`);
-            const userDoc = await getDoc(doc(db, "users", receiverId));
-            
-            if (userDoc.exists()) {
-                const userData = userDoc.data() as UserProfile;
-                const targetEmail = userData.email;
-                
-                if (targetEmail && targetEmail.includes('@')) {
-                    console.log(`[Email Notification] Sending to: ${targetEmail}`);
+        // 2. Email Notification Logic
+        // We run this as a side effect (fire and forget from UI perspective, but logged)
+        if (receiverId) {
+            const sendNotification = async () => {
+                try {
+                    // Force fresh fetch of user to get email
+                    const userDoc = await getDoc(doc(db, "users", receiverId));
+                    if (!userDoc.exists()) {
+                        console.warn(`[Notification] User ${receiverId} not found`);
+                        return;
+                    }
                     
-                    const emailPayload = {
-                        type: 'chat_alert',
-                        to: targetEmail,
-                        data: { 
-                            userName: receiverName || userData.name || 'משתמש',
-                            senderName: currentUser?.name || 'משתמש'
-                        }
-                    };
+                    const userData = userDoc.data() as UserProfile;
+                    if (!userData.email) {
+                        console.warn(`[Notification] User ${receiverId} has no email`);
+                        return;
+                    }
 
-                    const response = await fetch('/api/emails/send', {
+                    console.log(`[Notification] Attempting to send email to ${userData.email}`);
+                    
+                    const res = await fetch('/api/emails/send', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(emailPayload)
+                        body: JSON.stringify({
+                            type: 'chat_alert',
+                            to: userData.email,
+                            data: { 
+                                userName: userData.name || receiverName || 'משתמש',
+                                senderName: currentUser?.name || 'משתמש האתר'
+                            }
+                        })
                     });
-
-                    if (response.ok) {
-                        console.log('[Email Notification] Sent successfully');
+                    
+                    if (!res.ok) {
+                        const err = await res.text();
+                        console.error('[Notification] API Error:', err);
                     } else {
-                        const errData = await response.json().catch(() => ({}));
-                        console.error('[Email Notification] API Error:', response.status, errData);
+                        console.log('[Notification] Sent successfully');
                     }
-                } else {
-                    console.warn(`[Email Notification] User ${receiverId} has no valid email.`);
+                } catch (err) {
+                    console.error('[Notification] Logic Error:', err);
                 }
-            } else {
-                console.warn(`[Email Notification] User doc not found for ${receiverId}`);
-            }
-        } catch (fetchErr) {
-            console.error("[Email Notification] Unexpected error:", fetchErr);
+            };
+            
+            // Execute non-blocking
+            sendNotification();
         }
 
     } catch (error) { console.error("Error saving message:", error); }
