@@ -399,16 +399,17 @@ export const OfferCard: React.FC<OfferCardProps> = ({
             </div>
         </div>
 
-        {/* Scrollable Description Area */}
-        <div className="h-20 overflow-y-auto mb-2 custom-scrollbar">
+        {/* Scrollable Description Area - Increased height from h-20 to h-32 */}
+        <div className="h-32 overflow-y-auto mb-2 custom-scrollbar">
             <p className="text-sm text-slate-500 leading-relaxed font-normal">
                 {offer.description}
             </p>
         </div>
 
+        {/* Tags - Decreased text size to text-[10px] */}
         <div className="flex flex-wrap gap-2 mb-2 mt-auto">
             {offer.tags.map(tag => (
-                <span key={tag} className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                <span key={tag} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded">
                     #{tag}
                 </span>
             ))}
