@@ -1,6 +1,8 @@
 
+"use client";
+
 import React, { useState } from 'react';
-import { X, Send, Clock, CheckCircle, Mail, AlertCircle, LayoutTemplate, Smartphone, Monitor, ChevronLeft, Settings, Menu, ArrowRight } from 'lucide-react';
+import { X, Send, Clock, CheckCircle, Mail, AlertCircle, LayoutTemplate, Smartphone, Monitor, ChevronLeft, Settings, Menu } from 'lucide-react';
 import { WelcomeEmailPreview, ChatMessageAlertPreview, SmartMatchAlertPreview } from './EmailTemplates';
 
 interface EmailCenterModalProps {
@@ -17,23 +19,57 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
   const [isSending, setIsSending] = useState(false);
   
   // Mobile Navigation State:
-  // true = Show Menu (Mailboxes), false = Show Preview
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   if (!isOpen) return null;
 
   const handleSelectType = (type: EmailType) => {
       setSelectedType(type);
-      // Auto-close sidebar on mobile to show preview immediately
-      setIsSidebarOpen(false);
+      setIsSidebarOpen(false); // Close sidebar on selection (mobile)
   };
 
   const handleSendTest = async () => {
+      // 1. Debugging Logs & Alerts as requested
+      console.log("Button Clicked!");
+      alert("Sending... (Click OK to proceed with fetch)");
+
       setIsSending(true);
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      alert(`מייל בדיקה מסוג ${selectedType} נשלח בהצלחה לכתובת האדמין!`);
-      setIsSending(false);
+
+      try {
+          // 2. Real Fetch Request
+          const response = await fetch('/api/emails/send', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                  type: selectedType,
+                  // Hardcoded admin email for testing purposes
+                  to: 'yaikov.p.0548562029@gmail.com', 
+                  data: {
+                      userName: 'Admin Tester',
+                      senderName: 'System Debugger'
+                  }
+              })
+          });
+
+          // 3. Handle Response
+          if (response.ok) {
+              const result = await response.json();
+              console.log("Server Success:", result);
+              alert(`מייל בדיקה נשלח בהצלחה!\nID: ${result.id}`);
+          } else {
+              const errorData = await response.json().catch(() => ({}));
+              console.error("Server Error:", response.status, errorData);
+              alert(`שגיאה בשליחה: ${response.status} ${response.statusText}`);
+          }
+
+      } catch (error: any) {
+          console.error("Network/Fetch Error:", error);
+          alert(`שגיאת רשת: ${error.message}`);
+      } finally {
+          setIsSending(false);
+      }
   };
 
   const renderPreview = () => {
@@ -79,6 +115,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                 </div>
             </div>
             <button 
+                type="button"
                 onClick={onClose} 
                 className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors flex items-center gap-2 px-3 sm:px-4"
             >
@@ -90,10 +127,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
         {/* Main Workspace Layout */}
         <div className="flex flex-1 overflow-hidden relative">
             
-            {/* Sidebar (Navigation) 
-                - Mobile: Full width, toggled via isSidebarOpen
-                - Desktop: Fixed width, always visible
-            */}
+            {/* Sidebar (Navigation) */}
             <div className={`
                 absolute inset-0 z-20 bg-white sm:relative sm:inset-auto sm:w-80 sm:flex flex-col border-l border-slate-200 shadow-lg transition-transform duration-300 ease-in-out
                 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full sm:translate-x-0'}
@@ -136,9 +170,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                 </div>
             </div>
 
-            {/* Main Content Area (Preview) 
-                - Always rendered, but hidden on mobile if sidebar is open
-            */}
+            {/* Main Content Area (Preview) */}
             <div className="flex-1 flex flex-col relative bg-slate-100 h-full w-full">
                 
                 {/* Toolbar */}
@@ -146,6 +178,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                     <div className="flex items-center gap-3">
                         {/* Mobile Toggle Button */}
                         <button 
+                            type="button"
                             onClick={() => setIsSidebarOpen(true)}
                             className="sm:hidden p-2 -mr-2 text-slate-500 hover:bg-slate-100 rounded-full"
                             title="חזרה לרשימת התבניות"
@@ -164,6 +197,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                     {/* View Toggle */}
                     <div className="bg-slate-100 p-1 rounded-lg flex items-center border border-slate-200 shrink-0">
                         <button 
+                            type="button"
                             onClick={() => setViewMode('desktop')}
                             className={`p-2 rounded-md transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'desktop' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             title="תצוגת מחשב"
@@ -172,6 +206,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                             <span className="hidden sm:inline">דסקטופ</span>
                         </button>
                         <button 
+                            type="button"
                             onClick={() => setViewMode('mobile')}
                             className={`p-2 rounded-md transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'mobile' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             title="תצוגת נייד"
@@ -214,7 +249,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                     </div>
                 </div>
 
-                {/* Control Panel Footer - Sticky Bottom */}
+                {/* Control Panel Footer */}
                 <div className="bg-white border-t border-slate-200 p-4 sm:px-8 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20 shrink-0">
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 max-w-6xl mx-auto w-full">
                         
@@ -247,7 +282,9 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                             </div>
                         </div>
 
+                        {/* SEND BUTTON - DEBUGGING ADDED */}
                         <button 
+                            type="button"
                             onClick={handleSendTest}
                             disabled={isSending}
                             className="w-full sm:w-auto bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50 min-w-[200px]"
@@ -264,9 +301,9 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
   );
 };
 
-// Internal Helper Component for Sidebar Items
 const EmailNavItem = ({ isActive, onClick, icon, title, subtitle, badge }: any) => (
     <button 
+        type="button"
         onClick={onClick}
         className={`w-full text-right p-3 rounded-xl border transition-all flex items-center gap-4 group active:scale-98 ${
             isActive 
