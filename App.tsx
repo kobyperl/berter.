@@ -550,22 +550,32 @@ export const App: React.FC = () => {
     try { 
         await setDoc(doc(db, "messages", newMessage.id), newMessage);
         
-        // Trigger Email Alert (Integration)
-        // Find recipient email (optimized: in real app, better to fetch from DB)
-        // For now, assume we can get it if admin or just trigger logic on backend
-        // Here we send the trigger to backend, backend should look up email
-        fetch('/api/emails/send', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                type: 'chat_alert',
-                to: receiverId, // Backend will resolve ID to Email
-                data: { 
-                    userName: receiverName,
-                    senderName: currentUser?.name || 'משתמש'
+        // FIX: Fetch recipient email from Firestore
+        // The API endpoint requires a valid email address string in 'to', not the user ID.
+        try {
+            const userDoc = await getDoc(doc(db, "users", receiverId));
+            if (userDoc.exists()) {
+                const userData = userDoc.data() as UserProfile;
+                if (userData.email) {
+                    fetch('/api/emails/send', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            type: 'chat_alert',
+                            to: userData.email, // Send to the actual email
+                            data: { 
+                                userName: receiverName,
+                                senderName: currentUser?.name || 'משתמש'
+                            }
+                        })
+                    }).catch(e => console.error("Email trigger failed", e));
+                } else {
+                    console.warn(`Cannot send email: No email found for user ${receiverId}`);
                 }
-            })
-        }).catch(e => console.error("Email trigger failed", e));
+            }
+        } catch (fetchErr) {
+            console.error("Error fetching recipient details for email:", fetchErr);
+        }
 
     } catch (error) { console.error(error); }
   };
