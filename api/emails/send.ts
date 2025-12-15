@@ -1,7 +1,4 @@
 
-// This file acts as a Vercel Serverless Function
-// Place it in /api/emails/send.ts
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
 
@@ -57,6 +54,19 @@ const generateEmailHtml = (type: string, data: any) => {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -65,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { type, to, data } = req.body;
 
   if (!type || !to) {
-    return res.status(400).json({ error: 'Missing parameters' });
+    return res.status(400).json({ error: 'Missing parameters: type or to' });
   }
 
   try {
@@ -79,12 +89,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         default: subject = 'עדכון מ-Barter.org.il';
     }
 
-    // Since users usually don't verify domain in demo, use 'onboarding@resend.dev' for testing
-    // Or assume the user configured a domain.
-    const fromEmail = process.env.EMAIL_FROM || 'Barter Team <team@barter.org.il>';
-    // If using free tier of Resend without domain, must send to 'delivered@resend.dev' OR verified email only.
-    // For production logic:
+    // FIX: Use 'onboarding@resend.dev' as default to prevent 400 Bad Request error on unverified domains.
+    // Once you verify 'barter.org.il' in Resend dashboard, you can set EMAIL_FROM env var.
+    const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev';
     
+    console.log(`Sending email [${type}] from ${fromEmail} to ${to}`);
+
     const { data: emailData, error } = await resend.emails.send({
       from: fromEmail,
       to: [to],
@@ -93,13 +103,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (error) {
-      console.error('Resend Error:', error);
-      return res.status(400).json({ error });
+      console.error('Resend API Error:', JSON.stringify(error, null, 2));
+      return res.status(400).json({ 
+          error: 'Email Sending Failed', 
+          details: error.message,
+          code: error.name
+      });
     }
 
     return res.status(200).json({ success: true, id: emailData?.id });
   } catch (err: any) {
-    console.error('Server Error:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('Internal Server Error:', err);
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
   }
 }
