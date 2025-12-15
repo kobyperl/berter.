@@ -548,36 +548,53 @@ export const App: React.FC = () => {
       isRead: false
     };
     try { 
+        // 1. Save Message to Firestore
         await setDoc(doc(db, "messages", newMessage.id), newMessage);
         
-        // FIX: Fetch recipient email from Firestore
-        // The API endpoint requires a valid email address string in 'to', not the user ID.
+        // 2. Send Email Notification (Async, robust)
         try {
+            console.log(`[Email Notification] Lookup user: ${receiverId}`);
             const userDoc = await getDoc(doc(db, "users", receiverId));
+            
             if (userDoc.exists()) {
                 const userData = userDoc.data() as UserProfile;
-                if (userData.email) {
-                    fetch('/api/emails/send', {
+                const targetEmail = userData.email;
+                
+                if (targetEmail && targetEmail.includes('@')) {
+                    console.log(`[Email Notification] Sending to: ${targetEmail}`);
+                    
+                    const emailPayload = {
+                        type: 'chat_alert',
+                        to: targetEmail,
+                        data: { 
+                            userName: receiverName || userData.name || 'משתמש',
+                            senderName: currentUser?.name || 'משתמש'
+                        }
+                    };
+
+                    const response = await fetch('/api/emails/send', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            type: 'chat_alert',
-                            to: userData.email, // Send to the actual email
-                            data: { 
-                                userName: receiverName,
-                                senderName: currentUser?.name || 'משתמש'
-                            }
-                        })
-                    }).catch(e => console.error("Email trigger failed", e));
+                        body: JSON.stringify(emailPayload)
+                    });
+
+                    if (response.ok) {
+                        console.log('[Email Notification] Sent successfully');
+                    } else {
+                        const errData = await response.json().catch(() => ({}));
+                        console.error('[Email Notification] API Error:', response.status, errData);
+                    }
                 } else {
-                    console.warn(`Cannot send email: No email found for user ${receiverId}`);
+                    console.warn(`[Email Notification] User ${receiverId} has no valid email.`);
                 }
+            } else {
+                console.warn(`[Email Notification] User doc not found for ${receiverId}`);
             }
         } catch (fetchErr) {
-            console.error("Error fetching recipient details for email:", fetchErr);
+            console.error("[Email Notification] Unexpected error:", fetchErr);
         }
 
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error("Error saving message:", error); }
   };
 
   const handleMarkAsRead = async (messageId: string) => { try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); } };
