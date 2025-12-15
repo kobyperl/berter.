@@ -89,9 +89,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         default: subject = 'עדכון מ-Barter.org.il';
     }
 
-    // FIX: Use 'onboarding@resend.dev' as default to prevent 400 Bad Request error on unverified domains.
-    // Once you verify 'barter.org.il' in Resend dashboard, you can set EMAIL_FROM env var.
-    const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+    // Using the verified domain sender address
+    const fromEmail = 'Barter IL <info@barter.org.il>';
     
     console.log(`Sending email [${type}] from ${fromEmail} to ${to}`);
 
