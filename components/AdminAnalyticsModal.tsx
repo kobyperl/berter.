@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { X, PieChart, Briefcase, Heart, Plus, Users, BarChart3, Trash2, AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft } from 'lucide-react';
+import { X, PieChart, Briefcase, Heart, Plus, Users, BarChart3, Trash2, AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, Edit, Save } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface AdminAnalyticsModalProps {
@@ -12,15 +13,18 @@ interface AdminAnalyticsModalProps {
   onAddInterest: (interest: string) => void;
   onDeleteCategory: (category: string) => void;
   onDeleteInterest: (interest: string) => void;
-  // New Props for Category Management
+  
   pendingCategories?: string[];
-  pendingInterests?: string[]; // Added
+  pendingInterests?: string[]; 
   onApproveCategory?: (category: string) => void;
   onRejectCategory?: (category: string) => void;
   onReassignCategory?: (oldCategory: string, newCategory: string) => void;
-  // Interest Management
-  onApproveInterest?: (interest: string) => void; // Added
-  onRejectInterest?: (interest: string) => void; // Added
+  onApproveInterest?: (interest: string) => void; 
+  onRejectInterest?: (interest: string) => void; 
+  
+  // New props for editing existing items
+  onRenameItem?: (oldName: string, newName: string, type: 'category' | 'interest') => void;
+  onMergeItems?: (source: string, target: string, type: 'category' | 'interest') => void;
 }
 
 export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
@@ -39,14 +43,22 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
   onRejectCategory,
   onReassignCategory,
   onApproveInterest,
-  onRejectInterest
+  onRejectInterest,
+  onRenameItem,
+  onMergeItems
 }) => {
   const [activeTab, setActiveTab] = useState<'categories' | 'interests' | 'pending'>('categories');
   const [newInput, setNewInput] = useState('');
   
-  // Reassign State
-  const [reassignTarget, setReassignTarget] = useState<string | null>(null); // Which pending cat to reassign
-  const [reassignDestination, setReassignDestination] = useState(''); // Which existing cat to move to
+  // Pending Reassign State
+  const [reassignTarget, setReassignTarget] = useState<string | null>(null);
+  const [reassignDestination, setReassignDestination] = useState('');
+
+  // Existing Edit/Merge State
+  const [editItem, setEditItem] = useState<string | null>(null); // The item currently being edited
+  const [renameValue, setRenameValue] = useState('');
+  const [mergeMode, setMergeMode] = useState(false); // If true, we show dropdown to select target
+  const [mergeTarget, setMergeTarget] = useState('');
 
   if (!isOpen) return null;
 
@@ -97,6 +109,35 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
               setReassignTarget(null);
               setReassignDestination('');
           }
+      }
+  };
+
+  const startEdit = (item: string) => {
+      setEditItem(item);
+      setRenameValue(item);
+      setMergeMode(false);
+      setMergeTarget('');
+  };
+
+  const handleSaveEdit = () => {
+      if (!editItem || !onRenameItem) return;
+      
+      if (mergeMode) {
+          // Merge Logic
+          if (!mergeTarget || mergeTarget === editItem) return;
+          if (window.confirm(`פעולה זו תמזג את "${editItem}" לתוך "${mergeTarget}" ותעדכן את כל המשתמשים הרלוונטיים. לא ניתן לבטל. להמשיך?`)) {
+              onMergeItems && onMergeItems(editItem, mergeTarget, activeTab === 'categories' ? 'category' : 'interest');
+              setEditItem(null);
+          }
+      } else {
+          // Rename Logic
+          if (!renameValue.trim()) return;
+          if (renameValue !== editItem) {
+              if (window.confirm(`לשנות את השם מ-"${editItem}" ל-"${renameValue}"? (יעדכן את כל המשתמשים)`)) {
+                  onRenameItem(editItem, renameValue, activeTab === 'categories' ? 'category' : 'interest');
+              }
+          }
+          setEditItem(null);
       }
   };
 
@@ -268,7 +309,7 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
                                     type="text"
                                     value={newInput}
                                     onChange={(e) => setNewInput(e.target.value)}
-                                    placeholder={activeTab === 'categories' ? 'הוסף מקצוע חדש לרשימה המאושרת...' : 'הוסף תחום עניין חדש למערכת...'}
+                                    placeholder={activeTab === 'categories' ? 'הוסף מקצוע חדש לרשימה המאושרת... (ניתן להוסיף היררכיה עם ">")' : 'הוסף תחום עניין חדש למערכת...'}
                                     className="w-full bg-white border border-slate-300 rounded-lg py-2.5 px-4 text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                                     onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
                                 />
@@ -295,14 +336,64 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
                         <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
                             {(activeTab === 'categories' ? sortedCategories : sortedInterests).map((item) => {
                                 const count = activeTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
+                                const isEditingThis = editItem === item;
                                 
+                                if (isEditingThis) {
+                                    return (
+                                        <div key={item} className="bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in">
+                                            <div className="flex flex-col gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-slate-500">עריכת: {item}</span>
+                                                    <div className="flex gap-2 mr-auto text-xs">
+                                                        <label className="flex items-center gap-1 cursor-pointer">
+                                                            <input type="radio" checked={!mergeMode} onChange={() => setMergeMode(false)} />
+                                                            שינוי שם
+                                                        </label>
+                                                        <label className="flex items-center gap-1 cursor-pointer">
+                                                            <input type="radio" checked={mergeMode} onChange={() => setMergeMode(true)} />
+                                                            מיזוג
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                
+                                                {mergeMode ? (
+                                                    <select 
+                                                        className="w-full border rounded p-2 text-sm"
+                                                        value={mergeTarget}
+                                                        onChange={e => setMergeTarget(e.target.value)}
+                                                    >
+                                                        <option value="">בחר יעד למיזוג...</option>
+                                                        {(activeTab === 'categories' ? availableCategories : availableInterests)
+                                                            .filter(i => i !== item)
+                                                            .map(opt => <option key={opt} value={opt}>{opt}</option>)
+                                                        }
+                                                    </select>
+                                                ) : (
+                                                    <input 
+                                                        type="text" 
+                                                        className="w-full border rounded p-2 text-sm"
+                                                        value={renameValue}
+                                                        onChange={e => setRenameValue(e.target.value)}
+                                                        placeholder="שם חדש (למשל: קטגוריה > תת-קטגוריה)"
+                                                    />
+                                                )}
+
+                                                <div className="flex gap-2 justify-end">
+                                                    <button onClick={() => setEditItem(null)} className="text-slate-500 text-xs px-3 py-1">ביטול</button>
+                                                    <button onClick={handleSaveEdit} className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded font-bold">שמור שינויים</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
                                 return (
                                     <div key={item} className="flex justify-between items-center p-3 rounded-lg border border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all bg-white group">
                                         <div className="flex items-center gap-3 overflow-hidden">
                                             <div className={`w-2 h-8 rounded-full ${activeTab === 'categories' ? 'bg-brand-500' : 'bg-pink-500'} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`}></div>
                                             <span className="font-medium text-slate-800 truncate">{item}</span>
                                         </div>
-                                        <div className="flex items-center gap-3 shrink-0">
+                                        <div className="flex items-center gap-2 shrink-0">
                                             <span className={`px-2.5 py-1 rounded-md text-xs font-bold min-w-[3rem] text-center ${
                                                 count > 0 
                                                 ? (activeTab === 'categories' ? 'bg-brand-100 text-brand-700' : 'bg-pink-100 text-pink-700') 
@@ -311,6 +402,14 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
                                                 {count} <span className="hidden sm:inline">משתמשים</span>
                                             </span>
                                             
+                                            <button 
+                                                onClick={() => startEdit(item)}
+                                                className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="ערוך או מזג"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </button>
+
                                             <button 
                                                 onClick={() => handleDelete(item)}
                                                 className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"

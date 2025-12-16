@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Trash2, Megaphone, Save, Upload, Check, Pencil, Tag, Target, Link as LinkIcon, Copy, Briefcase } from 'lucide-react';
+import { X, Plus, Trash2, Megaphone, Save, Upload, Check, Pencil, Tag, Target, Link as LinkIcon, Copy, Briefcase, Eye, EyeOff } from 'lucide-react';
 import { SystemAd } from '../types';
 
 interface AdminAdManagerProps {
   isOpen: boolean;
   onClose: () => void;
   ads: SystemAd[];
-  availableInterests: string[]; // List of all interests (common + user generated)
-  availableCategories: string[]; // List of all professions (common + user generated)
+  availableInterests: string[]; 
+  availableCategories: string[]; 
   onAddAd: (ad: SystemAd) => void;
   onEditAd?: (ad: SystemAd) => void; 
   onDeleteAd: (id: string) => void;
@@ -60,7 +60,8 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
   const [ctaText, setCtaText] = useState('לפרטים נוספים');
   const [linkUrl, setLinkUrl] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [subLabel, setSubLabel] = useState(''); // New "Cover" text field
+  const [subLabel, setSubLabel] = useState('');
+  const [isActiveForm, setIsActiveForm] = useState(true); // Default active for new ads
   
   // Targeting State
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['Global']);
@@ -83,6 +84,7 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
       setLinkUrl('');
       setImageUrl('');
       setSubLabel('');
+      setIsActiveForm(true);
       setSelectedCategories(['Global']);
       setSelectedInterests([]);
       setInterestSearch('');
@@ -99,23 +101,27 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
       setLinkUrl(ad.linkUrl);
       setImageUrl(ad.imageUrl);
       setSubLabel(ad.subLabel || '');
+      setIsActiveForm(ad.isActive);
       setSelectedCategories(ad.targetCategories || ['Global']);
       setSelectedInterests(ad.targetInterests || []);
       setActiveTab('create');
   };
 
-  // V1 Implementation: Duplicate Ad Logic
+  const handleToggleVisibility = (ad: SystemAd) => {
+      if (onEditAd) {
+          onEditAd({ ...ad, isActive: !ad.isActive });
+      }
+  };
+
   const handleDuplicate = (ad: SystemAd) => {
       const newAd: SystemAd = {
           ...ad,
-          id: Date.now().toString(), // Generate new ID
-          title: `${ad.title} (עותק)`, // Append copy indicator
-          isActive: false // Default to inactive so manager can review before publishing
+          id: Date.now().toString(), 
+          title: `${ad.title} (עותק)`, 
+          isActive: false 
       };
       
       onAddAd(newAd);
-      // Optional: Automatically switch to edit mode for the new copy
-      // handleEditClick(newAd); 
       alert('המודעה שוכפלה בהצלחה. היא מופיעה כעת ברשימה כלא פעילה.');
   };
 
@@ -169,7 +175,7 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
         targetCategories: selectedCategories,
         targetInterests: selectedInterests,
         subLabel: subLabel,
-        isActive: true
+        isActive: isActiveForm
     };
 
     if (editingAdId && onEditAd) {
@@ -181,7 +187,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
     resetForm();
   };
   
-  // Filter interests/categories for UI lists - DEFENSIVE CHECK ADDED
   const filteredInterests = availableInterests.filter(i => 
     (i || '').toLowerCase().includes(interestSearch.toLowerCase())
   );
@@ -192,7 +197,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
-  // New Input Style (Purple Theme for Admin) - White bg
   const inputClassName = "w-full bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-lg p-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all duration-200 shadow-sm";
 
   return (
@@ -222,7 +226,7 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                     }}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'list' ? 'border-b-2 border-purple-600 text-purple-600 bg-purple-50' : 'text-slate-600 hover:bg-slate-50'}`}
                 >
-                    רשימת מודעות פעילות ({ads.length})
+                    רשימת מודעות ({ads.length})
                 </button>
                 <button 
                     onClick={() => setActiveTab('create')}
@@ -285,9 +289,17 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                         value={subLabel}
                                         onChange={e => setSubLabel(e.target.value)}
                                     />
-                                    <p className="text-[10px] text-slate-500 mt-1">
-                                        * אם לא יוזן טקסט, האזור התחתון יישאר נקי.
-                                    </p>
+                                </div>
+
+                                <div className="mt-6 flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                    <span className="text-sm font-bold text-slate-700">סטטוס מודעה</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsActiveForm(!isActiveForm)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isActiveForm ? 'bg-green-500' : 'bg-slate-300'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isActiveForm ? 'translate-x-1' : 'translate-x-6'}`} />
+                                    </button>
                                 </div>
                             </div>
 
@@ -313,7 +325,7 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                     
                                     {/* Professions / Categories */}
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-2">מקצועות וקטגוריות (ניתן להוסיף חדש)</label>
+                                        <label className="block text-xs font-bold text-slate-600 mb-2">מקצועות וקטגוריות</label>
                                         <div className="relative mb-2">
                                             <Briefcase className="w-3 h-3 absolute right-3 top-3 text-slate-400" />
                                             <input 
@@ -371,7 +383,7 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
 
                                     {/* Subject Matters / Interests Selector */}
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">תחומי עניין / נושאים (ניתן להוסיף חדש)</label>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">תחומי עניין / נושאים</label>
                                         <div className="relative mb-2">
                                             <Tag className="w-3 h-3 absolute right-3 top-3 text-slate-400" />
                                             <input 
@@ -398,7 +410,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                                     {interest}
                                                 </button>
                                             ))}
-                                            {/* Allow adding custom interest if not found */}
                                             {interestSearch && !filteredInterests.includes(interestSearch) && (
                                                 <button
                                                     type="button"
@@ -491,21 +502,39 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                             </div>
                         ) : (
                             ads.map(ad => (
-                                <div key={ad.id} className="flex flex-col sm:flex-row items-center gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow group">
+                                <div key={ad.id} className={`flex flex-col sm:flex-row items-center gap-4 bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow group ${ad.isActive ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50'}`}>
                                     <div className="relative w-full sm:w-32 h-24">
                                         <img 
                                             src={ad.imageUrl} 
                                             alt={ad.title} 
-                                            className="w-full h-full object-cover rounded-lg"
+                                            className="w-full h-full object-cover rounded-lg grayscale-0 group-hover:grayscale-0 transition-all"
+                                            style={{ filter: ad.isActive ? 'none' : 'grayscale(100%)' }}
                                         />
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg"></div>
+                                        {!ad.isActive && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-white/50 rounded-lg">
+                                                <EyeOff className="w-8 h-8 text-slate-600" />
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     <div className="flex-1 text-right w-full">
                                         <div className="flex justify-between items-start">
-                                            <h4 className="font-bold text-slate-800 text-lg">{ad.title}</h4>
+                                            <div>
+                                                <h4 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                                    {ad.title}
+                                                    {!ad.isActive && <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded">לא פעיל</span>}
+                                                </h4>
+                                            </div>
                                             <div className="flex gap-2">
-                                                {/* Duplicate Button */}
+                                                {/* Visibility Toggle */}
+                                                <button
+                                                    onClick={() => handleToggleVisibility(ad)}
+                                                    className={`p-2 rounded-lg transition-colors ${ad.isActive ? 'text-slate-400 hover:text-purple-600 hover:bg-purple-50' : 'text-slate-400 hover:text-green-600 hover:bg-green-50'}`}
+                                                    title={ad.isActive ? "הסתר מודעה" : "הצג מודעה"}
+                                                >
+                                                    {ad.isActive ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                                                </button>
+
                                                 <button 
                                                     onClick={() => handleDuplicate(ad)}
                                                     className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -533,7 +562,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                         </div>
                                         
                                         <div className="flex flex-wrap gap-2 my-2">
-                                            {/* Minimal Tags for Admin View Only */}
                                             {ad.targetCategories?.slice(0, 3).map(c => (
                                                 <span key={c} className="text-[10px] px-2 py-0.5 rounded-full border bg-slate-50 text-slate-500">
                                                     {c}
