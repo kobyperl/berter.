@@ -290,7 +290,8 @@ export const App: React.FC = () => {
       if (!currentUser) return;
       
       if (currentUser.role === 'admin') {
-          await updateDoc(doc(db, "users", updatedProfile.id), updatedProfile);
+          // Fix: cast to 'any' to avoid strict Partial<T> mismatch errors in TS build
+          await updateDoc(doc(db, "users", updatedProfile.id), updatedProfile as any);
       } else {
           await updateDoc(doc(db, "users", currentUser.id), {
               pendingUpdate: updatedProfile
@@ -311,8 +312,7 @@ export const App: React.FC = () => {
   const handleApproveUserUpdate = async (userId: string) => {
       const user = users.find(u => u.id === userId);
       if (user && user.pendingUpdate) {
-          // Explicitly cast the update object to 'any' to avoid strict Partial<UserProfile> mismatches
-          // with Firebase's updateDoc when dealing with spread operators and null values
+          // Fix: Explicitly cast to 'any' to satisfy TS build for Firebase updateDoc
           const updateData: any = {
               ...user.pendingUpdate,
               pendingUpdate: null // clear pending
@@ -740,6 +740,7 @@ export const App: React.FC = () => {
             onClose={() => setIsSearchTipsOpen(false)} 
             onStartSearching={() => {
                 setIsSearchTipsOpen(false);
+                setSearchQuery('');
                 // Optionally focus search input or just let the user see the main feed
             }}
         />
