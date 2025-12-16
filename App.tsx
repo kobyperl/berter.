@@ -311,10 +311,13 @@ export const App: React.FC = () => {
   const handleApproveUserUpdate = async (userId: string) => {
       const user = users.find(u => u.id === userId);
       if (user && user.pendingUpdate) {
-          await updateDoc(doc(db, "users", userId), {
+          // Explicitly cast the update object to 'any' to avoid strict Partial<UserProfile> mismatches
+          // with Firebase's updateDoc when dealing with spread operators and null values
+          const updateData: any = {
               ...user.pendingUpdate,
               pendingUpdate: null // clear pending
-          } as any);
+          };
+          await updateDoc(doc(db, "users", userId), updateData);
       }
   };
 
@@ -721,8 +724,26 @@ export const App: React.FC = () => {
         />
 
         <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
-        <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} />
-        <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} />
+        
+        <WhoIsItForModal 
+            isOpen={isWhoIsItForOpen} 
+            onClose={() => setIsWhoIsItForOpen(false)} 
+            onOpenAuth={() => {
+                setIsWhoIsItForOpen(false);
+                setAuthModeRegister(true);
+                setIsAuthModalOpen(true);
+            }}
+        />
+        
+        <SearchTipsModal 
+            isOpen={isSearchTipsOpen} 
+            onClose={() => setIsSearchTipsOpen(false)} 
+            onStartSearching={() => {
+                setIsSearchTipsOpen(false);
+                // Optionally focus search input or just let the user see the main feed
+            }}
+        />
+        
         <AccessibilityModal isOpen={isAccessibilityOpen} onClose={() => setIsAccessibilityOpen(false)} />
     </div>
   );
