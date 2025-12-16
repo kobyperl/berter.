@@ -60,9 +60,11 @@ export const App: React.FC = () => {
       setAuthUid(firebaseUser ? firebaseUser.uid : null);
       
       if (firebaseUser) {
+          // If we already have a full profile in state (from handleRegister), don't overwrite it with a partial one
           setCurrentUser(prev => {
               if (prev && prev.id === firebaseUser.uid) return prev;
               
+              // Temporary placeholder while fetching Firestore data
               return {
                   id: firebaseUser.uid,
                   name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'משתמש',
@@ -100,6 +102,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     let unsubscribeUsers = () => {};
     
+    // Always fetch users if admin, or just fetch them generally if your app logic allows it (for safety)
+    // Here we stick to admin-only to save reads, but ensure logic works
     if (currentUser?.role === 'admin') {
         unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
           const fetchedUsers: UserProfile[] = [];
@@ -285,10 +289,23 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [keywordInput]);
 
+  // Helper for case-insensitive matching
+  const normalizeInput = (input: string | undefined, list: string[]) => {
+      if (!input) return '';
+      const trimmed = input.trim();
+      const match = list.find(item => item.trim().toLowerCase() === trimmed.toLowerCase());
+      return match || trimmed;
+  };
+
   const checkForNewCategory = async (category: string) => {
       if (!category) return;
       const trimmedCat = category.trim();
-      if (!taxonomy.approvedCategories.includes(trimmedCat) && !taxonomy.pendingCategories?.includes(trimmedCat)) {
+      
+      // Check against existing categories case-insensitively to avoid duplicates
+      const existsInApproved = taxonomy.approvedCategories.some(c => c.trim().toLowerCase() === trimmedCat.toLowerCase());
+      const existsInPending = taxonomy.pendingCategories?.some(c => c.trim().toLowerCase() === trimmedCat.toLowerCase());
+
+      if (!existsInApproved && !existsInPending) {
           try {
               await db.collection("system_metadata").doc("taxonomy").update({
                   pendingCategories: firebase.firestore.FieldValue.arrayUnion(trimmedCat)
@@ -300,7 +317,11 @@ export const App: React.FC = () => {
   const checkForNewInterest = async (interest: string) => {
       if (!interest) return;
       const trimmed = interest.trim();
-      if (!taxonomy.approvedInterests.includes(trimmed) && !taxonomy.pendingInterests?.includes(trimmed)) {
+      
+      const existsInApproved = taxonomy.approvedInterests.some(i => i.trim().toLowerCase() === trimmed.toLowerCase());
+      const existsInPending = taxonomy.pendingInterests?.some(i => i.trim().toLowerCase() === trimmed.toLowerCase());
+
+      if (!existsInApproved && !existsInPending) {
           try {
               await db.collection("system_metadata").doc("taxonomy").update({
                   pendingInterests: firebase.firestore.FieldValue.arrayUnion(trimmed)
@@ -324,27 +345,38 @@ export const App: React.FC = () => {
   };
 
   const handleUpdateProfile = async (updatedProfileData: UserProfile) => {
+      // Normalize data: Try to match existing approved items first (to fix casing issues)
+      const normalizedProfile: UserProfile = {
+          ...updatedProfileData,
+          mainField: normalizeInput(updatedProfileData.mainField, taxonomy.approvedCategories),
+          interests: (updatedProfileData.interests || []).map(i => normalizeInput(i, taxonomy.approvedInterests))
+      };
+
       try {
-          if (updatedProfileData.mainField) checkForNewCategory(updatedProfileData.mainField);
+          if (normalizedProfile.mainField) checkForNewCategory(normalizedProfile.mainField);
+          if (normalizedProfile.interests) {
+              normalizedProfile.interests.forEach(interest => checkForNewInterest(interest));
+          }
+
           const isAdmin = currentUser?.role === 'admin';
           if (isAdmin) {
-              const { pendingUpdate, ...dataToSave } = updatedProfileData;
+              const { pendingUpdate, ...dataToSave } = normalizedProfile;
               const cleanProfileData = { ...dataToSave };
               if ('pendingUpdate' in cleanProfileData) delete (cleanProfileData as any).pendingUpdate;
               const firestoreUpdateData = { ...dataToSave, pendingUpdate: firebase.firestore.FieldValue.delete() };
               
-              if (currentUser?.id === updatedProfileData.id) setCurrentUser(cleanProfileData as UserProfile);
-              if (selectedProfile?.id === updatedProfileData.id) setSelectedProfile(cleanProfileData as UserProfile);
-              setOffers(prevOffers => prevOffers.map(o => o.profileId === updatedProfileData.id ? { ...o, profile: cleanProfileData as UserProfile } : o));
+              if (currentUser?.id === normalizedProfile.id) setCurrentUser(cleanProfileData as UserProfile);
+              if (selectedProfile?.id === normalizedProfile.id) setSelectedProfile(cleanProfileData as UserProfile);
+              setOffers(prevOffers => prevOffers.map(o => o.profileId === normalizedProfile.id ? { ...o, profile: cleanProfileData as UserProfile } : o));
 
-              await db.collection("users").doc(updatedProfileData.id).set(firestoreUpdateData, { merge: true });
-              syncUserToOffers(updatedProfileData.id, cleanProfileData as UserProfile);
+              await db.collection("users").doc(normalizedProfile.id).set(firestoreUpdateData, { merge: true });
+              syncUserToOffers(normalizedProfile.id, cleanProfileData as UserProfile);
           } else {
-              const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
-              await db.collection("users").doc(updatedProfileData.id).update({ pendingUpdate: dataToUpdate });
-              const pendingProfile = { ...updatedProfileData, pendingUpdate: dataToUpdate };
-              if (currentUser?.id === updatedProfileData.id) setCurrentUser(prev => prev ? ({ ...prev, pendingUpdate: dataToUpdate }) : null);
-              if (selectedProfile?.id === updatedProfileData.id) setSelectedProfile(pendingProfile);
+              const { id, role, pendingUpdate: p, ...dataToUpdate } = normalizedProfile;
+              await db.collection("users").doc(normalizedProfile.id).update({ pendingUpdate: dataToUpdate });
+              const pendingProfile = { ...normalizedProfile, pendingUpdate: dataToUpdate };
+              if (currentUser?.id === normalizedProfile.id) setCurrentUser(prev => prev ? ({ ...prev, pendingUpdate: dataToUpdate }) : null);
+              if (selectedProfile?.id === normalizedProfile.id) setSelectedProfile(pendingProfile);
           }
       } catch (error) { console.error(error); alert("שגיאה בעדכון הפרופיל"); }
   };
@@ -353,6 +385,7 @@ export const App: React.FC = () => {
       const user = users.find(u => u.id === userId);
       if (!user || !user.pendingUpdate) return;
       if (user.pendingUpdate.mainField) await checkForNewCategory(user.pendingUpdate.mainField);
+      
       const { pendingUpdate, ...baseUserData } = user;
       const finalData: UserProfile = { ...baseUserData, ...pendingUpdate };
       const updatePayload = { ...finalData, pendingUpdate: firebase.firestore.FieldValue.delete() };
@@ -377,18 +410,15 @@ export const App: React.FC = () => {
 
   const handleRegister = async (newUser: Partial<UserProfile>, pass: string) => {
     try {
-        // Handle new categories and interests automatically so admin can review them later
-        if (newUser.mainField) {
-            await checkForNewCategory(newUser.mainField);
-        }
-        if (newUser.interests && newUser.interests.length > 0) {
-            for (const interest of newUser.interests) {
-                await checkForNewInterest(interest);
-            }
-        }
-
+        // 1. Create Auth User
         const userCredential = await auth.createUserWithEmailAndPassword(newUser.email!, pass);
         const uid = userCredential.user!.uid;
+
+        // 2. Prepare Profile Data (Normalize inputs)
+        // Note: We use the raw input as "Main Field" even if it's new. It will just be pending approval.
+        const normalizedMainField = normalizeInput(newUser.mainField, taxonomy.approvedCategories) || newUser.mainField?.trim() || 'כללי';
+        const normalizedInterests = (newUser.interests || []).map(i => normalizeInput(i, taxonomy.approvedInterests) || i.trim());
+
         const userProfile: UserProfile = {
             id: uid,
             name: newUser.name || 'משתמש חדש',
@@ -398,13 +428,31 @@ export const App: React.FC = () => {
             portfolioUrl: newUser.portfolioUrl || '',
             portfolioImages: newUser.portfolioImages || [],
             expertise: newUser.expertise || ExpertiseLevel.MID,
-            mainField: newUser.mainField || 'כללי',
-            interests: newUser.interests || [],
+            mainField: normalizedMainField, 
+            interests: normalizedInterests,
             joinedAt: new Date().toISOString()
         };
+
+        // 3. Save to Firestore (CRITICAL: Do this BEFORE metadata checks to ensure user exists)
         await db.collection("users").doc(uid).set(userProfile);
+
+        // 4. Update Local State IMMEDIATE (CRITICAL for "Immediate Login" feel)
+        // This overrides the race condition where onAuthStateChanged might fire before the doc is saved
+        setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
+
+        // 5. Update Taxonomy (Non-blocking / "Fire and Forget")
+        // We do this concurrently so it doesn't stop user creation if it fails
+        if (normalizedMainField) {
+            checkForNewCategory(normalizedMainField).catch(e => console.error("Category sync error", e));
+        }
+        if (normalizedInterests.length > 0) {
+            normalizedInterests.forEach(interest => {
+                checkForNewInterest(interest).catch(e => console.error("Interest sync error", e));
+            });
+        }
         
+        // 6. Send Welcome Email (Non-blocking)
         fetch('/api/emails/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -415,10 +463,14 @@ export const App: React.FC = () => {
             })
         }).catch(err => console.warn('Failed to send welcome email', err));
 
+        // 7. Check for profile completion
         if (!userProfile.portfolioUrl && (!userProfile.portfolioImages || userProfile.portfolioImages.length === 0)) {
             setIsCompleteProfileModalOpen(true);
         }
-    } catch (error: any) { alert(`שגיאה בהרשמה: ${error.message}`); }
+    } catch (error: any) { 
+        console.error("Registration Error:", error);
+        alert(`שגיאה בהרשמה: ${error.message}`); 
+    }
   };
 
   const handleApproveCategory = async (category: string) => {

@@ -62,13 +62,13 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Calculate Counts
+  // Calculate Counts with Case-Insensitive Matching
   const getCategoryCount = (category: string) => {
-    return users.filter(u => u.mainField === category).length;
+    return users.filter(u => (u.mainField || '').trim().toLowerCase() === category.trim().toLowerCase()).length;
   };
 
   const getInterestCount = (interest: string) => {
-    return users.filter(u => u.interests?.includes(interest)).length;
+    return users.filter(u => (u.interests || []).some(i => i.trim().toLowerCase() === interest.trim().toLowerCase())).length;
   };
 
   // Sort by popularity (count) descending
