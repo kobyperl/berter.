@@ -79,6 +79,7 @@
 /* Apply globally */
 body {
   font-family: 'Catamaran', sans-serif;
+  transition: filter 0.3s ease;
 }
 
 /* Delicate Scrollbar Styling */
@@ -98,4 +99,116 @@ body {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8; /* slate-400 */
+}
+
+/* --- Accessibility Toolbar Overrides --- */
+
+/* Grayscale Mode */
+.acc-grayscale {
+    filter: grayscale(100%) !important;
+}
+
+/* High Contrast Mode (Dark Background, Yellow/White Text) */
+/* We use a specific selector pattern to avoid overriding the toolbar itself later */
+.acc-high-contrast {
+    background-color: #000000 !important;
+    color: #ffff00 !important;
+}
+
+.acc-high-contrast * {
+    background-color: #000000 !important;
+    color: #ffff00 !important;
+    border-color: #ffff00 !important;
+    box-shadow: none !important;
+}
+
+/* Exclude images/media from high contrast background override */
+.acc-high-contrast img, 
+.acc-high-contrast video,
+.acc-high-contrast svg {
+    background-color: transparent !important;
+}
+
+.acc-high-contrast ::placeholder {
+    color: #ffff00 !important;
+    opacity: 0.7;
+}
+
+/* Light Background Mode (Light Background, Black Text) */
+.acc-light-bg {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+.acc-light-bg * {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #000000 !important;
+}
+
+.acc-light-bg img, 
+.acc-light-bg svg {
+    background-color: transparent !important;
+}
+
+/* Highlight Links */
+.acc-highlight-links a,
+.acc-highlight-links button {
+    text-decoration: underline !important;
+    background-color: #ffff00 !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+}
+
+/* Readable Font */
+.acc-readable-font * {
+    font-family: Arial, Helvetica, sans-serif !important;
+}
+
+/* --- Widget Protection Rules --- */
+/* These rules ensure the accessibility widget retains its styling even when accessibility modes are active */
+
+/* Protect the floating button */
+.acc-high-contrast .accessibility-protected-btn,
+.acc-light-bg .accessibility-protected-btn {
+    background-color: #2563eb !important; /* blue-600 */
+    color: #ffffff !important;
+    border-color: transparent !important;
+}
+
+/* Protect the menu container */
+.acc-high-contrast .accessibility-protected-menu,
+.acc-light-bg .accessibility-protected-menu {
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important; /* slate-200 */
+}
+
+/* Protect text inside the menu */
+.acc-high-contrast .accessibility-protected-menu *,
+.acc-light-bg .accessibility-protected-menu * {
+    background-color: transparent !important; /* Inherit or transparent */
+    color: #1e293b !important; /* slate-800 base */
+    border-color: #e2e8f0 !important;
+    box-shadow: none; 
+}
+
+/* Fix specific button states inside the menu */
+.acc-high-contrast .accessibility-protected-menu button:hover,
+.acc-light-bg .accessibility-protected-menu button:hover {
+    background-color: #f8fafc !important; /* slate-50 */
+}
+
+/* Ensure icons inside the menu remain visible */
+.acc-high-contrast .accessibility-protected-menu svg,
+.acc-light-bg .accessibility-protected-menu svg {
+    color: currentColor !important;
+    background-color: transparent !important;
+}
+
+/* Fix specific active states inside menu (e.g. active toggle) */
+.acc-high-contrast .accessibility-protected-menu .bg-blue-50,
+.acc-light-bg .accessibility-protected-menu .bg-blue-50 {
+    background-color: #eff6ff !important; /* blue-50 */
+    border-color: #3b82f6 !important; /* blue-500 */
+    color: #1e40af !important; /* blue-800 */
 }

@@ -1,18 +1,17 @@
 
-
-
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mail, Lock, Briefcase, CheckCircle2, Heart, Plus, Tag, Camera, Image as ImageIcon, Trash2, Loader2, Upload } from 'lucide-react';
+import { X, Mail, Lock, Briefcase, CheckCircle2, Heart, Plus, Tag, Camera, Image as ImageIcon, Trash2, Loader2, Upload, AlertCircle } from 'lucide-react';
 import { UserProfile, ExpertiseLevel } from '../types';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (email: string, pass: string) => Promise<void>; // Updated signature to Promise for await
+  onLogin: (email: string, pass: string) => Promise<void>;
   onRegister: (user: Partial<UserProfile>, pass: string) => void;
   startOnRegister?: boolean;
   availableCategories: string[];
   availableInterests: string[];
+  onOpenPrivacyPolicy?: () => void; // New prop for privacy policy
 }
 
 // Utility to compress image
@@ -51,16 +50,29 @@ const compressImage = (file: File): Promise<string> => {
     });
 };
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, onRegister, startOnRegister = false, availableCategories, availableInterests }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    onLogin, 
+    onRegister, 
+    startOnRegister = false, 
+    availableCategories, 
+    availableInterests,
+    onOpenPrivacyPolicy 
+}) => {
   const [isLoginMode, setIsLoginMode] = useState(!startOnRegister);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // New Loading State
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Validation State to trigger red borders
+  const [showErrors, setShowErrors] = useState(false);
   
   // Reset mode when isOpen changes or startOnRegister changes
   useEffect(() => {
     if (isOpen) {
         setIsLoginMode(!startOnRegister);
         setIsSubmitting(false);
+        setShowErrors(false); // Reset errors on open
     }
   }, [isOpen, startOnRegister]);
   
@@ -95,6 +107,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
       setMainField('');
       setAvatarDataUrl('');
       setPortfolioImages([]);
+      setShowErrors(false);
     }
   }, [isLoginMode]);
 
@@ -151,25 +164,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setShowErrors(false); // Reset first
     
     try {
         if (isLoginMode) {
+          // Basic validation for login
+          if (!email.trim() || !password.trim()) {
+              alert("נא למלא אימייל וסיסמה");
+              setShowErrors(true);
+              setIsSubmitting(false);
+              return;
+          }
           await onLogin(email, password);
-          // If successful, the modal will likely close via parent props
         } else {
-          // Validation Logic
-          if (!mainField.trim()) {
-            alert("חובה לבחור או להקליד תחום עיסוק ראשי");
-            setIsSubmitting(false);
-            return;
-          }
-          if (interestsList.length < 2) {
-            alert("חובה לבחור לפחות 2 תחומי עניין");
-            setIsSubmitting(false);
-            return;
-          }
-          if (!acceptedPrivacy) {
-              alert("חובה לאשר את מדיניות הפרטיות כדי להירשם");
+          // Comprehensive Validation Logic for Registration
+          const missingFields = [];
+
+          if (!firstName.trim()) missingFields.push("שם פרטי");
+          if (!lastName.trim()) missingFields.push("שם משפחה");
+          if (!email.trim()) missingFields.push("כתובת אימייל");
+          if (!password.trim()) missingFields.push("סיסמה");
+          if (!mainField.trim()) missingFields.push("תחום עיסוק ראשי");
+          if (interestsList.length < 2) missingFields.push("לפחות 2 תחומי עניין");
+          if (!acceptedPrivacy) missingFields.push("אישור תנאי שימוש");
+
+          if (missingFields.length > 0) {
+              const message = "לא ניתן להשלים את ההרשמה כי חסרים פרטים:\n\n• " + missingFields.join("\n• ");
+              alert(message);
+              setShowErrors(true); // Trigger red borders
               setIsSubmitting(false);
               return;
           }
@@ -220,8 +242,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     );
   }
 
-  // Improved Input Styles - White background, clearer border
-  const inputClassName = "w-full bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm";
+  // Determine error style
+  const getErrorClass = (value: any, isRequired: boolean = true) => {
+      if (!showErrors) return "border-slate-300";
+      if (isRequired && (!value || (Array.isArray(value) && value.length === 0))) {
+          return "border-red-500 bg-red-50";
+      }
+      return "border-slate-300";
+  };
+
+  const inputBaseClass = "w-full text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm border";
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
@@ -239,7 +269,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
             </div>
             
             <div className="p-6 bg-slate-50/50 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                <form onSubmit={handleSubmit} className="space-y-4">
+                
+                {showErrors && !isLoginMode && (
+                    <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-start gap-2 text-sm animate-pulse">
+                        <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                        <div>
+                            <strong>שים לב:</strong> חלק משדות החובה לא מלאים. אנא השלם אותם כדי להמשיך.
+                        </div>
+                    </div>
+                )}
+
+                {/* noValidate added to prevent default browser tooltips, we handle validation manually */}
+                <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                     
                     {/* Avatar Upload (Only Registration) */}
                     {!isLoginMode && (
@@ -274,25 +315,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                     {!isLoginMode && (
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1.5">שם פרטי</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">שם פרטי <span className="text-red-500">*</span></label>
                                 <input 
-                                    required
                                     type="text"
                                     name="firstName"
                                     autoComplete="given-name"
-                                    className={inputClassName}
+                                    className={`${inputBaseClass} ${getErrorClass(firstName)}`}
                                     value={firstName}
                                     onChange={e => setFirstName(e.target.value)}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1.5">שם משפחה</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">שם משפחה <span className="text-red-500">*</span></label>
                                 <input 
-                                    required
                                     type="text"
                                     name="lastName"
                                     autoComplete="family-name"
-                                    className={inputClassName}
+                                    className={`${inputBaseClass} ${getErrorClass(lastName)}`}
                                     value={lastName}
                                     onChange={e => setLastName(e.target.value)}
                                 />
@@ -301,15 +340,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                     )}
 
                     <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5">כתובת אימייל</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">כתובת אימייל <span className="text-red-500">*</span></label>
                         <div className="relative">
                             <Mail className="w-4 h-4 absolute right-3 top-3.5 text-slate-400" />
                             <input 
-                                required
                                 type="email"
                                 name="email"
                                 autoComplete="email"
-                                className={`${inputClassName} pr-10`}
+                                className={`${inputBaseClass} pr-10 ${getErrorClass(email)}`}
                                 placeholder="name@example.com"
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
@@ -318,15 +356,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                     </div>
 
                     <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5">סיסמה</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">סיסמה <span className="text-red-500">*</span></label>
                         <div className="relative">
                             <Lock className="w-4 h-4 absolute right-3 top-3.5 text-slate-400" />
                             <input 
-                                required
                                 type="password"
                                 name="password"
                                 autoComplete={isLoginMode ? "current-password" : "new-password"}
-                                className={`${inputClassName} pr-10`}
+                                className={`${inputBaseClass} pr-10 ${getErrorClass(password)}`}
                                 placeholder="******"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
@@ -337,16 +374,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                     {!isLoginMode && (
                         <>
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1.5">תחום עיסוק ראשי (בחר או הקלד)</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">תחום עיסוק ראשי <span className="text-red-500">*</span></label>
                                 <div className="relative">
                                     <Briefcase className="w-4 h-4 absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
                                     <input 
-                                        required
                                         type="text"
                                         list="categories-list"
                                         name="mainField"
                                         autoComplete="off"
-                                        className={`${inputClassName} pr-10`}
+                                        className={`${inputBaseClass} pr-10 ${getErrorClass(mainField)}`}
                                         placeholder="התחל להקליד כדי לבחור..."
                                         value={mainField}
                                         onChange={e => setMainField(e.target.value)}
@@ -359,8 +395,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1.5">תחומי עניין (חובה לבחור לפחות 2)</label>
+                            <div className={`p-2 rounded-xl transition-colors ${showErrors && interestsList.length < 2 ? 'bg-red-50 border border-red-200' : ''}`}>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">תחומי עניין (חובה לבחור לפחות 2) <span className="text-red-500">*</span></label>
                                 <div className="relative flex gap-2 mb-2">
                                     <div className="relative flex-1">
                                       <Heart className="w-4 h-4 absolute right-3 top-3.5 text-slate-400" />
@@ -369,7 +405,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                                           name="interestInput"
                                           list="interests-list"
                                           autoComplete="off"
-                                          className={`${inputClassName} pr-10`}
+                                          className={`${inputBaseClass} pr-10`}
                                           placeholder="בחר או הקלד תחום חדש..."
                                           value={interestInput}
                                           onChange={e => setInterestInput(e.target.value)}
@@ -413,8 +449,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                                       <span className="text-xs text-slate-400">לדוגמה: ספורט, בישול, טכנולוגיה...</span>
                                     )}
                                 </div>
-                                {interestsList.length > 0 && interestsList.length < 2 && (
-                                    <p className="text-xs text-red-500 mt-1">נא לבחור לפחות עוד תחום עניין אחד</p>
+                                {showErrors && interestsList.length < 2 && (
+                                    <p className="text-xs text-red-500 mt-1 font-bold">חובה לבחור לפחות 2 תחומי עניין</p>
                                 )}
                             </div>
 
@@ -462,7 +498,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                                 <input 
                                     type="url"
                                     name="portfolioUrl"
-                                    className={inputClassName}
+                                    className={inputBaseClass}
                                     placeholder="https://portfolio.com"
                                     value={portfolioUrl}
                                     onChange={e => setPortfolioUrl(e.target.value)}
@@ -470,7 +506,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                             </div>
 
                             {/* Privacy Policy Consent */}
-                            <div className="flex items-start gap-2 bg-slate-100 p-3 rounded-xl border border-slate-200 mt-2">
+                            <div className={`flex items-start gap-2 p-3 rounded-xl border mt-2 ${showErrors && !acceptedPrivacy ? 'bg-red-50 border-red-200' : 'bg-slate-100 border-slate-200'}`}>
                                 <input 
                                     type="checkbox" 
                                     id="privacyConsent"
@@ -479,7 +515,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
                                     onChange={(e) => setAcceptedPrivacy(e.target.checked)}
                                 />
                                 <label htmlFor="privacyConsent" className="text-xs text-slate-600 cursor-pointer">
-                                    אני מאשר/ת את <a href="#" className="text-brand-600 underline font-bold hover:text-brand-800">מדיניות הפרטיות</a> ואת תנאי השימוש באתר.
+                                    אני מאשר/ת את <button type="button" onClick={(e) => {e.preventDefault(); onOpenPrivacyPolicy && onOpenPrivacyPolicy()}} className="text-brand-600 underline font-bold hover:text-brand-800">מדיניות הפרטיות</button> ואת תנאי השימוש באתר. <span className="text-red-500">*</span>
                                 </label>
                             </div>
                         </>
@@ -487,7 +523,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
 
                     <button 
                         type="submit" 
-                        disabled={isSubmitting || (!isLoginMode && (!acceptedPrivacy || interestsList.length < 2 || !mainField || isUploading))}
+                        disabled={isSubmitting || (!isLoginMode && isUploading)}
                         className="w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-sm mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         {isSubmitting && <Loader2 className="w-5 h-5 animate-spin" />}
