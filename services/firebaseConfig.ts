@@ -1,7 +1,8 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+
+import firebase from "firebase/compat/app";
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
+import "firebase/compat/analytics";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC8b2B9twtEvjNW9W6yF8MriqAICyd0F64",
@@ -9,11 +10,16 @@ const firebaseConfig = {
   projectId: "barter-app-final",
   storageBucket: "barter-app-final.firebasestorage.app",
   messagingSenderId: "376228645270",
-  appId: "1:376228645270:web:d048f54c13a280051db5b7"
+  appId: "1:376228645270:web:d048f54c13a280051db5b7",
+  measurementId: "G-XXXXXXXXXX"
 };
 
-const app = initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+export const auth = firebase.auth();
+export const db = firebase.firestore();
+export const analytics = typeof window !== 'undefined' ? firebase.analytics() : null;
+
+export default firebase;

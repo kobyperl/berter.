@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Trash2, Megaphone, Save, Upload, Check, Pencil, Tag, Target, Link as LinkIcon, Copy, Briefcase } from 'lucide-react';
+import { X, Plus, Trash2, Megaphone, Save, Upload, Check, Pencil, Tag, Target, Link as LinkIcon, Copy, Briefcase, Eye, EyeOff, Power } from 'lucide-react';
 import { SystemAd } from '../types';
 
 interface AdminAdManagerProps {
@@ -104,7 +104,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
       setActiveTab('create');
   };
 
-  // V1 Implementation: Duplicate Ad Logic
   const handleDuplicate = (ad: SystemAd) => {
       const newAd: SystemAd = {
           ...ad,
@@ -114,9 +113,13 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
       };
       
       onAddAd(newAd);
-      // Optional: Automatically switch to edit mode for the new copy
-      // handleEditClick(newAd); 
       alert('המודעה שוכפלה בהצלחה. היא מופיעה כעת ברשימה כלא פעילה.');
+  };
+
+  const handleToggleStatus = (ad: SystemAd) => {
+      if (onEditAd) {
+          onEditAd({ ...ad, isActive: !ad.isActive });
+      }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,10 +172,14 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
         targetCategories: selectedCategories,
         targetInterests: selectedInterests,
         subLabel: subLabel,
-        isActive: true
+        isActive: true // Defaults to true on save unless explicitly edited elsewhere
     };
 
     if (editingAdId && onEditAd) {
+        // Keep original active state if editing, unless it's a new one
+        const originalAd = ads.find(a => a.id === editingAdId);
+        if (originalAd) adData.isActive = originalAd.isActive;
+        
         onEditAd(adData);
     } else {
         onAddAd(adData);
@@ -181,7 +188,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
     resetForm();
   };
   
-  // Filter interests/categories for UI lists - DEFENSIVE CHECK ADDED
   const filteredInterests = availableInterests.filter(i => 
     (i || '').toLowerCase().includes(interestSearch.toLowerCase())
   );
@@ -192,7 +198,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
-  // New Input Style (Purple Theme for Admin) - White bg
   const inputClassName = "w-full bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-lg p-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all duration-200 shadow-sm";
 
   return (
@@ -236,7 +241,7 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                 {activeTab === 'create' ? (
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            
+                            {/* ... (Existing Create Form Code remains same) ... */}
                             {/* Left Column: Visuals */}
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-2">תמונת קמפיין</label>
@@ -285,9 +290,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                         value={subLabel}
                                         onChange={e => setSubLabel(e.target.value)}
                                     />
-                                    <p className="text-[10px] text-slate-500 mt-1">
-                                        * אם לא יוזן טקסט, האזור התחתון יישאר נקי.
-                                    </p>
                                 </div>
                             </div>
 
@@ -311,9 +313,9 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                         הגדרות טרגוט (קהל יעד)
                                     </h4>
                                     
-                                    {/* Professions / Categories */}
+                                    {/* Professions */}
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-2">מקצועות וקטגוריות (ניתן להוסיף חדש)</label>
+                                        <label className="block text-xs font-bold text-slate-600 mb-2">מקצועות וקטגוריות</label>
                                         <div className="relative mb-2">
                                             <Briefcase className="w-3 h-3 absolute right-3 top-3 text-slate-400" />
                                             <input 
@@ -352,26 +354,12 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                                     {cat}
                                                 </button>
                                             ))}
-                                             {/* Allow adding custom category if not found */}
-                                             {categorySearch && !filteredCategories.includes(categorySearch) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        toggleCategory(categorySearch);
-                                                        setCategorySearch('');
-                                                    }}
-                                                    className="px-3 py-1 rounded-full text-xs border border-dashed border-purple-300 text-purple-600 bg-purple-50 hover:bg-purple-100 flex items-center gap-1"
-                                                >
-                                                    <Plus className="w-3 h-3" />
-                                                    הוסף "{categorySearch}"
-                                                </button>
-                                            )}
                                         </div>
                                     </div>
 
-                                    {/* Subject Matters / Interests Selector */}
+                                    {/* Interests */}
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">תחומי עניין / נושאים (ניתן להוסיף חדש)</label>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">תחומי עניין / נושאים</label>
                                         <div className="relative mb-2">
                                             <Tag className="w-3 h-3 absolute right-3 top-3 text-slate-400" />
                                             <input 
@@ -398,20 +386,6 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                                                     {interest}
                                                 </button>
                                             ))}
-                                            {/* Allow adding custom interest if not found */}
-                                            {interestSearch && !filteredInterests.includes(interestSearch) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        toggleInterest(interestSearch);
-                                                        setInterestSearch('');
-                                                    }}
-                                                    className="px-3 py-1 rounded-full text-xs border border-dashed border-pink-300 text-pink-500 bg-pink-50 hover:bg-pink-100 flex items-center gap-1"
-                                                >
-                                                    <Plus className="w-3 h-3" />
-                                                    הוסף "{interestSearch}"
-                                                </button>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -491,20 +465,32 @@ export const AdminAdManager: React.FC<AdminAdManagerProps> = ({ isOpen, onClose,
                             </div>
                         ) : (
                             ads.map(ad => (
-                                <div key={ad.id} className="flex flex-col sm:flex-row items-center gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow group">
-                                    <div className="relative w-full sm:w-32 h-24">
+                                <div key={ad.id} className={`flex flex-col sm:flex-row items-center gap-4 border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow group ${ad.isActive ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-200 opacity-75'}`}>
+                                    
+                                    {/* Toggle Switch */}
+                                    <div className="flex flex-col items-center gap-1 sm:border-l sm:pl-4 sm:ml-2">
+                                        <button
+                                            onClick={() => handleToggleStatus(ad)}
+                                            className={`relative w-10 h-6 rounded-full transition-colors duration-200 ${ad.isActive ? 'bg-green-500' : 'bg-slate-300'}`}
+                                            title={ad.isActive ? 'השבת מודעה' : 'הפעל מודעה'}
+                                        >
+                                            <span className={`absolute top-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 shadow-sm ${ad.isActive ? 'left-1' : 'left-5'}`}></span>
+                                        </button>
+                                        <span className="text-[10px] font-bold text-slate-500">{ad.isActive ? 'פעיל' : 'כבוי'}</span>
+                                    </div>
+
+                                    <div className="relative w-full sm:w-32 h-24 shrink-0">
                                         <img 
                                             src={ad.imageUrl} 
                                             alt={ad.title} 
-                                            className="w-full h-full object-cover rounded-lg"
+                                            className={`w-full h-full object-cover rounded-lg ${!ad.isActive ? 'grayscale' : ''}`}
                                         />
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-lg"></div>
                                     </div>
                                     
-                                    <div className="flex-1 text-right w-full">
+                                    <div className="flex-1 text-right w-full min-w-0">
                                         <div className="flex justify-between items-start">
-                                            <h4 className="font-bold text-slate-800 text-lg">{ad.title}</h4>
-                                            <div className="flex gap-2">
+                                            <h4 className={`font-bold text-lg truncate ${ad.isActive ? 'text-slate-800' : 'text-slate-500'}`}>{ad.title}</h4>
+                                            <div className="flex gap-2 shrink-0">
                                                 {/* Duplicate Button */}
                                                 <button 
                                                     onClick={() => handleDuplicate(ad)}

@@ -23,7 +23,7 @@ import { AdminOffersModal } from './components/AdminOffersModal';
 import { AccessibilityModal } from './components/AccessibilityModal';
 import { CookieConsentModal } from './components/CookieConsentModal';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
-import { EmailCenterModal } from './components/EmailCenterModal'; // New Import
+import { EmailCenterModal } from './components/EmailCenterModal';
 
 // Data & Types
 import { CATEGORIES, COMMON_INTERESTS, ADMIN_EMAIL } from './constants';
@@ -31,31 +31,7 @@ import { Filter, MapPin, Clock, Repeat, Search, ChevronDown, ChevronUp, LayoutGr
 import { Message, UserProfile, BarterOffer, ExpertiseLevel, SystemAd, SystemTaxonomy } from './types';
 
 // Firebase
-import { auth, db } from './services/firebaseConfig';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  onSnapshot,
-  QuerySnapshot,
-  DocumentData,
-  deleteField,
-  arrayUnion,
-  arrayRemove,
-  getDocs,
-  getDoc,
-  query,
-  where,
-  writeBatch
-} from 'firebase/firestore';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
-} from 'firebase/auth';
+import firebase, { auth, db } from './services/firebaseConfig';
 
 export const App: React.FC = () => {
   // --- Data State ---
@@ -72,12 +48,13 @@ export const App: React.FC = () => {
       approvedCategories: [],
       pendingCategories: [],
       approvedInterests: [],
-      pendingInterests: []
+      pendingInterests: [],
+      categoryHierarchy: {}
   });
 
   // --- Auth Listener & Current User Sync ---
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       setAuthUid(firebaseUser ? firebaseUser.uid : null);
       
       if (firebaseUser) {
@@ -106,9 +83,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!authUid) return;
 
-    const userDocRef = doc(db, "users", authUid);
-    const unsubscribeUserDoc = onSnapshot(userDocRef, (docSnap) => {
-        if (docSnap.exists()) {
+    const userDocRef = db.collection("users").doc(authUid);
+    const unsubscribeUserDoc = userDocRef.onSnapshot((docSnap) => {
+        if (docSnap.exists) {
             const firestoreData = docSnap.data() as UserProfile;
             setCurrentUser(firestoreData);
         }
@@ -122,41 +99,42 @@ export const App: React.FC = () => {
     let unsubscribeUsers = () => {};
     
     if (currentUser?.role === 'admin') {
-        unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot: QuerySnapshot<DocumentData>) => {
+        unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
           const fetchedUsers: UserProfile[] = [];
           snapshot.forEach((doc) => fetchedUsers.push(doc.data() as UserProfile));
           setUsers(fetchedUsers);
         });
     }
 
-    const unsubscribeOffers = onSnapshot(collection(db, "offers"), (snapshot: QuerySnapshot<DocumentData>) => {
+    const unsubscribeOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetchedOffers: BarterOffer[] = [];
       snapshot.forEach((doc) => fetchedOffers.push(doc.data() as BarterOffer));
       setOffers(fetchedOffers);
       setIsLoading(false); 
     });
 
-    const unsubscribeAds = onSnapshot(collection(db, "systemAds"), (snapshot: QuerySnapshot<DocumentData>) => {
+    const unsubscribeAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetchedAds: SystemAd[] = [];
       snapshot.forEach((doc) => fetchedAds.push(doc.data() as SystemAd));
       setSystemAds(fetchedAds);
     });
 
-    const unsubscribeMessages = onSnapshot(collection(db, "messages"), (snapshot: QuerySnapshot<DocumentData>) => {
+    const unsubscribeMessages = db.collection("messages").onSnapshot((snapshot) => {
         const fetchedMessages: Message[] = [];
         snapshot.forEach((doc) => fetchedMessages.push(doc.data() as Message));
         setMessages(fetchedMessages);
     });
 
-    const unsubscribeTaxonomy = onSnapshot(doc(db, "system_metadata", "taxonomy"), (docSnap) => {
-        if (docSnap.exists()) {
+    const unsubscribeTaxonomy = db.collection("system_metadata").doc("taxonomy").onSnapshot((docSnap) => {
+        if (docSnap.exists) {
             setTaxonomy(docSnap.data() as SystemTaxonomy);
         } else {
-            setDoc(doc(db, "system_metadata", "taxonomy"), {
+            db.collection("system_metadata").doc("taxonomy").set({
                 approvedCategories: CATEGORIES,
                 pendingCategories: [],
                 approvedInterests: COMMON_INTERESTS,
-                pendingInterests: []
+                pendingInterests: [],
+                categoryHierarchy: {}
             });
         }
     });
@@ -190,7 +168,8 @@ export const App: React.FC = () => {
   
   // Admin UI States
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
-  const [isEmailCenterOpen, setIsEmailCenterOpen] = useState(false); // New State
+  const [isEmailCenterOpen, setIsEmailCenterOpen] = useState(false);
+  const [isAdminAnalyticsOpen, setIsAdminAnalyticsOpen] = useState(false); // To handle specific actions from main dash
   
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isWhoIsItForOpen, setIsWhoIsItForOpen] = useState(false);
@@ -308,8 +287,8 @@ export const App: React.FC = () => {
       const trimmedCat = category.trim();
       if (!taxonomy.approvedCategories.includes(trimmedCat) && !taxonomy.pendingCategories?.includes(trimmedCat)) {
           try {
-              await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-                  pendingCategories: arrayUnion(trimmedCat)
+              await db.collection("system_metadata").doc("taxonomy").update({
+                  pendingCategories: firebase.firestore.FieldValue.arrayUnion(trimmedCat)
               });
           } catch (error) { console.error("Error adding pending category", error); }
       }
@@ -320,8 +299,8 @@ export const App: React.FC = () => {
       const trimmed = interest.trim();
       if (!taxonomy.approvedInterests.includes(trimmed) && !taxonomy.pendingInterests?.includes(trimmed)) {
           try {
-              await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-                  pendingInterests: arrayUnion(trimmed)
+              await db.collection("system_metadata").doc("taxonomy").update({
+                  pendingInterests: firebase.firestore.FieldValue.arrayUnion(trimmed)
               });
           } catch (e) { console.error(e); }
       }
@@ -329,12 +308,12 @@ export const App: React.FC = () => {
 
   const syncUserToOffers = async (userId: string, updatedProfile: UserProfile) => {
       try {
-          const q = query(collection(db, "offers"), where("profileId", "==", userId));
-          const querySnapshot = await getDocs(q);
+          const q = db.collection("offers").where("profileId", "==", userId);
+          const querySnapshot = await q.get();
           if (querySnapshot.empty) return;
-          const batch = writeBatch(db);
+          const batch = db.batch();
           querySnapshot.forEach((docSnapshot) => {
-              const offerRef = doc(db, "offers", docSnapshot.id);
+              const offerRef = db.collection("offers").doc(docSnapshot.id);
               batch.update(offerRef, { profile: updatedProfile });
           });
           await batch.commit();
@@ -349,17 +328,17 @@ export const App: React.FC = () => {
               const { pendingUpdate, ...dataToSave } = updatedProfileData;
               const cleanProfileData = { ...dataToSave };
               if ('pendingUpdate' in cleanProfileData) delete (cleanProfileData as any).pendingUpdate;
-              const firestoreUpdateData = { ...dataToSave, pendingUpdate: deleteField() };
+              const firestoreUpdateData = { ...dataToSave, pendingUpdate: firebase.firestore.FieldValue.delete() };
               
               if (currentUser?.id === updatedProfileData.id) setCurrentUser(cleanProfileData as UserProfile);
               if (selectedProfile?.id === updatedProfileData.id) setSelectedProfile(cleanProfileData as UserProfile);
               setOffers(prevOffers => prevOffers.map(o => o.profileId === updatedProfileData.id ? { ...o, profile: cleanProfileData as UserProfile } : o));
 
-              await setDoc(doc(db, "users", updatedProfileData.id), firestoreUpdateData, { merge: true });
+              await db.collection("users").doc(updatedProfileData.id).set(firestoreUpdateData, { merge: true });
               syncUserToOffers(updatedProfileData.id, cleanProfileData as UserProfile);
           } else {
               const { id, role, pendingUpdate: p, ...dataToUpdate } = updatedProfileData;
-              await updateDoc(doc(db, "users", updatedProfileData.id), { pendingUpdate: dataToUpdate });
+              await db.collection("users").doc(updatedProfileData.id).update({ pendingUpdate: dataToUpdate });
               const pendingProfile = { ...updatedProfileData, pendingUpdate: dataToUpdate };
               if (currentUser?.id === updatedProfileData.id) setCurrentUser(prev => prev ? ({ ...prev, pendingUpdate: dataToUpdate }) : null);
               if (selectedProfile?.id === updatedProfileData.id) setSelectedProfile(pendingProfile);
@@ -373,9 +352,9 @@ export const App: React.FC = () => {
       if (user.pendingUpdate.mainField) await checkForNewCategory(user.pendingUpdate.mainField);
       const { pendingUpdate, ...baseUserData } = user;
       const finalData: UserProfile = { ...baseUserData, ...pendingUpdate };
-      const updatePayload = { ...finalData, pendingUpdate: deleteField() };
+      const updatePayload = { ...finalData, pendingUpdate: firebase.firestore.FieldValue.delete() };
       try {
-          await setDoc(doc(db, "users", userId), updatePayload, { merge: true });
+          await db.collection("users").doc(userId).set(updatePayload, { merge: true });
           await syncUserToOffers(userId, finalData);
           setOffers(prevOffers => prevOffers.map(o => o.profileId === userId ? { ...o, profile: finalData } : o));
           if (selectedProfile?.id === userId) setSelectedProfile(finalData);
@@ -384,7 +363,7 @@ export const App: React.FC = () => {
 
   const handleRejectUserUpdate = async (userId: string) => {
       try {
-        await updateDoc(doc(db, "users", userId), { pendingUpdate: deleteField() });
+        await db.collection("users").doc(userId).update({ pendingUpdate: firebase.firestore.FieldValue.delete() });
         const user = users.find(u => u.id === userId);
         if (user && selectedProfile?.id === userId) {
              const { pendingUpdate, ...cleanUser } = user;
@@ -395,9 +374,18 @@ export const App: React.FC = () => {
 
   const handleRegister = async (newUser: Partial<UserProfile>, pass: string) => {
     try {
-        if (newUser.mainField) await checkForNewCategory(newUser.mainField);
-        const userCredential = await createUserWithEmailAndPassword(auth, newUser.email!, pass);
-        const uid = userCredential.user.uid;
+        // Handle new categories and interests automatically so admin can review them later
+        if (newUser.mainField) {
+            await checkForNewCategory(newUser.mainField);
+        }
+        if (newUser.interests && newUser.interests.length > 0) {
+            for (const interest of newUser.interests) {
+                await checkForNewInterest(interest);
+            }
+        }
+
+        const userCredential = await auth.createUserWithEmailAndPassword(newUser.email!, pass);
+        const uid = userCredential.user!.uid;
         const userProfile: UserProfile = {
             id: uid,
             name: newUser.name || 'משתמש חדש',
@@ -411,10 +399,9 @@ export const App: React.FC = () => {
             interests: newUser.interests || [],
             joinedAt: new Date().toISOString()
         };
-        await setDoc(doc(db, "users", uid), userProfile);
+        await db.collection("users").doc(uid).set(userProfile);
         setIsAuthModalOpen(false);
         
-        // Trigger Welcome Email (Integration)
         fetch('/api/emails/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -433,50 +420,139 @@ export const App: React.FC = () => {
 
   const handleApproveCategory = async (category: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-              approvedCategories: arrayUnion(category),
-              pendingCategories: arrayRemove(category)
+          await db.collection("system_metadata").doc("taxonomy").update({
+              approvedCategories: firebase.firestore.FieldValue.arrayUnion(category),
+              pendingCategories: firebase.firestore.FieldValue.arrayRemove(category)
           });
       } catch (e) { console.error(e); }
   };
   
   const handleRejectCategory = async (category: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), { 
-              pendingCategories: arrayRemove(category),
-              approvedCategories: arrayRemove(category) 
+          await db.collection("system_metadata").doc("taxonomy").update({ 
+              pendingCategories: firebase.firestore.FieldValue.arrayRemove(category),
+              approvedCategories: firebase.firestore.FieldValue.arrayRemove(category) 
           });
       } catch (e) { console.error(e); }
   };
   
   const handleReassignCategory = async (oldCategory: string, newCategory: string) => {
       try {
-          const q = query(collection(db, "users"), where("mainField", "==", oldCategory));
-          const querySnapshot = await getDocs(q);
-          const batch = writeBatch(db);
+          const q = db.collection("users").where("mainField", "==", oldCategory);
+          const querySnapshot = await q.get();
+          const batch = db.batch();
           querySnapshot.forEach((doc) => { batch.update(doc.ref, { mainField: newCategory }); });
           await batch.commit();
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), { pendingCategories: arrayRemove(oldCategory) });
+          await db.collection("system_metadata").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldCategory) });
           alert(`עודכנו ${querySnapshot.size} משתמשים.`);
       } catch (e) { console.error(e); alert("שגיאה בשינוי קטגוריה"); }
   };
+
+  // --- Advanced Taxonomy Management (Rename/Merge/Hierarchy) ---
+  const handleEditCategory = async (oldName: string, newName: string, parentCategory?: string) => {
+      try {
+          const updates: any = {};
+          
+          // 1. If name changed
+          if (oldName !== newName) {
+              // Add new, remove old from Approved list
+              updates.approvedCategories = firebase.firestore.FieldValue.arrayRemove(oldName);
+              // Use explicit array manipulation to ensure atomic safety if possible, or just two updates
+              // Here simpler approach:
+              await db.collection("system_metadata").doc("taxonomy").update({
+                  approvedCategories: firebase.firestore.FieldValue.arrayRemove(oldName)
+              });
+              await db.collection("system_metadata").doc("taxonomy").update({
+                  approvedCategories: firebase.firestore.FieldValue.arrayUnion(newName)
+              });
+
+              // Batch update all users with old category name
+              const q = db.collection("users").where("mainField", "==", oldName);
+              const querySnapshot = await q.get();
+              const batch = db.batch();
+              querySnapshot.forEach((doc) => { 
+                  batch.update(doc.ref, { mainField: newName }); 
+              });
+              await batch.commit();
+          }
+
+          // 2. Hierarchy Update
+          const currentHierarchy = { ...(taxonomy.categoryHierarchy || {}) };
+          
+          // If name changed, remove old key
+          if (oldName !== newName && currentHierarchy[oldName]) {
+              delete currentHierarchy[oldName];
+          }
+          
+          // Set new parent (or remove if undefined/empty)
+          if (parentCategory) {
+              currentHierarchy[newName] = parentCategory;
+          } else if (currentHierarchy[newName]) {
+              delete currentHierarchy[newName];
+          }
+
+          await db.collection("system_metadata").doc("taxonomy").update({
+              categoryHierarchy: currentHierarchy
+          });
+
+      } catch (e) {
+          console.error("Failed to edit category", e);
+          alert("שגיאה בעריכת הקטגוריה");
+      }
+  };
+
+  const handleEditInterest = async (oldName: string, newName: string) => {
+      try {
+          if (oldName === newName) return;
+
+          await db.collection("system_metadata").doc("taxonomy").update({
+              approvedInterests: firebase.firestore.FieldValue.arrayRemove(oldName)
+          });
+          await db.collection("system_metadata").doc("taxonomy").update({
+              approvedInterests: firebase.firestore.FieldValue.arrayUnion(newName)
+          });
+
+          // Note: Updating interests array in users is expensive as it's an array field.
+          // Firestore doesn't support "update element in array where element == X".
+          // We would need to fetch ALL users who have this interest, read them, modify array in memory, and write back.
+          // For MVP safety, we might skip mass user update or implement a cloud function.
+          // Here, providing a best-effort client-side batch for reasonably sized apps.
+          
+          const q = db.collection("users").where("interests", "array-contains", oldName);
+          const querySnapshot = await q.get();
+          const batch = db.batch();
+          querySnapshot.forEach((doc) => {
+              const userData = doc.data();
+              const newInterests = (userData.interests || []).map((i: string) => i === oldName ? newName : i);
+              // Remove duplicates if merge happened
+              const uniqueInterests = Array.from(new Set(newInterests));
+              batch.update(doc.ref, { interests: uniqueInterests });
+          });
+          await batch.commit();
+
+      } catch (e) {
+          console.error(e);
+          alert("שגיאה בעריכת תחום העניין");
+      }
+  };
+
   const handleApproveInterest = async (interest: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), {
-              approvedInterests: arrayUnion(interest),
-              pendingInterests: arrayRemove(interest)
+          await db.collection("system_metadata").doc("taxonomy").update({
+              approvedInterests: firebase.firestore.FieldValue.arrayUnion(interest),
+              pendingInterests: firebase.firestore.FieldValue.arrayRemove(interest)
           });
       } catch (e) { console.error(e); }
   };
   const handleRejectInterest = async (interest: string) => {
       try {
-          await updateDoc(doc(db, "system_metadata", "taxonomy"), { pendingInterests: arrayRemove(interest), approvedInterests: arrayRemove(interest) });
+          await db.collection("system_metadata").doc("taxonomy").update({ pendingInterests: firebase.firestore.FieldValue.arrayRemove(interest), approvedInterests: firebase.firestore.FieldValue.arrayRemove(interest) });
       } catch (e) { console.error(e); }
   };
 
   const handleLogin = async (email: string, pass: string) => {
     try {
-        await signInWithEmailAndPassword(auth, email, pass);
+        await auth.signInWithEmailAndPassword(email, pass);
         setIsAuthModalOpen(false);
     } catch (error: any) { alert("שגיאה בהתחברות: " + error.message); }
   };
@@ -487,10 +563,10 @@ export const App: React.FC = () => {
     setIsCompleteProfileModalOpen(false);
   };
 
-  const handleLogout = async () => { await signOut(auth); };
+  const handleLogout = async () => { await auth.signOut(); };
 
   const handleAddOffer = async (newOffer: BarterOffer) => {
-    try { await setDoc(doc(db, "offers", newOffer.id), newOffer); } 
+    try { await db.collection("offers").doc(newOffer.id).set(newOffer); } 
     catch (error) { alert("שגיאה בפרסום ההצעה"); }
   };
 
@@ -502,7 +578,7 @@ export const App: React.FC = () => {
         ratings: [], 
         averageRating: 0
       };
-      try { await setDoc(doc(db, "offers", updatedOffer.id), offerToSave); } 
+      try { await db.collection("offers").doc(updatedOffer.id).set(offerToSave); } 
       catch (error) { console.error(error); }
   };
   
@@ -518,20 +594,20 @@ export const App: React.FC = () => {
     if (!offer) return;
     const newRatings = [...(offer.ratings || []).filter(r => r.userId !== currentUser.id), { userId: currentUser.id, score }];
     const average = parseFloat((newRatings.reduce((sum, r) => sum + r.score, 0) / newRatings.length).toFixed(1));
-    try { await updateDoc(doc(db, "offers", offerId), { ratings: newRatings, averageRating: average }); } 
+    try { await db.collection("offers").doc(offerId).update({ ratings: newRatings, averageRating: average }); } 
     catch (error) { console.error(error); }
   };
 
   const handleDeleteOffer = async (offerId: string) => { 
-      try { await deleteDoc(doc(db, "offers", offerId)); } 
+      try { await db.collection("offers").doc(offerId).delete(); } 
       catch (error) { console.error(error); alert("שגיאה במחיקת המודעה"); } 
   };
   
-  const handleApproveOffer = async (offerId: string) => { try { await updateDoc(doc(db, "offers", offerId), { status: 'active' }); } catch (error) { console.error(error); } };
+  const handleApproveOffer = async (offerId: string) => { try { await db.collection("offers").doc(offerId).update({ status: 'active' }); } catch (error) { console.error(error); } };
   const handleBulkDelete = async (dateThreshold: string) => {
       const threshold = new Date(dateThreshold);
       const toDelete = offers.filter(o => new Date(o.createdAt) < threshold);
-      try { for (const offer of toDelete) await deleteDoc(doc(db, "offers", offer.id)); } 
+      try { for (const offer of toDelete) await db.collection("offers").doc(offer.id).delete(); } 
       catch (error) { console.error(error); }
   };
 
@@ -548,17 +624,13 @@ export const App: React.FC = () => {
       isRead: false
     };
     try { 
-        // 1. Save Message to Firestore
-        await setDoc(doc(db, "messages", newMessage.id), newMessage);
+        await db.collection("messages").doc(newMessage.id).set(newMessage);
         
-        // 2. Email Notification Logic
-        // We run this as a side effect (fire and forget from UI perspective, but logged)
         if (receiverId) {
             const sendNotification = async () => {
                 try {
-                    // Force fresh fetch of user to get email
-                    const userDoc = await getDoc(doc(db, "users", receiverId));
-                    if (!userDoc.exists()) {
+                    const userDoc = await db.collection("users").doc(receiverId).get();
+                    if (!userDoc.exists) {
                         console.warn(`[Notification] User ${receiverId} not found`);
                         return;
                     }
@@ -595,27 +667,26 @@ export const App: React.FC = () => {
                 }
             };
             
-            // Execute non-blocking
             sendNotification();
         }
 
     } catch (error) { console.error("Error saving message:", error); }
   };
 
-  const handleMarkAsRead = async (messageId: string) => { try { await updateDoc(doc(db, "messages", messageId), { isRead: true }); } catch (error) { console.error(error); } };
-  const handleAddAd = async (newAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", newAd.id), newAd); } catch (error) { console.error(error); } };
-  const handleEditAd = async (updatedAd: SystemAd) => { try { await setDoc(doc(db, "systemAds", updatedAd.id), updatedAd); } catch (error) { console.error(error); } };
+  const handleMarkAsRead = async (messageId: string) => { try { await db.collection("messages").doc(messageId).update({ isRead: true }); } catch (error) { console.error(error); } };
+  const handleAddAd = async (newAd: SystemAd) => { try { await db.collection("systemAds").doc(newAd.id).set(newAd); } catch (error) { console.error(error); } };
+  const handleEditAd = async (updatedAd: SystemAd) => { try { await db.collection("systemAds").doc(updatedAd.id).set(updatedAd); } catch (error) { console.error(error); } };
   const handleDeleteAd = async (adId: string) => { 
-      try { await deleteDoc(doc(db, "systemAds", adId)); } 
+      try { await db.collection("systemAds").doc(adId).delete(); } 
       catch (error) { console.error(error); alert("שגיאה במחיקת הקמפיין"); } 
   };
 
   const handleDeleteUser = async (userId: string) => {
       try {
-          await deleteDoc(doc(db, "users", userId));
-          const q = query(collection(db, "offers"), where("profileId", "==", userId));
-          const querySnapshot = await getDocs(q);
-          const batch = writeBatch(db);
+          await db.collection("users").doc(userId).delete();
+          const q = db.collection("offers").where("profileId", "==", userId);
+          const querySnapshot = await q.get();
+          const batch = db.batch();
           querySnapshot.forEach((doc) => {
               batch.delete(doc.ref);
           });
@@ -643,8 +714,8 @@ export const App: React.FC = () => {
         if (cachedUser) profileToView = cachedUser;
     } else {
         try {
-             const userDoc = await getDoc(doc(db, "users", profile.id));
-             if (userDoc.exists()) profileToView = userDoc.data() as UserProfile;
+             const userDoc = await db.collection("users").doc(profile.id).get();
+             if (userDoc.exists) profileToView = userDoc.data() as UserProfile;
         } catch (e) { console.error(e); }
     }
     setSelectedProfile(profileToView);
@@ -776,9 +847,8 @@ export const App: React.FC = () => {
             setSelectedProfile(currentUser); 
             setIsProfileModalOpen(true); 
         }}
-        // Updated Props
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
-        onOpenEmailCenter={() => setIsEmailCenterOpen(true)} // Pass the handler
+        onOpenEmailCenter={() => setIsEmailCenterOpen(true)}
         
         adminPendingCount={totalAdminPending}
         onLogout={handleLogout}
@@ -830,7 +900,14 @@ export const App: React.FC = () => {
                  <div className="flex items-center justify-between w-full lg:w-auto shrink-0">
                      <div className={`flex items-center gap-2 select-none ${isSticky ? 'flex-1 lg:flex-none' : ''}`}>
                         <div className="bg-brand-100 p-2 rounded-lg text-brand-700 shrink-0"><Filter className="w-5 h-5" /></div>
-                        <span className={`font-bold text-slate-800 whitespace-nowrap ${isSticky ? 'text-sm' : ''}`}>{isSticky ? 'סינון' : 'סינון הצעות'}</span>
+                        <span className={`font-bold text-slate-800 whitespace-nowrap ${isSticky ? 'text-sm' : ''}`}>
+                            {isSticky ? 'סינון' : (
+                                <>
+                                    <span className="lg:hidden">סינון</span>
+                                    <span className="hidden lg:inline">סינון הצעות</span>
+                                </>
+                            )}
+                        </span>
                         {isSticky && <div className="text-slate-400 mr-2">{isFilterOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}</div>}
                      </div>
                      <div className="flex lg:hidden items-center gap-2 overflow-x-auto scrollbar-hide" onClick={(e) => e.stopPropagation()}>
@@ -962,7 +1039,7 @@ export const App: React.FC = () => {
                           </div>
                           <h3 className="text-xl font-bold text-slate-800 mb-2">עדיין לא נמצאו התאמות מושלמות</h3>
                           <p className="text-slate-500 max-w-md mx-auto mb-6">
-                              אנחנו מחפשים כל הזמן הצעות שמתאימות למקצוע שלך ({currentUser?.mainField}) או לתחומי העניין שלך.
+                              אנחנו מחפשים כל הזמן הצעות שמתאימות למקצוע שלך ({currentUser?.mainField}) ותחומי העניין שלך.
                               כדאי לוודא שפרופיל המשתמש שלך מעודכן עם כל תחומי העניין!
                           </p>
                           <button 
@@ -1026,11 +1103,37 @@ export const App: React.FC = () => {
         onReassignCategory={handleReassignCategory}
         onApproveInterest={handleApproveInterest}
         onRejectInterest={handleRejectInterest}
+        // New Props for Advanced Editing
+        categoryHierarchy={taxonomy.categoryHierarchy || {}}
+        onEditCategory={handleEditCategory}
+        onEditInterest={handleEditInterest}
+        
         ads={systemAds}
         onAddAd={handleAddAd}
         onEditAd={handleEditAd}
         onDeleteAd={handleDeleteAd}
         onViewProfile={handleViewProfile}
+      />
+
+      {/* Analytics Modal with Editing Capabilities */}
+      <AdminAnalyticsModal
+        isOpen={isAdminAnalyticsOpen} // You might want to trigger this from AdminDashboard instead
+        onClose={() => setIsAdminAnalyticsOpen(false)}
+        users={users}
+        availableCategories={availableCategories}
+        availableInterests={availableInterests}
+        categoryHierarchy={taxonomy.categoryHierarchy || {}}
+        onAddCategory={(cat) => checkForNewCategory(cat)}
+        onAddInterest={(int) => checkForNewInterest(int)}
+        onDeleteCategory={handleRejectCategory}
+        onDeleteInterest={handleRejectInterest}
+        onApproveCategory={handleApproveCategory}
+        onRejectCategory={handleRejectCategory}
+        onReassignCategory={handleReassignCategory}
+        onApproveInterest={handleApproveInterest}
+        onRejectInterest={handleRejectInterest}
+        onEditCategory={handleEditCategory}
+        onEditInterest={handleEditInterest}
       />
 
       {/* New Email Control Center Modal */}

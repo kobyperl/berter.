@@ -83,4 +83,5 @@ export interface SystemTaxonomy {
   pendingCategories: string[];
   approvedInterests: string[];
   pendingInterests?: string[];
+  categoryHierarchy?: Record<string, string>; // Child Category -> Parent Category Name
 }

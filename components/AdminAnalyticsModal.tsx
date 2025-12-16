@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { X, PieChart, Briefcase, Heart, Plus, Users, BarChart3, Trash2, AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft } from 'lucide-react';
+import { X, Briefcase, Heart, Plus, BarChart3, Trash2, CheckCircle, RefreshCw, ArrowRightLeft, Pencil, Save, GitMerge, CornerDownRight, Check } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface AdminAnalyticsModalProps {
@@ -8,19 +9,22 @@ interface AdminAnalyticsModalProps {
   users: UserProfile[];
   availableCategories: string[];
   availableInterests: string[];
+  categoryHierarchy?: Record<string, string>; // New prop
   onAddCategory: (category: string) => void;
   onAddInterest: (interest: string) => void;
   onDeleteCategory: (category: string) => void;
   onDeleteInterest: (interest: string) => void;
-  // New Props for Category Management
+  // Pending Management
   pendingCategories?: string[];
-  pendingInterests?: string[]; // Added
+  pendingInterests?: string[];
   onApproveCategory?: (category: string) => void;
   onRejectCategory?: (category: string) => void;
   onReassignCategory?: (oldCategory: string, newCategory: string) => void;
-  // Interest Management
-  onApproveInterest?: (interest: string) => void; // Added
-  onRejectInterest?: (interest: string) => void; // Added
+  onApproveInterest?: (interest: string) => void;
+  onRejectInterest?: (interest: string) => void;
+  // Edit Existing
+  onEditCategory: (oldName: string, newName: string, parentCategory?: string) => void;
+  onEditInterest: (oldName: string, newName: string) => void;
 }
 
 export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
@@ -29,6 +33,7 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
   users,
   availableCategories,
   availableInterests,
+  categoryHierarchy = {},
   onAddCategory,
   onAddInterest,
   onDeleteCategory,
@@ -39,14 +44,21 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
   onRejectCategory,
   onReassignCategory,
   onApproveInterest,
-  onRejectInterest
+  onRejectInterest,
+  onEditCategory,
+  onEditInterest
 }) => {
   const [activeTab, setActiveTab] = useState<'categories' | 'interests' | 'pending'>('categories');
   const [newInput, setNewInput] = useState('');
   
-  // Reassign State
-  const [reassignTarget, setReassignTarget] = useState<string | null>(null); // Which pending cat to reassign
-  const [reassignDestination, setReassignDestination] = useState(''); // Which existing cat to move to
+  // Pending Reassign State
+  const [reassignTarget, setReassignTarget] = useState<string | null>(null);
+  const [reassignDestination, setReassignDestination] = useState('');
+
+  // Editing State (For Approved Items)
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editParent, setEditParent] = useState('');
 
   if (!isOpen) return null;
 
@@ -90,6 +102,28 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
       }
   };
 
+  const handleStartEdit = (item: string) => {
+      setEditingItem(item);
+      setEditName(item);
+      if (activeTab === 'categories') {
+          setEditParent(categoryHierarchy[item] || '');
+      }
+  };
+
+  const handleSaveEdit = () => {
+      if (!editingItem || !editName.trim()) return;
+      
+      if (activeTab === 'categories') {
+          onEditCategory(editingItem, editName.trim(), editParent || undefined);
+      } else {
+          onEditInterest(editingItem, editName.trim());
+      }
+      
+      setEditingItem(null);
+      setEditName('');
+      setEditParent('');
+  };
+
   const handleExecuteReassign = () => {
       if (reassignTarget && reassignDestination && onReassignCategory) {
           if (window.confirm(`האם אתה בטוח שברצונך להעביר את כל המשתמשים מ-"${reassignTarget}" ל-"${reassignDestination}"?`)) {
@@ -99,6 +133,8 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
           }
       }
   };
+
+  const activeList = activeTab === 'categories' ? sortedCategories : sortedInterests;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
@@ -293,32 +329,127 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
 
                         {/* Scrollable List */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                            {(activeTab === 'categories' ? sortedCategories : sortedInterests).map((item) => {
+                            {activeList.map((item) => {
                                 const count = activeTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
-                                
+                                const isEditingThis = editingItem === item;
+                                const parent = activeTab === 'categories' ? categoryHierarchy[item] : null;
+
                                 return (
-                                    <div key={item} className="flex justify-between items-center p-3 rounded-lg border border-slate-100 hover:border-slate-300 hover:shadow-sm transition-all bg-white group">
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <div className={`w-2 h-8 rounded-full ${activeTab === 'categories' ? 'bg-brand-500' : 'bg-pink-500'} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`}></div>
-                                            <span className="font-medium text-slate-800 truncate">{item}</span>
+                                    <div key={item} className={`flex flex-col p-3 rounded-lg border transition-all bg-white group ${isEditingThis ? 'border-brand-500 shadow-md' : 'border-slate-100 hover:border-slate-300 hover:shadow-sm'}`}>
+                                        
+                                        {/* Row Content */}
+                                        <div className="flex justify-between items-center w-full">
+                                            {isEditingThis ? (
+                                                <div className="flex flex-col gap-2 w-full">
+                                                    <div className="flex gap-2 items-center">
+                                                        <input 
+                                                            value={editName}
+                                                            onChange={(e) => setEditName(e.target.value)}
+                                                            className="flex-1 border border-slate-300 rounded px-2 py-1.5 text-sm font-bold bg-white focus:border-brand-500 outline-none"
+                                                            autoFocus
+                                                        />
+                                                        {activeTab === 'categories' && (
+                                                            <select 
+                                                                value={editParent}
+                                                                onChange={(e) => setEditParent(e.target.value)}
+                                                                className="border border-slate-300 rounded px-2 py-1.5 text-sm w-32 bg-white"
+                                                            >
+                                                                <option value="">ללא אב</option>
+                                                                {sortedCategories.filter(c => c !== item).map(c => (
+                                                                    <option key={c} value={c}>{c}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Merge Dropdown */}
+                                                    <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded border border-slate-200">
+                                                        <GitMerge className="w-4 h-4 text-slate-400" />
+                                                        <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">או מזג לתוך:</span>
+                                                        <select 
+                                                            className="flex-1 text-xs border-transparent rounded focus:ring-0 text-slate-700 bg-transparent py-0.5 cursor-pointer hover:bg-slate-100"
+                                                            onChange={(e) => {
+                                                                if(e.target.value) setEditName(e.target.value);
+                                                            }}
+                                                            value=""
+                                                        >
+                                                            <option value="">בחר תחום קיים...</option>
+                                                            {activeList.filter(x => x !== item).map(x => (
+                                                                <option key={x} value={x}>{x}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <div className={`w-2 h-8 rounded-full ${activeTab === 'categories' ? 'bg-brand-500' : 'bg-pink-500'} opacity-0 group-hover:opacity-100 transition-opacity shrink-0`}></div>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium text-slate-800 truncate">{item}</span>
+                                                        {parent && (
+                                                            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                                                <CornerDownRight className="w-3 h-3" /> תחת: {parent}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-2 shrink-0 self-start mt-1.5">
+                                                {!isEditingThis && (
+                                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold min-w-[3rem] text-center ${
+                                                        count > 0 
+                                                        ? (activeTab === 'categories' ? 'bg-brand-100 text-brand-700' : 'bg-pink-100 text-pink-700') 
+                                                        : 'bg-slate-100 text-slate-400'
+                                                    }`}>
+                                                        {count} <span className="hidden sm:inline">משתמשים</span>
+                                                    </span>
+                                                )}
+                                                
+                                                {isEditingThis ? (
+                                                    <div className="flex flex-col gap-1 ml-2">
+                                                        <button 
+                                                            onClick={handleSaveEdit} 
+                                                            className="p-1.5 bg-green-600 text-white rounded hover:bg-green-700 shadow-sm"
+                                                            title="שמור שינויים"
+                                                        >
+                                                            <Save className="w-4 h-4" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => setEditingItem(null)} 
+                                                            className="p-1.5 bg-slate-200 text-slate-600 rounded hover:bg-slate-300"
+                                                            title="ביטול"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => handleStartEdit(item)}
+                                                            className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                            title="ערוך / מזג"
+                                                        >
+                                                            <Pencil className="w-4 h-4" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDelete(item)}
+                                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                            title="מחק מהמערכת"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            <span className={`px-2.5 py-1 rounded-md text-xs font-bold min-w-[3rem] text-center ${
-                                                count > 0 
-                                                ? (activeTab === 'categories' ? 'bg-brand-100 text-brand-700' : 'bg-pink-100 text-pink-700') 
-                                                : 'bg-slate-100 text-slate-400'
-                                            }`}>
-                                                {count} <span className="hidden sm:inline">משתמשים</span>
-                                            </span>
-                                            
-                                            <button 
-                                                onClick={() => handleDelete(item)}
-                                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="מחק מהמערכת"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        
+                                        {/* Merge Info Tip */}
+                                        {isEditingThis && (
+                                            <div className="mt-2 text-[10px] text-slate-500 bg-slate-50 p-1.5 rounded flex items-center gap-1 border border-slate-100">
+                                                <Check className="w-3 h-3 text-green-500" />
+                                                <span>שינוי השם יעדכן את כל המשתמשים. אם השם קיים, יבוצע מיזוג אוטומטי.</span>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
