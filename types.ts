@@ -21,10 +21,6 @@ export interface UserProfile {
   bio?: string;
   joinedAt?: string;
   pendingUpdate?: Partial<UserProfile>; // Staging area for profile changes requiring approval
-  
-  // Privacy Settings
-  showInterests?: boolean; // Default true
-  allowDirectContact?: boolean; // Default true
 }
 
 export interface Rating {
