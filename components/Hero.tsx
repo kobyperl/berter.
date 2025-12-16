@@ -101,7 +101,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                           </div>
                       ))}
                   </div>
-                  <p>הצטרפו למאות עסקים שכבר חוסכים</p>
+                  <p>הצטרפו למאות אנשים שכבר חוסכים</p>
               </div>
 
             </div>
