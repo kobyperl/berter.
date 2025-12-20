@@ -18,6 +18,7 @@ interface ProfileModalProps {
   availableInterests: string[];
   onApproveUpdate?: (userId: string) => void;
   onRejectUpdate?: (userId: string) => void;
+  startInEditMode?: boolean; // New Prop
 }
 
 // Utility to compress image
@@ -70,7 +71,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   availableCategories,
   availableInterests,
   onApproveUpdate,
-  onRejectUpdate
+  onRejectUpdate,
+  startInEditMode = false // Default false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState<UserProfile | null>(null);
@@ -90,29 +92,30 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const isAdmin = currentUser?.role === 'admin';
 
   // Determine which data to show:
-  // If I am viewing my own profile or I am an admin AND there are pending updates,
-  // I want to see the PREVIEW of how it will look (merged state).
-  // Regular users see the stable 'profile' state.
   let displayProfile = profile;
-  
-  // Logic: Show pending updates if I am the owner OR I am an admin viewing a user with updates
   if (profile && profile.pendingUpdate && (isOwnProfile || isAdmin)) {
       displayProfile = { ...profile, ...profile.pendingUpdate } as UserProfile;
   }
 
-  // Sync edit form data when profile changes
+  // Sync edit form data when profile changes or modal opens
   useEffect(() => {
     if (displayProfile) {
         setEditFormData(displayProfile);
     }
-    setIsEditing(false);
-    setShowPendingApproval(false); // Reset popup
+    // If told to start in edit mode, and it's our own profile, trigger edit view
+    if (isOpen && startInEditMode && isOwnProfile) {
+        setIsEditing(true);
+    } else if (!isOpen) {
+        setIsEditing(false);
+    }
+    
+    setShowPendingApproval(false); 
     setInterestInput('');
     setIsSaving(false);
-  }, [profile, isOpen, isOwnProfile, isAdmin]);
+  }, [profile, isOpen, isOwnProfile, isAdmin, startInEditMode]);
 
   if (!isOpen) return null;
-  if (!displayProfile) return null; // Handle null profile safely
+  if (!displayProfile) return null; 
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,11 +125,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             await onUpdateProfile(editFormData);
             
             if (isAdmin) {
-                // Admin: Immediate close, no popup
                 setIsEditing(false);
                 setShowPendingApproval(false);
             } else {
-                // User: Show Popup
                 setShowPendingApproval(true);
             }
         } catch (err) {
@@ -138,7 +139,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
-  // Handle URL based image add
   const handleAddImage = () => {
     if (newImageUrl && editFormData) {
         setEditFormData({
@@ -167,12 +167,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setIsUploading(true);
       try {
           if (type === 'avatar') {
-              // Avatar handles single file
               const file = files[0];
               const compressedDataUrl = await compressImage(file);
               setEditFormData(prev => prev ? ({ ...prev, avatarUrl: compressedDataUrl }) : null);
           } else {
-              // Portfolio handles multiple files
               const promises = Array.from(files).map(file => compressImage(file as File));
               const compressedImages = await Promise.all(promises);
               
@@ -186,22 +184,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           alert("שגיאה בטעינת התמונה. נסה תמונה אחרת.");
       } finally {
           setIsUploading(false);
-          // Reset input to allow selecting same file again
           e.target.value = '';
       }
   };
 
-  // Interest Management
   const handleAddInterest = () => {
       if (!interestInput.trim() || !editFormData) return;
       const newInterest = interestInput.trim();
-      
-      // Prevent duplicates
       if (editFormData.interests?.includes(newInterest)) {
           setInterestInput('');
           return;
       }
-
       setEditFormData({
           ...editFormData,
           interests: [...(editFormData.interests || []), newInterest]
@@ -217,7 +210,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       });
   };
 
-  // Popup Component for Pending Approval
   if (showPendingApproval && !isAdmin) {
       return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900 bg-opacity-75">
@@ -232,7 +224,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <button 
                     onClick={() => {
                         setShowPendingApproval(false);
-                        setIsEditing(false); // Go back to "view mode" (previewing pending changes)
+                        setIsEditing(false); 
                     }}
                     className="bg-brand-600 text-white font-bold py-3 px-8 rounded-xl w-full hover:bg-brand-700 transition-colors shadow-lg"
                 >
@@ -408,7 +400,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             <label className="block text-xs font-bold text-slate-700 mb-3">תמונות לתיק העבודות</label>
                             
                             <div className="flex gap-2 mb-3 items-center">
-                                {/* File Upload Button */}
                                 <button
                                     type="button"
                                     onClick={() => !isUploading && portfolioInputRef.current?.click()}
@@ -423,13 +414,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     ref={portfolioInputRef}
                                     className="hidden"
                                     accept="image/*"
-                                    multiple // Allow multiple files
+                                    multiple 
                                     onChange={(e) => handleFileUpload(e, 'portfolio')}
                                 />
 
                                 <span className="text-slate-300 mx-1">|</span>
 
-                                {/* URL Input Fallback */}
                                 <input 
                                     type="text" 
                                     className={inputClassName}
@@ -452,7 +442,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden group border border-slate-200 shadow-sm">
                                         <img src={img} alt="" className="w-full h-full object-cover" />
                                         <button 
-                                            type="button"
+                                            type="button" 
                                             onClick={() => handleRemoveImage(idx)}
                                             className="absolute inset-0 bg-black bg-opacity-50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                                         >
@@ -492,7 +482,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     </form>
                 ) : (
                     <>
-                        {/* Avatar & Basic Info Display */}
                         <div className="relative flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-12 mb-8 gap-4">
                             <div className="flex items-end gap-5">
                                 <img 
@@ -523,7 +512,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             )}
                         </div>
 
-                        {/* Bio Section */}
                         {displayProfile.bio && (
                             <div className="mb-8">
                                 <h3 className="font-bold text-slate-900 mb-3 text-lg">אודות</h3>
@@ -533,7 +521,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             </div>
                         )}
 
-                         {/* Visual Portfolio Section */}
                          {displayProfile.portfolioImages && displayProfile.portfolioImages.length > 0 && (
                             <div className="mb-8">
                                 <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-lg">
@@ -550,7 +537,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             </div>
                         )}
 
-                        {/* Interests Section */}
                         {displayProfile.interests && displayProfile.interests.length > 0 && (
                             <div className="mb-8">
                                 <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-lg">
@@ -583,10 +569,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                             offer={offer}
                                             viewMode="compact"
                                             currentUserId={currentUser?.id}
-                                            onUserClick={() => {}} // User is already viewing profile
+                                            onUserClick={() => {}} 
                                             onContact={() => {
-                                                onClose(); // Close profile modal first
-                                                onContact(displayProfile); // Open messages
+                                                onClose(); 
+                                                onContact(displayProfile); 
                                             }}
                                             onRate={onRate}
                                             onDelete={isOwnProfile ? onDeleteOffer : undefined}
@@ -600,8 +586,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             </div>
                         </div>
 
-                         {/* Pending Changes Review Section (Bottom) */}
-                         {/* Crucial fix: Don't show this if I am an admin viewing my own profile, as changes are instant */}
                          {profile?.pendingUpdate && (!isOwnProfile || !isAdmin) && (
                              <div className="mt-8 border-t-2 border-yellow-200 pt-6 animate-in slide-in-from-bottom-2">
                                 {isAdmin ? (
