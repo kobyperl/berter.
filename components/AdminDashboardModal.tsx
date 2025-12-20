@@ -4,7 +4,7 @@ import {
   X, Shield, FileText, BarChart3, Megaphone, 
   Search, RefreshCw, Mail, Trash2, CheckCircle, 
   Edit, Plus, Upload, Save, Link as LinkIcon, 
-  Target, Copy, Pencil, LayoutDashboard, Check, Briefcase, Tag, CornerDownRight, GitMerge, ToggleRight, ToggleLeft, ArrowRightLeft, Users
+  Target, Copy, Pencil, LayoutDashboard, Check, Briefcase, Tag, CornerDownRight, GitMerge, ToggleRight, ToggleLeft, ArrowRightLeft, Users, UserPlus
 } from 'lucide-react';
 import { UserProfile, BarterOffer, SystemAd } from '../types';
 
@@ -49,7 +49,7 @@ interface AdminDashboardModalProps {
   onViewProfile: (profile: UserProfile) => void;
 }
 
-// ... (Helper functions) ...
+// Helper functions
 const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -244,7 +244,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
   // --- Render Sections ---
 
-  // 1. Users (Unchanged)
+  // 1. Users
   const renderUsers = () => {
       const filtered = safeUsers.filter(u => 
         (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
@@ -257,44 +257,58 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
       
       return (
           <div className="space-y-4">
+              {/* Small User Counter Display */}
+              <div className="flex items-center justify-between px-1 mb-1">
+                  <div className="flex items-center gap-2 text-slate-600">
+                      <Users className="w-4 h-4 text-brand-600" />
+                      <span className="text-sm font-medium">סה"כ משתמשים רשומים:</span>
+                      <span className="text-sm font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">{safeUsers.length}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 uppercase tracking-tight">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                      מעודכן בזמן אמת
+                  </div>
+              </div>
+
               <div className="relative">
                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                  <input 
                     type="text" 
-                    placeholder="חיפוש משתמש..." 
-                    className="w-full pl-4 pr-10 py-2.5 border border-slate-300 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+                    placeholder="חפש משתמש לפי שם או אימייל..." 
+                    className="w-full pl-4 pr-10 py-2.5 border border-slate-300 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm transition-all"
                     value={userSearch}
                     onChange={e => setUserSearch(e.target.value)}
                  />
               </div>
-              <div className="overflow-x-auto border rounded-xl max-h-[60vh] overflow-y-auto">
+
+              <div className="overflow-x-auto border rounded-xl max-h-[50vh] overflow-y-auto custom-scrollbar shadow-inner bg-white">
                   <table className="w-full text-sm text-right">
-                      <thead className="bg-slate-50 sticky top-0 z-10">
+                      <thead className="bg-slate-50 sticky top-0 z-10 border-b">
                           <tr><th className="px-4 py-3">שם</th><th className="px-4 py-3">מייל</th><th className="px-4 py-3">סטטוס</th><th className="px-4 py-3">פעולות</th></tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody className="divide-y divide-slate-100">
                           {filtered.map(user => (
-                              <tr key={user.id} className="hover:bg-slate-50">
+                              <tr key={user.id} className="hover:bg-slate-50/80 transition-colors group">
                                   <td className="px-4 py-3 flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}>
                                       <div className="relative shrink-0">
                                           <img src={user.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" alt="" />
                                       </div>
                                       <div className="min-w-0">
-                                          <div className="font-bold text-slate-800 truncate">{user.name}</div>
+                                          <div className="font-bold text-slate-800 truncate group-hover:text-brand-600 transition-colors">{user.name}</div>
                                           <div className="text-[10px] text-slate-500 truncate">{user.mainField}</div>
                                       </div>
                                   </td>
-                                  <td className="px-4 py-3 font-mono text-xs">{user.email}</td>
+                                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
                                   <td className="px-4 py-3">
                                       {user.pendingUpdate ? (
-                                          <button onClick={() => props.onViewProfile(user)} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap">
+                                          <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-200 transition-colors">
                                               <RefreshCw className="w-3 h-3" /> ממתין לאישור
                                           </button>
-                                      ) : <span className="text-green-600 text-xs">פעיל</span>}
+                                      ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
                                   </td>
                                   <td className="px-4 py-3">
                                       <div className="flex gap-2 items-center">
-                                          <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-slate-100 rounded block"><Mail className="w-4 h-4"/></a>
+                                          <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all"><Mail className="w-4 h-4"/></a>
                                           {user.id !== props.currentUser?.id && (
                                               <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
                                           )}
@@ -304,12 +318,17 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                           ))}
                       </tbody>
                   </table>
+                  {filtered.length === 0 && (
+                      <div className="p-10 text-center text-slate-400 font-medium">
+                          לא נמצאו משתמשים תואמים לחיפוש
+                      </div>
+                  )}
               </div>
           </div>
       );
   };
 
-  // 2. Content (Unchanged)
+  // 2. Content
   const renderContent = () => {
       const pendingOffers = safeOffers.filter(o => o.status === 'pending');
       const displayed = contentTab === 'pending' ? pendingOffers : safeOffers;
@@ -371,7 +390,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
   // 3. Data (Taxonomy)
   const renderData = () => {
-      // Helper to find users matching a category (Case Insensitive)
       const getUsersForCategory = (cat: string) => safeUsers.filter(u => (u.mainField || '').trim().toLowerCase() === cat.trim().toLowerCase());
       const getUsersForInterest = (int: string) => safeUsers.filter(u => (u.interests || []).some(i => i.trim().toLowerCase() === int.trim().toLowerCase()));
 
@@ -410,7 +428,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
           setEditParent('');
       };
 
-      // Handler for pending item merge
       const handlePendingMerge = (pendingItem: string) => {
           if (reassignTarget === pendingItem && reassignDestination) {
               if (window.confirm(`האם למזג את "${pendingItem}" לתוך "${reassignDestination}"? פעולה זו תעדכן את כל המשתמשים ותמחק את הבקשה.`)) {
@@ -421,27 +438,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
           }
       };
 
-      // Handler specifically to fix the "Ghost User" issue upon approval
-      const handleApproveWithSync = (category: string) => {
-          // 1. Approve normally (move to taxonomy)
-          props.onApproveCategory(category);
-          
-          // 2. FORCE SYNC: Update all users who have this category to match the exact casing of the approved string.
-          // This fixes the issue where a user might be saved as "design " (with space) or "Design" but the approval system treats them differently.
-          // In a real app, this should be a backend trigger, but here we do a client-side fix.
-          
-          // Note: `onReassignCategory` essentially does this: finds all users with Old Name and updates to New Name.
-          // We can use it here to "Self Assign" (clean up dirty data).
-          // We call it with (category, category) but the function implementation needs to be smart enough or we rely on the backend.
-          
-          // Actually, simply relying on `onEditCategory` logic (which updates users) is safer if available, but for approval we usually just move the array item.
-          // Since the user reported they "don't see the user", it means the `getCategoryCount` fails.
-          // `getCategoryCount` uses `toLowerCase()`, so if it still fails, the data is very dirty.
-          
-          // The best approach here is to rely on the robust `getCategoryCount` I added which uses `trim().toLowerCase()`.
-      };
-
-      // Sort categories/interests by count
       const sortedCategories = [...safeAvailableCategories].sort((a, b) => getCategoryCount(b) - getCategoryCount(a));
       const sortedInterests = [...safeAvailableInterests].sort((a, b) => getInterestCount(b) - getInterestCount(a));
 
@@ -449,7 +445,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
       return (
           <div className="space-y-4 h-full flex flex-col relative">
-              {/* User List Overlay (Drilldown) */}
               {viewingUsersFor && (
                   <div className="absolute inset-0 bg-white z-20 flex flex-col animate-in fade-in slide-in-from-right-4">
                       <div className="flex justify-between items-center p-3 border-b border-slate-100 bg-slate-50">
@@ -526,12 +521,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
-                                            <button onClick={() => handleApproveWithSync(cat)} className="text-green-600 hover:bg-green-100 p-1.5 rounded transition-colors" title="אשר וסנכרן"><CheckCircle className="w-4 h-4"/></button>
+                                            <button onClick={() => props.onApproveCategory(cat)} className="text-green-600 hover:bg-green-100 p-1.5 rounded transition-colors" title="אשר"><CheckCircle className="w-4 h-4"/></button>
                                             <button onClick={() => props.onRejectCategory(cat)} className="text-red-600 hover:bg-red-100 p-1.5 rounded transition-colors" title="דחה"><Trash2 className="w-4 h-4"/></button>
                                         </div>
                                     </div>
-                                    
-                                    {/* Pending Merge Dropdown */}
                                     <div className="bg-white p-2 rounded border border-orange-200 flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
                                             <ArrowRightLeft className="w-3 h-3 inline mr-1" />
@@ -590,7 +583,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                       </div>
                   )}
 
-                  {/* Render Categories OR Interests with EDIT & MERGE support */}
                   {(dataSubTab === 'categories' || dataSubTab === 'interests') && (
                       activeList.map(item => {
                           const count = dataSubTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
@@ -623,8 +615,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                                       </select>
                                                   )}
                                               </div>
-                                              
-                                              {/* Merge Option Dropdown */}
                                               <div className="flex items-center gap-2 bg-white p-1.5 rounded border border-slate-200">
                                                   <GitMerge className="w-4 h-4 text-slate-400" />
                                                   <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">מיזוג עם:</span>
@@ -705,7 +695,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                           )}
                                       </div>
                                   </div>
-                                  
                                   {isEditingThis && (
                                       <div className="mt-2 text-[10px] text-slate-500 bg-slate-100 p-1.5 rounded flex items-center gap-1">
                                           <Check className="w-3 h-3 text-green-600" />
@@ -721,10 +710,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
       );
   };
 
-  // ... (Ads render remains the same) ...
-  // 4. Ads (Unchanged)
+  // 4. Ads
   const renderAds = () => {
-      // (Implementation kept identical to previous version, condensed for brevity)
       const inputClassName = "w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all";
       if (adEditId === 'new' || (adEditId && adEditId !== 'new')) {
           const filteredInterests = safeAvailableInterests.filter(i => (i||'').toLowerCase().includes(intSearch.toLowerCase()));
