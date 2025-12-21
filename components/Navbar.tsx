@@ -61,7 +61,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     onClick={() => onNavigate && onNavigate('all')}
                     className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors ${
                         activeFeed === 'all' 
-                        ? 'bg-white text-brand-600 ring-1 ring-brand-100' 
+                        ? 'bg-slate-100 text-slate-900' 
                         : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                     }`}
                 >
@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-normal transition duration-150 ease-in-out"
+                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-normal transition duration-150 ease-in-out"
                     placeholder="חיפוש..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
@@ -112,7 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Messages Button */}
             <button 
               onClick={onOpenMessages}
-              className="relative p-2 text-slate-500 hover:text-brand-600 hover:bg-slate-50 rounded-full transition-colors"
+              className="relative p-2 text-slate-500 hover:text-brand-600 hover:bg-slate-100 rounded-full transition-colors"
               title={currentUser ? "הודעות" : "התחבר לצפייה בהודעות"}
             >
               <MessageSquare className="w-6 h-6" />
@@ -133,7 +133,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         {onOpenAdminDashboard && (
                             <button 
                               onClick={onOpenAdminDashboard}
-                              className="flex items-center gap-1.5 text-slate-700 bg-white hover:bg-slate-50 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-bold transition-all shadow-sm border border-slate-200 relative ml-2"
+                              className="flex items-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 px-4 py-2 rounded-full text-sm font-bold transition-all shadow-sm border border-slate-200 relative ml-2"
                               title="ניהול מערכת"
                             >
                               <Settings className="w-4 h-4" />
@@ -218,14 +218,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="flex gap-2 mb-4">
                     <button
                         onClick={() => { onNavigate && onNavigate('all'); setIsMenuOpen(false); }}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'all' ? 'bg-brand-50 text-brand-700' : 'bg-white border border-slate-200 text-slate-500'}`}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'all' ? 'bg-slate-100 text-slate-900' : 'bg-slate-50 text-slate-500'}`}
                     >
                         <Home className="w-4 h-4" />
                         ראשי
                     </button>
                     <button
                         onClick={() => { onNavigate && onNavigate('for_you'); setIsMenuOpen(false); }}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'for_you' ? 'bg-brand-50 text-brand-700' : 'bg-white border border-slate-200 text-slate-500'}`}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold flex justify-center items-center gap-2 ${activeFeed === 'for_you' ? 'bg-brand-50 text-brand-700' : 'bg-slate-50 text-slate-500'}`}
                     >
                         <Heart className="w-4 h-4" />
                         בשבילך
@@ -238,7 +238,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-normal"
+                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-normal"
                     placeholder="חיפוש שירות..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
@@ -285,9 +285,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                                             onOpenEmailCenter();
                                             setIsMenuOpen(false);
                                         }}
-                                        className="w-full flex items-center justify-center gap-2 p-3 text-slate-700 bg-white border border-emerald-100 rounded-xl text-sm font-bold"
+                                        className="w-full flex items-center justify-center gap-2 p-3 text-slate-700 bg-emerald-100 rounded-xl text-sm font-bold"
                                     >
-                                        <MessageSquare className="w-4 h-4 text-emerald-500" />
+                                        <MessageSquare className="w-4 h-4" />
                                         ניהול אימיילים
                                     </button>
                                 )}

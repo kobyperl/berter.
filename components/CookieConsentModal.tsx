@@ -8,6 +8,7 @@ export const CookieConsentModal: React.FC = () => {
   useEffect(() => {
     const consent = localStorage.getItem('barter_cookie_consent');
     if (!consent) {
+        // Small delay for better UX
         const timer = setTimeout(() => setIsVisible(true), 1500);
         return () => clearTimeout(timer);
     }
@@ -27,7 +28,7 @@ export const CookieConsentModal: React.FC = () => {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 p-4 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
+      <div className="max-w-4xl mx-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_-5px_30px_-5px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
         
         <div className="hidden md:flex bg-brand-100 p-4 rounded-full text-brand-600 shrink-0">
             <Cookie className="w-8 h-8" />
@@ -41,11 +42,11 @@ export const CookieConsentModal: React.FC = () => {
                 </p>
                 
                 <div className="grid sm:grid-cols-2 gap-2 text-xs sm:text-sm">
-                    <div className="flex items-start gap-2 bg-white border border-slate-100 p-2 rounded-lg">
+                    <div className="flex items-start gap-2 bg-slate-50 p-2 rounded-lg">
                         <UserCheck className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
                         <span><strong>זיהוי משתמש:</strong> כדי שהמערכת תכיר אותך ותחסוך לך התחברות מחדש.</span>
                     </div>
-                    <div className="flex items-start gap-2 bg-white border border-slate-100 p-2 rounded-lg">
+                    <div className="flex items-start gap-2 bg-slate-50 p-2 rounded-lg">
                         <Target className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
                         <span><strong>מקצוע ותחומי עניין:</strong> זיהוי ההעדפות שלך כדי להציג לך הצעות רלוונטיות.</span>
                     </div>
@@ -68,7 +69,7 @@ export const CookieConsentModal: React.FC = () => {
         <div className="flex flex-col sm:flex-row gap-3 shrink-0 w-full md:w-auto mt-2 md:mt-0">
             <button 
                 onClick={handleDecline}
-                className="px-5 py-3 text-slate-500 hover:text-slate-800 text-sm font-medium hover:bg-slate-50 rounded-xl transition-colors border border-transparent hover:border-slate-200"
+                className="px-5 py-3 text-slate-500 hover:text-slate-800 text-sm font-medium hover:bg-slate-100 rounded-xl transition-colors border border-transparent hover:border-slate-200"
             >
                 מעדיף חוויה בסיסית
             </button>

@@ -30,17 +30,11 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({
   if (currentUser?.role !== 'admin') return null;
 
   // SAFE filtering to prevent crashes
-  const filteredUsers = users.filter(u => {
-    const term = searchTerm.toLowerCase();
-    const nameMatch = (u.name || '').toLowerCase().includes(term);
-    const emailMatch = (u.email || '').toLowerCase().includes(term);
-    
-    // Handle mainField as array or string
-    const fields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
-    const fieldMatch = fields.some(f => f.toLowerCase().includes(term));
-    
-    return nameMatch || emailMatch || fieldMatch;
-  });
+  const filteredUsers = users.filter(u => 
+    (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.mainField || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const pendingUpdatesCount = users.filter(u => u.pendingUpdate).length;
 
@@ -111,9 +105,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({
                                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">
                                         {user.email || '-'}
                                     </td>
-                                    <td className="px-4 py-3 text-slate-700">
-                                        {Array.isArray(user.mainField) ? user.mainField.join(', ') : (user.mainField || '-')}
-                                    </td>
+                                    <td className="px-4 py-3 text-slate-700">{user.mainField}</td>
                                     <td className="px-4 py-3">
                                         {user.pendingUpdate ? (
                                             <button 

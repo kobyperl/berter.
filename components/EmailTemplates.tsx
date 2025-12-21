@@ -2,7 +2,7 @@
 import React from 'react';
 
 // Common styles mimicking email clients
-const containerStyle = "font-sans text-slate-800 bg-white p-6 rounded-lg direction-rtl text-right border border-slate-200";
+const containerStyle = "font-sans text-slate-800 bg-slate-50 p-6 rounded-lg direction-rtl text-right border border-slate-200";
 const headerStyle = "text-2xl font-bold text-brand-600 mb-4 border-b border-slate-200 pb-4";
 const bodyStyle = "text-base leading-relaxed text-slate-600 mb-6";
 const buttonStyle = "inline-block bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg no-underline hover:bg-emerald-700 transition-colors";
