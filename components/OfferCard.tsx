@@ -101,11 +101,11 @@ export const OfferCard: React.FC<OfferCardProps> = ({
         <div 
             className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col ${
                 isExpanded ? 'ring-2 ring-brand-100' : ''
-            } ${isHighRated ? 'border-yellow-200 shadow-yellow-50' : 'border-slate-200'} ${isLowRated ? 'opacity-90 grayscale-[0.3]' : ''} ${isExpired ? 'opacity-75 bg-slate-50' : ''} ${isPending ? 'border-orange-300 bg-orange-50/30' : ''}`}
+            } ${isHighRated ? 'border-yellow-200 shadow-yellow-50' : 'border-slate-200'} ${isLowRated ? 'opacity-90 grayscale-[0.3]' : ''} ${isExpired ? 'opacity-75 bg-white' : ''} ${isPending ? 'border-orange-300 bg-orange-50/30' : ''}`}
         >
             {/* Clickable Header Area */}
             <div 
-                className="p-3 cursor-pointer hover:bg-slate-50 transition-colors"
+                className="p-3 cursor-pointer hover:bg-white transition-colors"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -251,14 +251,14 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                 <div className="px-3 pb-3 pt-0 animate-in slide-in-from-top-2">
                     <div className="h-px bg-slate-100 mb-3 w-full"></div>
                     
-                    <p className="text-sm text-slate-600 mb-3 leading-relaxed bg-slate-50 p-3 rounded-lg font-normal">
+                    <p className="text-sm text-slate-600 mb-3 leading-relaxed bg-white p-3 rounded-lg font-normal border border-slate-100">
                         {offer.description}
                     </p>
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                          <div className="flex gap-2 flex-wrap">
                             {offer.tags.map(tag => (
-                                <span key={tag} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                                <span key={tag} className="text-[10px] text-slate-500 bg-white border border-slate-100 px-2 py-1 rounded">
                                     #{tag}
                                 </span>
                             ))}
@@ -287,7 +287,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
   return (
     <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col h-full relative ${
         isLowRated ? 'opacity-80' : ''
-    } ${isExpired ? 'opacity-75 bg-slate-50' : ''} ${isPending ? 'border-orange-300 ring-1 ring-orange-100' : ''}`}>
+    } ${isExpired ? 'opacity-75 bg-white' : ''} ${isPending ? 'border-orange-300 ring-1 ring-orange-100' : ''}`}>
       
       {/* Tags Container (Duration + Recommended) */}
       <div className="absolute top-4 left-4 z-10 flex flex-col items-end gap-1.5">
@@ -344,9 +344,6 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                 />
                 <div>
                     <h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4>
-                    <span className="text-xs text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full font-medium">
-                        {offer.profile.expertise}
-                    </span>
                 </div>
             </div>
             <div className="flex gap-2">
@@ -389,34 +386,34 @@ export const OfferCard: React.FC<OfferCardProps> = ({
         </h3>
 
         <div className="space-y-2 mb-3">
-            <div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-slate-100 border-slate-200' : 'bg-emerald-50 border-emerald-100'}`}>
+            <div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-white border-slate-200' : 'bg-emerald-50 border-emerald-100'}`}>
                 <span className={`block text-xs font-bold mb-1 ${isExpired ? 'text-slate-500' : 'text-emerald-600'}`}>נותן/ת:</span>
                 <p className="text-sm text-slate-700 font-medium">{offer.offeredService}</p>
             </div>
-            <div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-slate-100 border-slate-200' : 'bg-indigo-50 border-indigo-100'}`}>
+            <div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-white border-slate-200' : 'bg-indigo-50 border-indigo-100'}`}>
                 <span className={`block text-xs font-bold mb-1 ${isExpired ? 'text-slate-500' : 'text-indigo-600'}`}>מבקש/ת:</span>
                 <p className="text-sm text-slate-700 font-medium">{offer.requestedService}</p>
             </div>
         </div>
 
-        {/* Scrollable Description Area - Increased height from h-20 to h-32 */}
+        {/* Scrollable Description Area */}
         <div className="h-32 overflow-y-auto mb-2 custom-scrollbar">
             <p className="text-sm text-slate-500 leading-relaxed font-normal">
                 {offer.description}
             </p>
         </div>
 
-        {/* Tags - Decreased text size to text-[10px] */}
+        {/* Tags */}
         <div className="flex flex-wrap gap-2 mb-2 mt-auto">
             {offer.tags.map(tag => (
-                <span key={tag} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                <span key={tag} className="text-[10px] text-slate-500 bg-white border border-slate-100 px-2 py-1 rounded">
                     #{tag}
                 </span>
             ))}
         </div>
       </div>
 
-      <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-4">
+      <div className="bg-white px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-4">
          {/* Metadata (Right Side in RTL) */}
          <div className="flex flex-col sm:flex-row gap-1 sm:gap-3 text-xs text-slate-400">
             <div className="flex items-center gap-1">

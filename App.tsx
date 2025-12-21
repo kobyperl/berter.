@@ -67,7 +67,7 @@ export const App: React.FC = () => {
                   avatarUrl: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.email}&background=random`,
                   role: 'user', 
                   expertise: ExpertiseLevel.MID,
-                  mainField: '', 
+                  mainField: [], 
                   portfolioUrl: ''
               };
           });
@@ -86,6 +86,10 @@ export const App: React.FC = () => {
     const unsubscribeUserDoc = userDocRef.onSnapshot((docSnap) => {
         if (docSnap.exists) {
             const firestoreData = docSnap.data() as UserProfile;
+            // Normalize mainField to array to avoid crashes if it's a string from legacy data
+            if (firestoreData.mainField && !Array.isArray(firestoreData.mainField)) {
+                firestoreData.mainField = [firestoreData.mainField as unknown as string];
+            }
             setCurrentUser(firestoreData);
         }
     });
@@ -99,7 +103,14 @@ export const App: React.FC = () => {
     if (currentUser?.role === 'admin') {
         unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
           const fetchedUsers: UserProfile[] = [];
-          snapshot.forEach((doc) => fetchedUsers.push(doc.data() as UserProfile));
+          snapshot.forEach((doc) => {
+              const data = doc.data() as UserProfile;
+              // Normalize mainField to array
+              if (data.mainField && !Array.isArray(data.mainField)) {
+                  data.mainField = [data.mainField as unknown as string];
+              }
+              fetchedUsers.push(data);
+          });
           setUsers(fetchedUsers);
         });
     }
@@ -263,12 +274,16 @@ export const App: React.FC = () => {
   const handleUpdateProfile = async (updatedProfileData: UserProfile) => {
       const normalizedProfile: UserProfile = {
           ...updatedProfileData,
-          mainField: normalizeInput(updatedProfileData.mainField, taxonomy.approvedCategories),
+          mainField: (Array.isArray(updatedProfileData.mainField) ? updatedProfileData.mainField : (updatedProfileData.mainField ? [updatedProfileData.mainField as unknown as string] : [])).map(f => normalizeInput(f, taxonomy.approvedCategories)),
           interests: (updatedProfileData.interests || []).map(i => normalizeInput(i, taxonomy.approvedInterests))
       };
       try {
-          if (normalizedProfile.mainField) checkForNewCategory(normalizedProfile.mainField);
-          if (normalizedProfile.interests) { normalizedProfile.interests.forEach(interest => checkForNewInterest(interest)); }
+          if (normalizedProfile.mainField) {
+            normalizedProfile.mainField.forEach(f => checkForNewCategory(f));
+          }
+          if (normalizedProfile.interests) { 
+              normalizedProfile.interests.forEach(interest => checkForNewInterest(interest)); 
+          }
           const isAdmin = currentUser?.role === 'admin';
           if (isAdmin) {
               const { pendingUpdate, ...dataToSave } = normalizedProfile;
@@ -288,7 +303,8 @@ export const App: React.FC = () => {
     try {
         const userCredential = await auth.createUserWithEmailAndPassword(newUser.email!, pass);
         const uid = userCredential.user!.uid;
-        const normalizedMainField = normalizeInput(newUser.mainField, taxonomy.approvedCategories) || newUser.mainField?.trim() || 'כללי';
+        const professions = Array.isArray(newUser.mainField) ? newUser.mainField : (newUser.mainField ? [newUser.mainField as unknown as string] : []);
+        const normalizedMainFields = professions.map(f => normalizeInput(f, taxonomy.approvedCategories) || f.trim());
         const normalizedInterests = (newUser.interests || []).map(i => normalizeInput(i, taxonomy.approvedInterests) || i.trim());
         const userProfile: UserProfile = {
             id: uid,
@@ -299,7 +315,7 @@ export const App: React.FC = () => {
             portfolioUrl: newUser.portfolioUrl || '',
             portfolioImages: newUser.portfolioImages || [],
             expertise: newUser.expertise || ExpertiseLevel.MID,
-            mainField: normalizedMainField, 
+            mainField: normalizedMainFields, 
             interests: normalizedInterests,
             joinedAt: new Date().toISOString()
         };
@@ -311,7 +327,9 @@ export const App: React.FC = () => {
             setIsPostRegisterPromptOpen(true);
         }, 1000);
 
-        if (normalizedMainField) checkForNewCategory(normalizedMainField).catch(e => {});
+        if (normalizedMainFields.length > 0) {
+            normalizedMainFields.forEach(f => checkForNewCategory(f).catch(e => {}));
+        }
         if (normalizedInterests.length > 0) {
             normalizedInterests.forEach(interest => checkForNewInterest(interest).catch(e => {}));
         }
@@ -400,7 +418,13 @@ export const App: React.FC = () => {
     else {
         try {
              const userDoc = await db.collection("users").doc(profile.id).get();
-             if (userDoc.exists) profileToView = userDoc.data() as UserProfile;
+             if (userDoc.exists) {
+                 const data = userDoc.data() as UserProfile;
+                 if (data.mainField && !Array.isArray(data.mainField)) {
+                    data.mainField = [data.mainField as unknown as string];
+                 }
+                 profileToView = data;
+             }
         } catch (e) { console.error(e); }
     }
     setSelectedProfile(profileToView);
@@ -470,8 +494,14 @@ export const App: React.FC = () => {
       } else if (action === 'reassign' && type === 'category') {
           const { oldCat, newCat } = data;
           const batch = db.batch();
-          const affectedUsers = users.filter(u => u.mainField === oldCat);
-          affectedUsers.forEach(u => batch.update(db.collection("users").doc(u.id), { mainField: newCat }));
+          const affectedUsers = users.filter(u => {
+              const fields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
+              return fields.includes(oldCat);
+          });
+          affectedUsers.forEach(u => {
+              const currentFields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
+              batch.update(db.collection("users").doc(u.id), { mainField: currentFields.map(f => f === oldCat ? newCat : f) });
+          });
           batch.update(docRef, { pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldCat) });
           await batch.commit();
       } else if (action === 'edit') {
@@ -483,7 +513,13 @@ export const App: React.FC = () => {
           await docRef.set(tax);
           if (type === 'category') {
              const batch = db.batch();
-             users.filter(u => u.mainField === oldName).forEach(u => batch.update(db.collection("users").doc(u.id), { mainField: newName }));
+             users.filter(u => {
+                 const fields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
+                 return fields.includes(oldName);
+             }).forEach(u => {
+                 const currentFields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
+                 batch.update(db.collection("users").doc(u.id), { mainField: currentFields.map(f => f === oldName ? newName : f) });
+             });
              await batch.commit();
           }
       }
@@ -496,8 +532,8 @@ export const App: React.FC = () => {
       if (offer.status !== 'active' && !isMine && !isAdmin) return false; 
       if (viewFilter === 'for_you') {
           if (!currentUser) return false; 
-          const myProfession = currentUser.mainField;
-          const matchesMyProfession = offer.requestedService.includes(myProfession) || (offer.tags && offer.tags.some(t => t === myProfession));
+          const myProfessions = Array.isArray(currentUser.mainField) ? currentUser.mainField : (currentUser.mainField ? [currentUser.mainField as unknown as string] : []);
+          const matchesMyProfession = myProfessions.some(p => offer.requestedService.includes(p) || (offer.tags && offer.tags.some(t => t === p)));
           if (!matchesMyProfession) return false;
       }
       const title = offer.title || '';
@@ -541,7 +577,7 @@ export const App: React.FC = () => {
   const unreadCount = messages.filter(m => m.receiverId === currentUser?.id && !m.isRead).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-white flex flex-col font-sans">
       <AccessibilityToolbar />
       <Navbar 
         currentUser={currentUser}
@@ -648,7 +684,7 @@ export const App: React.FC = () => {
         }}
       />
 
-      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onAddOffer={handleAddOffer} currentUser={currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:'', portfolioUrl:''}, id: 'temp' }} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
+      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onAddOffer={handleAddOffer} currentUser={currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:[], portfolioUrl:''}, id: 'temp' }} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={currentUser?.id || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={(id) => db.collection("messages").doc(id).update({isRead: true})} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
       <ProfileModal 
@@ -657,7 +693,7 @@ export const App: React.FC = () => {
         profile={selectedProfile} 
         currentUser={currentUser} 
         userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
-        onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} 
+        onDeleteOffer={(id) => { return db.collection("offers").doc(id).delete(); }} 
         onUpdateProfile={handleUpdateProfile} 
         onContact={(p) => handleContact(p)} 
         availableCategories={availableCategories} 

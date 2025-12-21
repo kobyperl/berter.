@@ -16,7 +16,7 @@ export interface UserProfile {
   portfolioUrl: string;
   portfolioImages?: string[]; // New: Visual portfolio gallery
   expertise: ExpertiseLevel;
-  mainField: string; // Used for ad targeting and relevance
+  mainField: string[]; // Changed to array to support multiple professions
   interests?: string[]; // New: For personalization (Sports, Baking, etc.)
   bio?: string;
   joinedAt?: string;

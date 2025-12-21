@@ -64,7 +64,10 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
 
   // Calculate Counts with Case-Insensitive Matching
   const getCategoryCount = (category: string) => {
-    return users.filter(u => (u.mainField || '').trim().toLowerCase() === category.trim().toLowerCase()).length;
+    return users.filter(u => {
+        const fields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
+        return fields.some(f => f.trim().toLowerCase() === category.trim().toLowerCase());
+    }).length;
   };
 
   const getInterestCount = (interest: string) => {
@@ -313,7 +316,7 @@ export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
                                 onClick={handleAdd}
                                 disabled={!newInput.trim()}
                                 className={`px-4 py-2.5 rounded-lg text-white font-bold text-sm flex items-center gap-2 transition-all shadow-sm ${
-                                    activeTab === 'categories' ? 'bg-brand-600 hover:bg-brand-700' : 'bg-pink-500 hover:bg-pink-600'
+                                    activeTab === 'categories' ? 'bg-brand-600 hover:bg-brand-700' : 'bg-pink-50 hover:bg-pink-600'
                                 } disabled:opacity-50`}
                             >
                                 <Plus className="w-4 h-4" />

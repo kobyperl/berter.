@@ -61,7 +61,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                         <div className="rounded-xl transition-transform active:scale-95">
                             <button 
                                 onClick={onOpenWhoIsItFor}
-                                className="w-full flex items-center justify-center px-8 py-4 border border-slate-200 text-base font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 md:text-lg transition-all hover:shadow-md"
+                                className="w-full flex items-center justify-center px-8 py-4 border border-slate-200 text-base font-bold rounded-xl text-slate-700 bg-white hover:bg-white md:text-lg transition-all hover:shadow-md"
                             >
                                 למי הקהילה מתאימה
                             </button>
@@ -84,7 +84,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                         <div className="rounded-xl transition-transform active:scale-95">
                             <button 
                                 onClick={onOpenSearchTips}
-                                className="w-full flex items-center justify-center px-8 py-4 border border-slate-200 text-base font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 md:text-lg transition-all hover:shadow-md"
+                                className="w-full flex items-center justify-center px-8 py-4 border border-slate-200 text-base font-bold rounded-xl text-slate-700 bg-white hover:bg-white md:text-lg transition-all hover:shadow-md"
                             >
                                 מצאו שותף לברטר
                             </button>
@@ -96,7 +96,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
               <div className="mt-10 flex items-center gap-4 text-xs text-slate-400 font-normal">
                   <div className="flex -space-x-2 space-x-reverse">
                       {[1,2,3,4].map(i => (
-                          <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center overflow-hidden">
+                          <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-white flex items-center justify-center overflow-hidden">
                               <img src={`https://i.pravatar.cc/100?img=${i + 10}`} alt="User" className="w-full h-full object-cover" />
                           </div>
                       ))}
@@ -109,10 +109,9 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
       </div>
 
       {/* Left Side (Features) - 45% Width */}
-      <div className="w-full lg:w-[45%] bg-slate-50/50 relative min-h-[500px] lg:min-h-full flex items-center justify-center overflow-hidden order-2 lg:order-2 border-t lg:border-t-0 lg:border-r border-slate-100 p-8">
+      <div className="w-full lg:w-[45%] bg-white relative min-h-[500px] lg:min-h-full flex items-center justify-center overflow-hidden order-2 lg:order-2 border-t lg:border-t-0 lg:border-r border-slate-100 p-8">
         
-         {/* Background Pattern */}
-         <div className="absolute inset-0 opacity-[0.4] bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]"></div>
+         {/* Background Pattern - Removed radial dots */}
 
         {/* Composition: Connected Vertical Stack */}
         <div className="relative w-full max-w-sm flex flex-col gap-8 z-10">
@@ -127,7 +126,6 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                 </div>
                 <div>
                     <h3 className="font-bold text-slate-900 text-lg mb-1 group-hover:text-emerald-700 transition-colors">חוסכים בהוצאות העסק</h3>
-                    {/* Fixed height to ensure alignment,removed line-clamp to show full text */}
                     <p className="text-slate-500 text-sm font-normal leading-relaxed min-h-[3.5rem]">
                         משתמשים בכישרון שלכם כמטבע עבור הסוחר. מקבלים שירותים שווים בלי להוציא שקל.
                     </p>

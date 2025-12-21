@@ -1,4 +1,3 @@
-
 /**
  * Helps a user write a better barter offer using Gemini via Serverless Function.
  * This avoids exposing the API KEY in the client-side bundle.
@@ -29,6 +28,11 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
     }
 
     const data = await response.json();
+    
+    if (!data || typeof data !== 'object') {
+        console.error("Invalid data received from API");
+        return null;
+    }
 
     // Validate and fallback if fields are missing to ensure UI doesn't break
     return {
@@ -37,9 +41,9 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
         offeredService: data.offeredService || "שירות",
         requestedService: data.requestedService || "שירות",
         location: data.location || "כל הארץ",
-        tags: Array.isArray(data.tags) ? data.tags : [],
+        tags: Array.isArray(data.tags) ? data.tags : (data.tags ? [data.tags] : []),
         durationType: data.durationType === 'ongoing' ? 'ongoing' : 'one-time',
-        expirationDate: data.expirationDate
+        expirationDate: data.expirationDate || undefined
     };
 
   } catch (error) {
