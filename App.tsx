@@ -541,7 +541,7 @@ export const App: React.FC = () => {
   const unreadCount = messages.filter(m => m.receiverId === currentUser?.id && !m.isRead).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-white flex flex-col font-sans">
       <AccessibilityToolbar />
       <Navbar 
         currentUser={currentUser}
@@ -657,7 +657,7 @@ export const App: React.FC = () => {
         profile={selectedProfile} 
         currentUser={currentUser} 
         userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
-        onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} 
+        onDeleteOffer={(id) => { return db.collection("offers").doc(id).delete(); }} 
         onUpdateProfile={handleUpdateProfile} 
         onContact={(p) => handleContact(p)} 
         availableCategories={availableCategories} 
