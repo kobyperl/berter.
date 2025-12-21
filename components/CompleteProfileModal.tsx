@@ -5,7 +5,7 @@ import { X, Upload, Plus, Trash2, Save, Image as ImageIcon, Link as LinkIcon, Ch
 interface CompleteProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: { portfolioUrl: string; portfolioLinkText?: string; portfolioImages: string[] }) => void;
+  onSave: (data: { portfolioUrl: string; portfolioImages: string[] }) => void;
 }
 
 const compressImage = (file: File): Promise<string> => {
@@ -33,7 +33,6 @@ const compressImage = (file: File): Promise<string> => {
 
 export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOpen, onClose, onSave }) => {
   const [portfolioUrl, setPortfolioUrl] = useState('');
-  const [portfolioLinkText, setPortfolioLinkText] = useState('');
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +52,7 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
 
   const handleAddImageUrl = () => { if (newImageUrl) { setPortfolioImages(prev => [...prev, newImageUrl]); setNewImageUrl(''); } };
   const handleRemoveImage = (index: number) => { setPortfolioImages(prev => prev.filter((_, i) => i !== index)); };
-  const handleSave = () => { onSave({ portfolioUrl, portfolioLinkText: portfolioLinkText.trim(), portfolioImages }); };
+  const handleSave = () => { onSave({ portfolioUrl, portfolioImages }); };
 
   const inputClassName = "w-full bg-white border border-slate-300 rounded-xl p-3 text-sm focus:border-brand-500 outline-none transition-all shadow-sm";
 
@@ -68,16 +67,7 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
                 <p className="text-brand-100 text-xs mt-1">כדי לקבל יותר פניות, כדאי להוסיף תיק עבודות.</p>
             </div>
             <div className="p-5 sm:p-8 bg-white overflow-y-auto custom-scrollbar flex-1 space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-2"><LinkIcon className="w-4 h-4 text-brand-500" /> אתר / רשת חברתית</label>
-                        <input type="url" className={inputClassName} placeholder="https://..." value={portfolioUrl} onChange={(e) => setPortfolioUrl(e.target.value)} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-2">תיאור הלינק (עד 15 תווים)</label>
-                        <input type="text" maxLength={15} className={inputClassName} placeholder="למשל: לאתר שלי" value={portfolioLinkText} onChange={(e) => setPortfolioLinkText(e.target.value)} />
-                    </div>
-                </div>
+                <div><label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-2"><LinkIcon className="w-4 h-4 text-brand-500" /> אתר / רשת חברתית</label><input type="url" className={inputClassName} placeholder="https://..." value={portfolioUrl} onChange={(e) => setPortfolioUrl(e.target.value)} /></div>
                 <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-2"><ImageIcon className="w-4 h-4 text-brand-500" /> גלריית עבודות</label>
                     <div className="flex flex-col gap-3">

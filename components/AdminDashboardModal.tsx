@@ -287,35 +287,38 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                           <tr><th className="px-4 py-3">שם</th><th className="px-4 py-3">מייל</th><th className="px-4 py-3">סטטוס</th><th className="px-4 py-3">פעולות</th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                          {filtered.map(user => (
-                              <tr key={user.id} className="hover:bg-slate-50/30 transition-colors group">
-                                  <td className="px-4 py-3 flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}>
-                                      <div className="relative shrink-0">
-                                          <img src={user.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" alt="" />
-                                      </div>
-                                      <div className="min-w-0">
-                                          <div className="font-bold text-slate-800 truncate group-hover:text-brand-600 transition-colors">{user.name}</div>
-                                          <div className="text-[10px] text-slate-500 truncate">{user.mainField}</div>
-                                      </div>
-                                  </td>
-                                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
-                                  <td className="px-4 py-3">
-                                      {user.pendingUpdate ? (
-                                          <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-100 transition-colors border border-yellow-100">
-                                              <RefreshCw className="w-3 h-3" /> ממתין לאישור
-                                          </button>
-                                      ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                      <div className="flex gap-2 items-center">
-                                          <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all"><Mail className="w-4 h-4"/></a>
-                                          {user.id !== props.currentUser?.id && (
-                                              <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
-                                          )}
-                                      </div>
-                                  </td>
-                              </tr>
-                          ))}
+                          {filtered.map(user => {
+                              const professions = Array.isArray(user.mainField) ? user.mainField : (user.mainField ? [user.mainField as unknown as string] : []);
+                              return (
+                                <tr key={user.id} className="hover:bg-slate-50/30 transition-colors group">
+                                    <td className="px-4 py-3 flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}>
+                                        <div className="relative shrink-0">
+                                            <img src={user.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" alt="" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-slate-800 truncate group-hover:text-brand-600 transition-colors">{user.name}</div>
+                                            <div className="text-[10px] text-slate-500 truncate">{professions.join(', ')}</div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
+                                    <td className="px-4 py-3">
+                                        {user.pendingUpdate ? (
+                                            <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-100 transition-colors border border-yellow-100">
+                                                <RefreshCw className="w-3 h-3" /> ממתין לאישור
+                                            </button>
+                                        ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex gap-2 items-center">
+                                            <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all"><Mail className="w-4 h-4"/></a>
+                                            {user.id !== props.currentUser?.id && (
+                                                <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                              );
+                          })}
                       </tbody>
                   </table>
                   {filtered.length === 0 && (
@@ -390,7 +393,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
   // 3. Data (Taxonomy)
   const renderData = () => {
-      const getUsersForCategory = (cat: string) => safeUsers.filter(u => (u.mainField || '').trim().toLowerCase() === cat.trim().toLowerCase());
+      const getUsersForCategory = (cat: string) => safeUsers.filter(u => {
+          const fields = Array.isArray(u.mainField) ? u.mainField : (u.mainField ? [u.mainField as unknown as string] : []);
+          return fields.some(f => f.trim().toLowerCase() === cat.trim().toLowerCase());
+      });
       const getUsersForInterest = (int: string) => safeUsers.filter(u => (u.interests || []).some(i => i.trim().toLowerCase() === int.trim().toLowerCase()));
 
       const getCategoryCount = (cat: string) => getUsersForCategory(cat).length;

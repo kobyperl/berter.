@@ -36,8 +36,9 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
 
         // Show if matches User Profile
         if (currentUser) {
-            // Match Profession (Usage Category)
-            if (ad.targetCategories.includes(currentUser.mainField)) return true;
+            // Match Profession (Usage Category) - Checked against all professions in array
+            const myFields = Array.isArray(currentUser.mainField) ? currentUser.mainField : (currentUser.mainField ? [currentUser.mainField as unknown as string] : []);
+            if (myFields.some(prof => ad.targetCategories.includes(prof))) return true;
             
             // Match Interests (Subject Category)
             if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
@@ -62,7 +63,9 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                     );
                     if (hasInterestOverlap) score = 20;
                 }
-                if (ad.targetCategories.includes(currentUser.mainField)) score = 30;
+                // Check if any profession matches
+                const myFields = Array.isArray(currentUser.mainField) ? currentUser.mainField : (currentUser.mainField ? [currentUser.mainField as unknown as string] : []);
+                if (myFields.some(prof => ad.targetCategories.includes(prof))) score = 30;
             }
             return score;
         };

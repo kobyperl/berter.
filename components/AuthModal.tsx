@@ -62,9 +62,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [mainField, setMainField] = useState('');
+  const [professionsList, setProfessionsList] = useState<string[]>([]);
+  const [professionInput, setProfessionInput] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
-  const [portfolioLinkText, setPortfolioLinkText] = useState('');
   const [avatarDataUrl, setAvatarDataUrl] = useState('');
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -77,11 +77,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   useEffect(() => {
     if (!isLoginMode) {
-      setInterestsList([]); setInterestInput(''); setMainField(''); setAvatarDataUrl(''); setPortfolioImages([]); setPortfolioLinkText(''); setShowErrors(false);
+      setInterestsList([]); 
+      setInterestInput(''); 
+      setProfessionsList([]);
+      setProfessionInput('');
+      setAvatarDataUrl(''); 
+      setPortfolioImages([]); 
+      setShowErrors(false);
     }
   }, [isLoginMode]);
 
   if (!isOpen) return null;
+
+  const handleAddProfession = () => {
+    const trimmed = professionInput.trim();
+    if (trimmed && !professionsList.includes(trimmed)) {
+      setProfessionsList([...professionsList, trimmed]);
+      setProfessionInput('');
+    }
+  };
+
+  const handleRemoveProfession = (prof: string) => {
+    setProfessionsList(professionsList.filter(p => p !== prof));
+  };
 
   const handleAddInterest = () => {
     const trimmed = interestInput.trim();
@@ -128,7 +146,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           if (!lastName.trim()) missingFields.push("שם משפחה");
           if (!email.trim()) missingFields.push("כתובת אימייל");
           if (!password.trim() || password.length < 6) missingFields.push("סיסמה (לפחות 6 תווים)");
-          if (!mainField.trim()) missingFields.push("תחום עיסוק ראשי");
+          if (professionsList.length === 0) missingFields.push("לפחות מקצוע אחד");
           if (interestsList.length < 2) missingFields.push("לפחות 2 תחומי עניין");
           if (!acceptedPrivacy) missingFields.push("אישור תנאי שימוש");
           
@@ -140,7 +158,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           }
 
           const newUser: Partial<UserProfile> = {
-            name: `${firstName} ${lastName}`, email, mainField: mainField.trim(), portfolioUrl, portfolioLinkText: portfolioLinkText.trim(), portfolioImages, expertise: ExpertiseLevel.MID,
+            name: `${firstName} ${lastName}`, email, mainField: professionsList, portfolioUrl, portfolioImages, expertise: ExpertiseLevel.MID,
             avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`, interests: interestsList
           };
           await onRegister(newUser, password);
@@ -158,6 +176,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   const inputBaseClass = "w-full text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm border bg-white";
+  const labelBaseClass = "block text-sm font-bold text-slate-700 mb-2";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" role="dialog" aria-modal="true">
@@ -191,13 +210,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                     {!isLoginMode && (
                         <div className="grid grid-cols-2 gap-3">
-                            <div><label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">שם פרטי *</label><input type="text" className={`${inputBaseClass} ${getErrorClass(firstName)}`} value={firstName} onChange={e => setFirstName(e.target.value)} /></div>
-                            <div><label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">שם משפחה *</label><input type="text" className={`${inputBaseClass} ${getErrorClass(lastName)}`} value={lastName} onChange={e => setLastName(e.target.value)} /></div>
+                            <div><label className={labelBaseClass}>שם פרטי *</label><input type="text" className={`${inputBaseClass} ${getErrorClass(firstName)}`} value={firstName} onChange={e => setFirstName(e.target.value)} /></div>
+                            <div><label className={labelBaseClass}>שם משפחה *</label><input type="text" className={`${inputBaseClass} ${getErrorClass(lastName)}`} value={lastName} onChange={e => setLastName(e.target.value)} /></div>
                         </div>
                     )}
 
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">אימייל *</label>
+                        <label className={labelBaseClass}>אימייל *</label>
                         <div className="relative">
                             <Mail className="w-4 h-4 absolute right-3 top-3.5 text-slate-400" />
                             <input type="email" className={`${inputBaseClass} pr-10 ${getErrorClass(email)}`} placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} />
@@ -205,7 +224,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
 
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">סיסמה *</label>
+                        <label className={labelBaseClass}>סיסמה *</label>
                         <div className="relative">
                             <Lock className="w-4 h-4 absolute right-3 top-3.5 text-slate-400" />
                             <input type={showPassword ? "text" : "password"} className={`${inputBaseClass} pr-10 pl-10 ${getErrorClass(password)}`} placeholder="******" value={password} onChange={e => setPassword(e.target.value)} />
@@ -215,17 +234,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                     {!isLoginMode && (
                         <>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">מקצוע *</label>
-                                <input type="text" list="categories-list" className={`${inputBaseClass} ${getErrorClass(mainField)}`} placeholder="מה התחום שלך?" value={mainField} onChange={e => setMainField(e.target.value)} />
-                                <datalist id="categories-list">{availableCategories.map(cat => <option key={cat} value={cat} />)}</datalist>
+                            <div className="space-y-2">
+                                <label className={labelBaseClass}>מקצוע (לפחות 1) *</label>
+                                <div className="flex gap-2 mb-3">
+                                    <input 
+                                        type="text" 
+                                        list="categories-list" 
+                                        className={`${inputBaseClass} ${getErrorClass(professionsList)}`} 
+                                        placeholder="מה התחום שלך?" 
+                                        value={professionInput} 
+                                        onChange={e => setProfessionInput(e.target.value)} 
+                                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddProfession())}
+                                    />
+                                    <datalist id="categories-list">{availableCategories.map(cat => <option key={cat} value={cat} />)}</datalist>
+                                    <button type="button" onClick={handleAddProfession} disabled={!professionInput.trim()} className="bg-brand-600 text-white rounded-xl px-4 hover:bg-brand-700 transition-colors shrink-0"><Plus className="w-5 h-5" /></button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {professionsList.map((prof, idx) => (
+                                        <span key={idx} className="bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                                            {prof}
+                                            <button type="button" onClick={() => handleRemoveProfession(prof)} className="text-slate-400 hover:text-red-500 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
 
-                            <div className={`p-4 rounded-xl border ${showErrors && interestsList.length < 2 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                                <label className="block text-xs font-bold text-slate-700 mb-2">תחומי עניין (2 לפחות) *</label>
+                            <div className="space-y-2">
+                                <label className={labelBaseClass}>תחומי עניין (2 לפחות) *</label>
                                 <div className="flex gap-2 mb-3">
-                                    <input type="text" list="interests-list" className={inputBaseClass} value={interestInput} onChange={e => setInterestInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddInterest())} />
-                                    <button type="button" onClick={handleAddInterest} disabled={!interestInput.trim()} className="bg-brand-600 text-white rounded-xl px-4 hover:bg-brand-700 transition-colors"><Plus className="w-5 h-5" /></button>
+                                    <input type="text" list="interests-list" className={`${inputBaseClass} ${getErrorClass(interestsList)}`} value={interestInput} onChange={e => setInterestInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddInterest())} />
+                                    <datalist id="interests-list">{availableInterests.map(int => <option key={int} value={int} />)}</datalist>
+                                    <button type="button" onClick={handleAddInterest} disabled={!interestInput.trim()} className="bg-brand-600 text-white rounded-xl px-4 hover:bg-brand-700 transition-colors shrink-0"><Plus className="w-5 h-5" /></button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {interestsList.map((interest, idx) => (
@@ -237,9 +276,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="p-4 rounded-xl border border-slate-200 bg-white">
-                                <label className="block text-xs font-bold text-slate-700 mb-2">תיק עבודות / גלריה (אופציונלי)</label>
-                                <button type="button" onClick={() => portfolioInputRef.current?.click()} className="w-full py-3 px-4 bg-white border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:bg-white transition-all flex items-center justify-center gap-2">
+                            <div className="space-y-2">
+                                <label className={labelBaseClass}>תיק עבודות / גלריה (אופציונלי)</label>
+                                <button type="button" onClick={() => portfolioInputRef.current?.click()} className="w-full py-4 px-4 bg-white border border-dashed border-slate-300 rounded-xl text-sm font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2">
                                     <Upload className="w-4 h-4" /> העלה תמונות לעבודות שלך
                                 </button>
                                 <input type="file" ref={portfolioInputRef} className="hidden" accept="image/*" multiple onChange={handlePortfolioUpload} />
@@ -255,7 +294,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 )}
                             </div>
 
-                            <div className={`flex items-start gap-3 p-4 rounded-xl border ${showErrors && !acceptedPrivacy ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                            <div className={`flex items-start gap-3 p-3 rounded-xl ${showErrors && !acceptedPrivacy ? 'bg-red-50 border border-red-200' : ''}`}>
                                 <input type="checkbox" id="privacyConsent" className="mt-1 w-5 h-5 text-brand-600 rounded-lg focus:ring-brand-500" checked={acceptedPrivacy} onChange={(e) => setAcceptedPrivacy(e.target.checked)} />
                                 <label htmlFor="privacyConsent" className="text-xs text-slate-600 cursor-pointer font-medium leading-relaxed">
                                     אני מאשר/ת את <button type="button" onClick={(e) => {e.preventDefault(); onOpenPrivacyPolicy && onOpenPrivacyPolicy()}} className="text-brand-600 underline font-bold">מדיניות הפרטיות</button> ותנאי השימוש. *
