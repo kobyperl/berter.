@@ -14,6 +14,7 @@ export interface UserProfile {
   role?: 'user' | 'admin'; // Access control
   avatarUrl: string;
   portfolioUrl: string;
+  portfolioLinkText?: string; // New: Custom text for the portfolio link
   portfolioImages?: string[]; // New: Visual portfolio gallery
   expertise: ExpertiseLevel;
   mainField: string; // Used for ad targeting and relevance

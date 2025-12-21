@@ -16,6 +16,13 @@ const firebaseConfig = {
 
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
+  
+  // Fix for "Could not reach Cloud Firestore backend" errors.
+  // experimentalForceLongPolling forces the SDK to use an alternative connection method
+  // which works better in environments where standard WebSockets/gRPC-web might be blocked.
+  firebase.firestore().settings({
+    experimentalForceLongPolling: true,
+  });
 }
 
 export const auth = firebase.auth();

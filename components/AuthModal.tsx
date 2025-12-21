@@ -64,6 +64,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [lastName, setLastName] = useState('');
   const [mainField, setMainField] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
+  const [portfolioLinkText, setPortfolioLinkText] = useState('');
   const [avatarDataUrl, setAvatarDataUrl] = useState('');
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -76,7 +77,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   useEffect(() => {
     if (!isLoginMode) {
-      setInterestsList([]); setInterestInput(''); setMainField(''); setAvatarDataUrl(''); setPortfolioImages([]); setShowErrors(false);
+      setInterestsList([]); setInterestInput(''); setMainField(''); setAvatarDataUrl(''); setPortfolioImages([]); setPortfolioLinkText(''); setShowErrors(false);
     }
   }, [isLoginMode]);
 
@@ -139,7 +140,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           }
 
           const newUser: Partial<UserProfile> = {
-            name: `${firstName} ${lastName}`, email, mainField: mainField.trim(), portfolioUrl, portfolioImages, expertise: ExpertiseLevel.MID,
+            name: `${firstName} ${lastName}`, email, mainField: mainField.trim(), portfolioUrl, portfolioLinkText: portfolioLinkText.trim(), portfolioImages, expertise: ExpertiseLevel.MID,
             avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`, interests: interestsList
           };
           await onRegister(newUser, password);

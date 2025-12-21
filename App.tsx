@@ -297,6 +297,7 @@ export const App: React.FC = () => {
             role: newUser.email === ADMIN_EMAIL ? 'admin' : 'user',
             avatarUrl: newUser.avatarUrl || `https://ui-avatars.com/api/?name=${newUser.name}&background=random`,
             portfolioUrl: newUser.portfolioUrl || '',
+            portfolioLinkText: newUser.portfolioLinkText || '',
             portfolioImages: newUser.portfolioImages || [],
             expertise: newUser.expertise || ExpertiseLevel.MID,
             mainField: normalizedMainField, 
@@ -658,6 +659,7 @@ export const App: React.FC = () => {
         currentUser={currentUser} 
         userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
         onDeleteOffer={(id) => { return db.collection("offers").doc(id).delete(); }} 
+        onEditOffer={(o) => { setIsProfileModalOpen(false); setEditingOffer(o); setIsCreateModalOpen(true); }}
         onUpdateProfile={handleUpdateProfile} 
         onContact={(p) => handleContact(p)} 
         availableCategories={availableCategories} 
