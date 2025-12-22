@@ -30,6 +30,8 @@ export const OfferCard: React.FC<OfferCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoverRating, setHoverRating] = useState(0);
 
+  // isOwner is used mainly for rating protection. 
+  // For buttons like Edit/Delete, we rely on the existence of the callback prop.
   const isOwner = currentUserId === offer.profileId;
   const ratingCount = offer.ratings?.length || 0;
   const ratingScore = offer.averageRating || 0;
@@ -92,16 +94,42 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex flex-col mb-1.5 gap-1">
-                                <h4 className={`font-bold text-lg leading-snug flex items-center gap-2 ${isExpired ? 'text-slate-500' : 'text-slate-900'}`}>{offer.title}{isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">פג תוקף</span>}{isPending && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><EyeOff className="w-3 h-3" />ממתין</span>}</h4>
-                                <div className="mt-1 mb-1 opacity-90 scale-95 origin-top-right" onClick={e => e.stopPropagation()}>{renderStars(true)}</div>
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1"><span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><MapPin className="w-3 h-3" />{offer.location}</span>{offer.expirationDate && !isExpired && <span className="inline-flex items-center gap-1 text-[11px] text-red-500 font-medium"><Calendar className="w-3 h-3" />עד: {new Date(offer.expirationDate).toLocaleDateString('he-IL')}</span>}</div>
+                                <div className="flex justify-between items-start">
+                                    <h4 className={`font-bold text-lg leading-snug flex flex-wrap items-center gap-2 ${isExpired ? 'text-slate-500' : 'text-slate-900'}`}>
+                                        {offer.title}
+                                        {isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">פג תוקף</span>}
+                                        {isPending && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><EyeOff className="w-3 h-3" />ממתין</span>}
+                                    </h4>
+                                    
+                                    {/* Action Buttons in Compact Mode - Moved here for better visibility */}
+                                    <div className="flex items-center gap-1 mr-2" onClick={e => e.stopPropagation()}>
+                                        {onEdit && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); onEdit(offer); }} 
+                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-full transition-colors" 
+                                                title="ערוך הצעה"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                        {onDelete && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} 
+                                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" 
+                                                title="מחק הצעה"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="mt-0.5 mb-1 opacity-90 scale-95 origin-top-right" onClick={e => e.stopPropagation()}>{renderStars(true)}</div>
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-0.5"><span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><MapPin className="w-3 h-3" />{offer.location}</span>{offer.expirationDate && !isExpired && <span className="inline-flex items-center gap-1 text-[11px] text-red-500 font-medium"><Calendar className="w-3 h-3" />עד: {new Date(offer.expirationDate).toLocaleDateString('he-IL')}</span>}</div>
                             </div>
                             <div className="flex flex-col gap-1.5 w-full mt-1"><div className="flex items-start gap-1.5 min-w-0"><span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-indigo-600'}`}>מבקש/ת:</span><span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.requestedService}</span></div><div className="flex items-start gap-1.5 min-w-0"><span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-emerald-600'}`}>נותן/ת:</span><span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.offeredService}</span></div></div>
                         </div>
-                        <div className="flex flex-col items-end justify-between h-full pl-1">
-                            <div className="flex flex-col gap-2 sm:hidden">{onEdit && isOwner && <button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="text-slate-400 hover:text-blue-500"><Edit className="w-4 h-4" /></button>}{onDelete && isOwner && <button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק?')) onDelete(offer.id); }} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</div>
-                            <div className="hidden sm:flex flex-col gap-1">{onEdit && isOwner && <button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-full" title="ערוך"><Edit className="w-4 h-4" /></button>}{onDelete && isOwner && <button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק?')) onDelete(offer.id); }} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full" title="מחק"><Trash2 className="w-4 h-4" /></button>}</div>
-                            <div className="text-slate-400 mt-auto">{isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>
+                        <div className="flex flex-col items-end justify-center h-full pl-1">
+                            <div className="text-slate-400">{isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>
                         </div>
                     </div>
                 </div>
@@ -130,7 +158,20 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                 </div>
                 <div><h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4><span className="text-xs text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full font-medium">{offer.profile.expertise}</span></div>
             </div>
-            <div className="flex gap-2">{onEdit && isOwner && <button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="text-slate-400 hover:text-blue-500 transition-colors" title="ערוך"><Edit className="w-4 h-4" /></button>}{onDelete && isOwner && <button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק?')) onDelete(offer.id); }} className="text-slate-400 hover:text-red-500 transition-colors" title="מחק"><Trash2 className="w-4 h-4" /></button>}</div>
+            
+            {/* Grid View Actions */}
+            <div className="flex gap-1">
+                {onEdit && (
+                    <button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך הצעה">
+                        <Edit className="w-4 h-4" />
+                    </button>
+                )}
+                {onDelete && (
+                    <button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="מחק הצעה">
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                )}
+            </div>
         </div>
         <div className="mb-2">{renderStars()}</div>
         <h3 className={`text-lg font-bold mb-3 leading-tight min-h-[3.5rem] pr-1 ${isExpired ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{offer.title}</h3>
