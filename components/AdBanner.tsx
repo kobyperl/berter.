@@ -36,9 +36,8 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
 
         // Show if matches User Profile
         if (currentUser) {
-            // Match Profession (Usage Category) - Checked against all professions in array
-            const myFields = Array.isArray(currentUser.mainField) ? currentUser.mainField : (currentUser.mainField ? [currentUser.mainField as unknown as string] : []);
-            if (myFields.some(prof => ad.targetCategories.includes(prof))) return true;
+            // Match Profession (Usage Category)
+            if (ad.targetCategories.includes(currentUser.mainField)) return true;
             
             // Match Interests (Subject Category)
             if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
@@ -52,23 +51,39 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
     });
 
     // 2. Sort: Explicit Priority Order
+    // Priority 1: Usage Category (Profession) - Score 30
+    // Priority 2: Subject Category (Interests) - Score 20
+    // Priority 3: General (Global) - Score 10
     const sorted = filtered.sort((a, b) => {
         const getPriorityScore = (ad: SystemAd) => {
             let score = 0; 
-            if (ad.targetCategories.includes('Global')) score = 10;
+
+            // Base Score: Global (General)
+            if (ad.targetCategories.includes('Global')) {
+                score = 10;
+            }
+
             if (currentUser) {
+                // Higher Score: Subject Category (Interests)
                 if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
                      const hasInterestOverlap = ad.targetInterests.some(interest => 
                         currentUser.interests?.some(userInterest => userInterest.includes(interest) || interest.includes(userInterest))
                     );
-                    if (hasInterestOverlap) score = 20;
+                    if (hasInterestOverlap) {
+                        score = 20; // Overrides Global
+                    }
                 }
-                // Check if any profession matches
-                const myFields = Array.isArray(currentUser.mainField) ? currentUser.mainField : (currentUser.mainField ? [currentUser.mainField as unknown as string] : []);
-                if (myFields.some(prof => ad.targetCategories.includes(prof))) score = 30;
+
+                // Highest Score: Usage Category (Profession)
+                if (ad.targetCategories.includes(currentUser.mainField)) {
+                    score = 30; // Overrides Interest & Global
+                }
             }
+            
             return score;
         };
+
+        // Sort descending (30 -> 20 -> 10 -> 0)
         return getPriorityScore(b) - getPriorityScore(a);
     });
 
@@ -78,11 +93,16 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
   // Continuous Auto-Scroll Logic
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
+
     const scrollLoop = () => {
         if (scrollContainerRef.current && !isPaused && relevantAds.length > 0 && !expandedAd) {
             const container = scrollContainerRef.current;
             const maxScrollLeft = container.scrollWidth - container.clientWidth;
             const cardWidth = 340; 
+            
+            // RTL Handling: in some browsers scrollLeft is negative or 0 is rightmost.
+            // We use standard positive logic and check tolerance.
+            
             if (Math.abs(container.scrollLeft) >= maxScrollLeft - 10) {
                 container.scrollTo({ left: 0, behavior: 'smooth' });
             } else {
@@ -90,9 +110,14 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
             }
         }
     };
-    if (relevantAds.length > 0) intervalId = setInterval(scrollLoop, 3500);
+
+    if (relevantAds.length > 0) {
+        intervalId = setInterval(scrollLoop, 3500);
+    }
+
     return () => clearInterval(intervalId);
   }, [relevantAds.length, isPaused, expandedAd]);
+
 
   const manualScroll = (direction: 'left' | 'right') => {
       if (scrollContainerRef.current) {
@@ -117,7 +142,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
         >
-        <div className="absolute inset-0 bg-white rounded-xl border border-slate-100 -z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl opacity-50 -z-10"></div>
 
         <div className="relative z-10 px-2 sm:px-0">
             
@@ -150,6 +175,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                             onClick={() => setExpandedAd(ad)}
                             className="flex-shrink-0 w-full sm:w-[480px] snap-center bg-white rounded-lg shadow-sm border border-slate-100 overflow-hidden flex flex-row h-32 hover:shadow-md transition-shadow duration-300 relative cursor-pointer"
                         >
+                                {/* Animated Progress Bar indicating movement */}
                                 {!isPaused && !expandedAd && (
                                     <div className="absolute bottom-0 left-0 h-0.5 bg-brand-400 z-20 animate-[progress_3.5s_linear_infinite] w-full origin-right opacity-50"></div>
                                 )}
@@ -174,7 +200,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                                         </span>
                                         <button
                                             onClick={(e) => {
-                                                e.stopPropagation(); 
+                                                e.stopPropagation(); // Stop banner click from opening modal if clicking direct link
                                                 handleOpenLink(ad.linkUrl);
                                             }}
                                             className="text-xs font-bold text-black hover:text-slate-700 flex items-center gap-1 hover:underline bg-transparent border-none p-0 cursor-pointer"
@@ -194,15 +220,18 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
         {/* Expanded Ad Modal */}
         {expandedAd && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                {/* Backdrop - Click to Close */}
                 <div 
                     className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity" 
                     onClick={() => setExpandedAd(null)}
                 />
                 
+                {/* Modal Content - Click to Open Link */}
                 <div 
                     className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 cursor-pointer group"
                     onClick={() => handleOpenLink(expandedAd.linkUrl)}
                 >
+                    {/* Close Button - Stop Propagation so it doesn't open link */}
                     <button 
                         onClick={(e) => {
                             e.stopPropagation();
@@ -213,7 +242,8 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                         <X className="w-5 h-5" />
                     </button>
 
-                    <div className="aspect-square w-full relative overflow-hidden bg-white">
+                    {/* Square Image */}
+                    <div className="aspect-square w-full relative overflow-hidden bg-slate-100">
                         <img 
                             src={expandedAd.imageUrl} 
                             alt={expandedAd.title} 
@@ -228,6 +258,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                         )}
                     </div>
 
+                    {/* Content Section */}
                     <div className="p-6 text-center relative -mt-10 z-10">
                         <div className="bg-white rounded-xl p-6 shadow-lg border border-slate-100">
                              <h3 className="text-2xl font-bold text-slate-900 mb-3">{expandedAd.title}</h3>
