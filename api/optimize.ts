@@ -1,9 +1,7 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-
 export default async function handler(req, res) {
   // CORS Headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
@@ -36,56 +34,92 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing rawInput in request body' });
   }
 
+  // Check multiple possible environment variable names
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    console.error("CRITICAL: No valid API Key found in environment variables.");
+    return res.status(500).json({ 
+        error: 'Server configuration error: API Key missing',
+        details: 'Checked: VITE_GEMINI_API_KEY, API_KEY, GOOGLE_API_KEY'
+    });
+  }
+
   try {
-    // Fix: API key must be obtained exclusively from process.env.API_KEY and use @google/genai SDK
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const today = new Date().toISOString().split('T')[0];
     const prompt = `
       Current Date: ${today}
       Analyze this barter offer request: "${rawInput}"
       
-      Extract structured data in Hebrew.
+      Extract structrued data in Hebrew.
     `;
 
-    // Define response schema using Type enum as per guidelines
+    // Define JSON Schema for strict output
     const responseSchema = {
-        type: Type.OBJECT,
+        type: "OBJECT",
         properties: {
-            title: { type: Type.STRING, description: "A professional and catchy title for the barter offer (Hebrew)." },
-            description: { type: Type.STRING, description: "A persuasive and clear description of the offer (Hebrew)." },
-            offeredService: { type: Type.STRING, description: "Short 2-4 words summarizing what is given (Hebrew)." },
-            requestedService: { type: Type.STRING, description: "Short 2-4 words summarizing what is requested (Hebrew)." },
-            location: { type: Type.STRING, description: "The city or area mentioned. If none mentioned, return 'כל הארץ'." },
+            title: { type: "STRING", description: "A professional and catchy title for the barter offer (Hebrew)." },
+            description: { type: "STRING", description: "A persuasive and clear description of the offer (Hebrew)." },
+            offeredService: { type: "STRING", description: "Short 2-4 words summarizing what is given (Hebrew)." },
+            requestedService: { type: "STRING", description: "Short 2-4 words summarizing what is requested (Hebrew)." },
+            location: { type: "STRING", description: "The city or area mentioned. If none mentioned, return 'כל הארץ'." },
             tags: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
+                type: "ARRAY", 
+                items: { type: "STRING" },
                 description: "Up to 10 relevant tags (professions, skills, or interests)."
             },
             durationType: { 
-                type: Type.STRING, 
+                type: "STRING", 
+                enum: ["one-time", "ongoing"],
                 description: "ongoing for retainers/subscriptions/long-term, one-time for projects."
             },
-            expirationDate: { type: Type.STRING, description: "YYYY-MM-DD format if a deadline is explicitly mentioned." }
+            expirationDate: { type: "STRING", description: "YYYY-MM-DD format if a deadline is explicitly mentioned." }
         },
         required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
     };
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
+    const model = 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const requestBody = {
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: responseSchema
       }
+    };
+
+    // Use the incoming request referer or fallback to the main domain
+    const referer = req.headers.referer || 'https://www.barter.org.il';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Referer': referer, 
+        'Origin': referer
+      },
+      body: JSON.stringify(requestBody)
     });
 
-    // Fix: Correct property access for generated text
-    const generatedText = response.text;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini API Error (${response.status}):`, errorText);
+      return res.status(response.status).json({ 
+          error: 'Gemini API Error', 
+          details: errorText 
+      });
+    }
+
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (generatedText) {
       let jsonResponse;
       try {
-        jsonResponse = JSON.parse(generatedText.trim());
+        jsonResponse = JSON.parse(generatedText);
       } catch (parseError) {
         console.error("Failed to parse Gemini response as JSON:", generatedText);
         return res.status(500).json({ error: 'AI returned invalid JSON', raw: generatedText });
