@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Briefcase, ExternalLink, Heart, Pencil, Save, Plus, Image as ImageIcon, Camera, Upload, Tag, AlertCircle, CheckCircle, XCircle, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { X, Briefcase, ExternalLink, Heart, Pencil, Save, Plus, Image as ImageIcon, Camera, Upload, Tag, AlertCircle, CheckCircle, XCircle, Loader2, ChevronRight, ChevronLeft, PlusCircle } from 'lucide-react';
 import { UserProfile, BarterOffer, ExpertiseLevel } from '../types';
 import { OfferCard } from './OfferCard';
 
@@ -19,7 +19,15 @@ interface ProfileModalProps {
   onApproveUpdate?: (userId: string) => void;
   onRejectUpdate?: (userId: string) => void;
   startInEditMode?: boolean;
+  onOpenCreateOffer?: (profile: UserProfile) => void; // New prop
 }
+
+const normalizeUrl = (url: string): string => {
+    if (!url || url.trim() === '') return '';
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+};
 
 // Utility to compress image
 const compressImage = (file: File): Promise<string> => {
@@ -65,7 +73,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   availableInterests,
   onApproveUpdate,
   onRejectUpdate,
-  startInEditMode = false
+  startInEditMode = false,
+  onOpenCreateOffer
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState<UserProfile | null>(null);
@@ -74,7 +83,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [showPendingApproval, setShowPendingApproval] = useState(false);
   const [interestInput, setInterestInput] = useState('');
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null); // New state for Lightbox
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null); 
   
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const portfolioInputRef = useRef<HTMLInputElement>(null);
@@ -91,7 +100,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     if (displayProfile) {
         setEditFormData(displayProfile);
     }
-    if (isOpen && startInEditMode && isOwnProfile) {
+    if (isOpen && startInEditMode && (isOwnProfile || isAdmin)) {
         setIsEditing(true);
     } else if (!isOpen) {
         setIsEditing(false);
@@ -110,7 +119,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     if (editFormData) {
         setIsSaving(true);
         try {
-            await onUpdateProfile(editFormData);
+            const dataToSave = {
+                ...editFormData,
+                portfolioUrl: normalizeUrl(editFormData.portfolioUrl)
+            };
+            await onUpdateProfile(dataToSave);
             if (isAdmin) {
                 setIsEditing(false);
                 setShowPendingApproval(false);
@@ -231,8 +244,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         <div className="inline-block bg-white rounded-2xl text-right overflow-hidden shadow-xl transform transition-all sm:max-w-4xl w-full">
             <div className="h-32 bg-gradient-to-r from-brand-500 to-teal-600 relative">
                 <button onClick={onClose} className="absolute top-4 left-4 bg-black/20 hover:bg-black/30 text-white p-2 rounded-full transition-all z-10 backdrop-blur-sm"><X className="w-5 h-5" /></button>
-                {isOwnProfile && !isEditing && (
-                    <button onClick={() => setIsEditing(true)} className="absolute top-4 right-4 bg-white/90 text-brand-700 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-white transition-colors"><Pencil className="w-3 h-3" />ערוך פרופיל</button>
+                {(isOwnProfile || isAdmin) && !isEditing && (
+                    <button 
+                        onClick={() => setIsEditing(true)} 
+                        className="absolute top-4 right-4 bg-white/90 text-brand-700 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-white transition-colors"
+                    >
+                        <Pencil className="w-3 h-3" />
+                        {isAdmin && !isOwnProfile ? 'ערוך פרופיל (מנהל)' : 'ערוך פרופיל'}
+                    </button>
                 )}
             </div>
             <div className="px-8 pb-8">
@@ -251,7 +270,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
                              <div><label className="block text-xs font-bold text-slate-700 mb-1.5">שם מלא</label><input required className={inputClassName} value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} /></div>
                              <div><label className="block text-xs font-bold text-slate-700 mb-1.5">תחום עיסוק ראשי</label><input list="edit-categories" className={inputClassName} value={editFormData.mainField} onChange={e => setEditFormData({...editFormData, mainField: e.target.value})} placeholder="בחר או הקלד חדש..." /><datalist id="edit-categories">{availableCategories.map(c => <option key={c} value={c} />)}</datalist></div>
-                             <div><label className="block text-xs font-bold text-slate-700 mb-1.5">לינק לתיק עבודות חיצוני</label><input className={inputClassName} placeholder="https://..." value={editFormData.portfolioUrl} onChange={e => setEditFormData({...editFormData, portfolioUrl: e.target.value})} /></div>
+                             <div><label className="block text-xs font-bold text-slate-700 mb-1.5">לינק לתיק עבודות חיצוני</label><input type="text" className={inputClassName} placeholder="www.example.co.il" value={editFormData.portfolioUrl} onChange={e => setEditFormData({...editFormData, portfolioUrl: e.target.value})} /></div>
                          </div>
                          <div className="mb-5"><label className="block text-xs font-bold text-slate-700 mb-1.5">קצת עליי (Bio)</label><textarea className={`${inputClassName} h-24`} value={editFormData.bio || ''} onChange={e => setEditFormData({...editFormData, bio: e.target.value})}></textarea></div>
                          <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -295,7 +314,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         <div className="relative flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-12 mb-8 gap-4">
                             <div className="flex items-end gap-5">
                                 <img src={displayProfile.avatarUrl} alt={displayProfile.name} className="w-28 h-28 rounded-full border-4 border-white shadow-lg bg-white object-cover aspect-square shrink-0" />
-                                <div className="pb-2 pt-4 sm:pt-6"> {/* Increased spacing above name */}
+                                <div className="pb-2 pt-4 sm:pt-6"> 
                                     <h2 className="text-3xl font-bold text-slate-900 leading-tight">{displayProfile.name}</h2>
                                     <p className="text-slate-500 flex items-center gap-1.5 mt-1 font-medium"><Briefcase className="w-4 h-4 shrink-0" />{displayProfile.mainField}</p>
                                 </div>
@@ -313,9 +332,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             <div className="mb-8"><h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-lg"><ImageIcon className="w-5 h-5 text-brand-500" />גלריה</h3><div className="grid grid-cols-3 sm:grid-cols-4 gap-3">{displayProfile.portfolioImages.map((img, idx) => (<div key={idx} onClick={() => setLightboxIndex(idx)} className="aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm group cursor-pointer"><img src={img} alt={`Work ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /></div>))}</div></div>
                         )}
                         <div className="border-t border-slate-100 pt-8">
-                            <h3 className="font-bold text-slate-900 mb-5 flex items-center gap-2 text-lg">{isOwnProfile ? 'ההצעות שלי' : `הצעות שפורסמו ע"י ${displayProfile.name.split(' ')[0]}`}<span className="bg-brand-50 text-brand-700 text-xs px-2.5 py-0.5 rounded-full font-bold">{userOffers.length}</span></h3>
+                            <div className="flex justify-between items-center mb-5">
+                                <h3 className="font-bold text-slate-900 flex items-center gap-2 text-lg">{isOwnProfile ? 'ההצעות שלי' : `הצעות שפורסמו ע"י ${displayProfile.name.split(' ')[0]}`}<span className="bg-brand-50 text-brand-700 text-xs px-2.5 py-0.5 rounded-full font-bold">{userOffers.length}</span></h3>
+                                {(isOwnProfile || isAdmin) && onOpenCreateOffer && (
+                                    <button 
+                                        onClick={() => onOpenCreateOffer(displayProfile!)}
+                                        className="flex items-center gap-2 bg-brand-50 text-brand-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-brand-100 border border-brand-100 transition-all shadow-sm"
+                                    >
+                                        <PlusCircle className="w-4 h-4" />
+                                        {isAdmin && !isOwnProfile ? `פרסם הצעה בשם ${displayProfile.name.split(' ')[0]}` : 'פרסם הצעה חדשה'}
+                                    </button>
+                                )}
+                            </div>
                             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                                {userOffers.length > 0 ? userOffers.map(offer => (<OfferCard key={offer.id} offer={offer} viewMode="compact" currentUserId={currentUser?.id} onUserClick={() => {}} onContact={() => { onClose(); onContact(displayProfile!); }} onRate={onRate} onDelete={isOwnProfile ? onDeleteOffer : undefined} />)) : (<p className="text-slate-500 text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">{isOwnProfile ? 'לא פרסמת עדיין הצעות.' : 'משתמש זה לא פרסם הצעות פעילות.'}</p>)}
+                                {userOffers.length > 0 ? userOffers.map(offer => (<OfferCard key={offer.id} offer={offer} viewMode="compact" currentUserId={currentUser?.id} onUserClick={() => {}} onContact={() => { onClose(); onContact(displayProfile!); }} onRate={onRate} onDelete={(isOwnProfile || isAdmin) ? onDeleteOffer : undefined} onEdit={(isOwnProfile || isAdmin) ? undefined : undefined} />)) : (<p className="text-slate-500 text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">{isOwnProfile ? 'לא פרסמת עדיין הצעות.' : 'משתמש זה לא פרסם הצעות פעילות.'}</p>)}
                             </div>
                         </div>
                          {profile?.pendingUpdate && (!isOwnProfile || !isAdmin) && (

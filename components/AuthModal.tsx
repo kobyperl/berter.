@@ -11,8 +11,15 @@ interface AuthModalProps {
   startOnRegister?: boolean;
   availableCategories: string[];
   availableInterests: string[];
-  onOpenPrivacyPolicy?: () => void; // New prop for privacy policy
+  onOpenPrivacyPolicy?: () => void; 
 }
+
+const normalizeUrl = (url: string): string => {
+    if (!url || url.trim() === '') return '';
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+};
 
 // Utility to compress image
 const compressImage = (file: File): Promise<string> => {
@@ -64,19 +71,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showSuccess, setShowSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Validation State to trigger red borders
   const [showErrors, setShowErrors] = useState(false);
   
-  // Reset mode when isOpen changes or startOnRegister changes
   useEffect(() => {
     if (isOpen) {
         setIsLoginMode(!startOnRegister);
         setIsSubmitting(false);
-        setShowErrors(false); // Reset errors on open
+        setShowErrors(false); 
     }
   }, [isOpen, startOnRegister]);
   
-  // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -84,22 +88,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [mainField, setMainField] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
   
-  // Image State
   const [avatarDataUrl, setAvatarDataUrl] = useState('');
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   
-  // Refs
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const portfolioInputRef = useRef<HTMLInputElement>(null);
   
-  // Interests State (Tag based)
   const [interestsList, setInterestsList] = useState<string[]>([]);
   const [interestInput, setInterestInput] = useState('');
 
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
-  // Reset form when switching modes
   useEffect(() => {
     if (!isLoginMode) {
       setInterestsList([]);
@@ -153,7 +153,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           alert("שגיאה בטעינת התמונות");
       } finally {
           setIsUploading(false);
-          e.target.value = ''; // Reset
+          e.target.value = ''; 
       }
   };
 
@@ -164,11 +164,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setShowErrors(false); // Reset first
+    setShowErrors(false); 
     
     try {
         if (isLoginMode) {
-          // Basic validation for login
           if (!email.trim() || !password.trim()) {
               alert("נא למלא אימייל וסיסמה");
               setShowErrors(true);
@@ -177,7 +176,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           }
           await onLogin(email, password);
         } else {
-          // Comprehensive Validation Logic for Registration
           const missingFields = [];
 
           if (!firstName.trim()) missingFields.push("שם פרטי");
@@ -191,27 +189,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           if (missingFields.length > 0) {
               const message = "לא ניתן להשלים את ההרשמה כי חסרים פרטים:\n\n• " + missingFields.join("\n• ");
               alert(message);
-              setShowErrors(true); // Trigger red borders
+              setShowErrors(true); 
               setIsSubmitting(false);
               return;
           }
 
-          // Register Logic
           const newUser: Partial<UserProfile> = {
             name: `${firstName} ${lastName}`,
             email,
             mainField: mainField.trim(),
-            portfolioUrl,
-            portfolioImages: portfolioImages, // Pass uploaded images
+            portfolioUrl: normalizeUrl(portfolioUrl),
+            portfolioImages: portfolioImages, 
             expertise: ExpertiseLevel.MID,
-            // Use uploaded avatar or generate random one
             avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
             interests: interestsList
           };
           
           await onRegister(newUser, password);
           
-          // Email Simulation Feedback
           setShowSuccess(true);
           setTimeout(() => {
             setShowSuccess(false);
@@ -224,25 +219,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  if (showSuccess) {
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 bg-opacity-75">
-            <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center animate-in fade-in zoom-in">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 className="w-8 h-8 text-green-600" />
-                </div>
-                <h3 className="text-2xl font-bold text-slate-800 mb-2">ברוכים הבאים!</h3>
-                <p className="text-slate-600 mb-4">
-                    מייל אישור הרשמה נשלח לכתובת: <br/>
-                    <span className="font-semibold">{email}</span>
-                </p>
-                <p className="text-xs text-slate-400">מעבירים אותך לאזור האישי...</p>
-            </div>
-        </div>
-    );
-  }
-
-  // Determine error style
   const getErrorClass = (value: any, isRequired: boolean = true) => {
       if (!showErrors) return "border-slate-300";
       if (isRequired && (!value || (Array.isArray(value) && value.length === 0))) {
@@ -279,10 +255,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                 )}
 
-                {/* noValidate added to prevent default browser tooltips, we handle validation manually */}
                 <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-                    
-                    {/* Avatar Upload (Only Registration) */}
                     {!isLoginMode && (
                         <div className="flex justify-center mb-6">
                             <div 
@@ -454,9 +427,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 )}
                             </div>
 
-                            {/* Portfolio Gallery Upload */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-2">
+                                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
                                     <ImageIcon className="w-4 h-4 text-brand-500" />
                                     תמונות לתיק עבודות (אופציונלי)
                                 </label>
@@ -496,16 +468,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 mb-1.5">קישור לאתר חיצוני (אופציונלי)</label>
                                 <input 
-                                    type="url"
+                                    type="text"
                                     name="portfolioUrl"
                                     className={inputBaseClass}
-                                    placeholder="https://portfolio.com"
+                                    placeholder="www.portfolio.co.il"
                                     value={portfolioUrl}
                                     onChange={e => setPortfolioUrl(e.target.value)}
                                 />
                             </div>
 
-                            {/* Privacy Policy Consent */}
                             <div className={`flex items-start gap-2 p-3 rounded-xl border mt-2 ${showErrors && !acceptedPrivacy ? 'bg-red-50 border-red-200' : 'bg-slate-100 border-slate-200'}`}>
                                 <input 
                                     type="checkbox" 

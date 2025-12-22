@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { X, Upload, Plus, Trash2, Save, ArrowLeft, Image as ImageIcon, Link as LinkIcon, CheckCircle, Loader2 } from 'lucide-react';
 
@@ -6,6 +7,13 @@ interface CompleteProfileModalProps {
   onClose: () => void;
   onSave: (data: { portfolioUrl: string; portfolioImages: string[] }) => void;
 }
+
+const normalizeUrl = (url: string): string => {
+    if (!url || url.trim() === '') return '';
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+};
 
 // Utility to compress image
 const compressImage = (file: File): Promise<string> => {
@@ -67,7 +75,6 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
           alert('שגיאה בטעינת התמונות');
       } finally {
           setIsLoading(false);
-          // Reset input
           e.target.value = '';
       }
   };
@@ -84,7 +91,10 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
   };
 
   const handleSave = () => {
-      onSave({ portfolioUrl, portfolioImages });
+      onSave({ 
+          portfolioUrl: normalizeUrl(portfolioUrl), 
+          portfolioImages 
+      });
   };
 
   const inputClassName = "w-full bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl p-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm";
@@ -114,16 +124,15 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
             
             <div className="p-6">
                 <div className="space-y-6">
-                    {/* Link Section */}
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
                             <LinkIcon className="w-4 h-4 text-brand-500" />
                             קישור לאתר / רשת חברתית
                         </label>
                         <input 
-                            type="url" 
+                            type="text" 
                             className={inputClassName}
-                            placeholder="https://www.mywebsite.co.il"
+                            placeholder="www.mywebsite.co.il"
                             value={portfolioUrl}
                             onChange={(e) => setPortfolioUrl(e.target.value)}
                         />
@@ -132,7 +141,6 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
                         </p>
                     </div>
 
-                    {/* Images Section */}
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
                             <ImageIcon className="w-4 h-4 text-brand-500" />
@@ -153,7 +161,7 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
                                 ref={fileInputRef}
                                 className="hidden"
                                 accept="image/*"
-                                multiple // Allow multiple files
+                                multiple 
                                 onChange={handleFileUpload}
                             />
                             
@@ -177,7 +185,6 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
                             </div>
                         </div>
 
-                        {/* Images Preview Grid */}
                         {portfolioImages.length > 0 ? (
                             <div className="grid grid-cols-4 gap-2 mt-3">
                                 {portfolioImages.map((img, idx) => (
