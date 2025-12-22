@@ -48,8 +48,8 @@ const translateAuthError = (code: string) => {
 
 // --- Sub-component for Skeleton Loading ---
 const OfferSkeleton = () => (
-    <div className="bg-white rounded-xl border border-slate-200 h-[450px] flex flex-col overflow-hidden shadow-sm">
-        <div className="p-5 flex-1 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 h-[420px] flex flex-col overflow-hidden shadow-sm">
+        <div className="p-4 flex-1 space-y-4">
             <div className="flex gap-3 items-center">
                 <div className="w-10 h-10 rounded-full skeleton shrink-0" />
                 <div className="space-y-2 flex-1"><div className="h-3 w-2/3 skeleton rounded" /><div className="h-2 w-1/3 skeleton rounded" /></div>
@@ -108,12 +108,12 @@ export const App: React.FC = () => {
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Public Data (Optimized with Limit) ---
+  // --- Public Data (Highly Optimized) ---
   useEffect(() => {
-    // Initial Load - Fetch last 50 active offers for instant display
+    // Aggressive optimization: fetch only 15 latest items for instant display
     const unsubscribeOffers = db.collection("offers")
       .orderBy("createdAt", "desc")
-      .limit(50)
+      .limit(15) 
       .onSnapshot((snapshot) => {
         const fetched: BarterOffer[] = [];
         snapshot.forEach((doc) => fetched.push(doc.data() as BarterOffer));
@@ -137,7 +137,7 @@ export const App: React.FC = () => {
     return () => { unsubscribeOffers(); unsubscribeAds(); unsubscribeTaxonomy(); };
   }, []);
 
-  // --- Admin Data (Fires when role detected) ---
+  // --- Admin Data ---
   useEffect(() => {
     if (currentUser?.role !== 'admin') { setUsers([]); return; }
     const unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
@@ -228,7 +228,7 @@ export const App: React.FC = () => {
       if (selectedCategories.length > 0) { if (!selectedCategories.some(cat => (offer.tags || []).includes(cat) || (offer.offeredService || '').includes(cat))) return false; }
       return true;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [offers, currentUser, viewFilter, searchQuery, keywordFilter, locationFilter, durationFilter, selectedCategories]);
+  }, [offers, currentUser?.id, currentUser?.role, currentUser?.mainField, viewFilter, searchQuery, keywordFilter, locationFilter, durationFilter, selectedCategories]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -252,7 +252,7 @@ export const App: React.FC = () => {
       
       {viewFilter === 'all' && <Hero currentUser={currentUser} onOpenWhoIsItFor={() => setIsWhoIsItForOpen(true)} onOpenSearchTips={() => setIsSearchTipsOpen(true)} />}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 w-full flex-grow">
         <AdBanner contextCategories={selectedCategories} systemAds={systemAds} currentUser={currentUser} />
         
         <FilterBar 
@@ -266,9 +266,8 @@ export const App: React.FC = () => {
             searchQuery={searchQuery} locationFilter={locationFilter} keywordFilter={keywordFilter}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-1">
             {isOffersLoading ? (
-                // Show 6 Skeletons while loading
                 [1,2,3,4,5,6].map(i => <OfferSkeleton key={i} />)
             ) : (
                 <>
@@ -282,7 +281,7 @@ export const App: React.FC = () => {
                             onEdit={o => { setEditingOffer(o); setIsCreateModalOpen(true); }}
                         />
                     ))}
-                    <div onClick={() => handleOpenCreate()} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[300px]">
+                    <div onClick={() => handleOpenCreate()} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-6 sm:p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[300px]">
                         <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
                         <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
                     </div>
@@ -291,7 +290,7 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      <Footer onOpenAccessibility={() => setIsAccessibilityOpen(true)} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
+      <Footer onOpenAccessibility={() => setIsAccessibilityOpen(true)} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(false)} />
       
       {isAdminDashboardOpen && <AdminDashboardModal isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)} users={users} currentUser={currentUser} onDeleteUser={id => db.collection("users").doc(id).delete()} onApproveUpdate={()=>{}} onRejectUpdate={()=>{}} offers={offers} onDeleteOffer={id=>db.collection("offers").doc(id).delete()} onBulkDelete={()=>{}} onApproveOffer={id=>db.collection("offers").doc(id).update({status:'active'})} onEditOffer={o=>{setEditingOffer(o); setIsCreateModalOpen(true);}} availableCategories={availableCategories} availableInterests={availableInterests} pendingCategories={taxonomy.pendingCategories || []} pendingInterests={taxonomy.pendingInterests || []} onAddCategory={()=>{}} onAddInterest={()=>{}} onDeleteCategory={()=>{}} onDeleteInterest={()=>{}} onApproveCategory={()=>{}} onRejectCategory={()=>{}} onReassignCategory={()=>{}} onApproveInterest={()=>{}} onRejectInterest={()=>{}} onEditCategory={()=>{}} onEditInterest={()=>{}} ads={systemAds} onAddAd={()=>{}} onEditAd={()=>{}} onDeleteAd={()=>{}} onViewProfile={p=>{setSelectedProfile(p); setIsProfileModalOpen(true);}} />}
       {isEmailCenterOpen && <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />}
@@ -300,12 +299,26 @@ export const App: React.FC = () => {
       <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setTargetUserForOffer(null); }} onAddOffer={handleAddOffer} currentUser={targetUserForOffer || currentUser || {id:'guest', name:'אורח', avatarUrl:'', portfolioUrl:'', expertise:ExpertiseLevel.JUNIOR, mainField:''}} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(o)} />
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={currentUser?.id || 'guest'} messages={messages} onSendMessage={(rid, rn, sub, cont) => db.collection("messages").add({senderId:currentUser?.id, receiverId:rid, senderName:currentUser?.name, receiverName:rn, subject:sub, content:cont, timestamp:new Date().toISOString(), isRead:false})} onMarkAsRead={id => db.collection("messages").doc(id).update({isRead:true})} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => { setIsProfileModalOpen(false); setProfileForceEditMode(false); }} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={id => db.collection("offers").doc(id).delete()} onUpdateProfile={handleUpdateProfile} onContact={p => handleContact(p)} availableCategories={availableCategories} availableInterests={availableInterests} startInEditMode={profileForceEditMode} onOpenCreateOffer={p => { setIsProfileModalOpen(false); handleOpenCreate(p); }} />
+      <ProfileModal 
+        isOpen={isProfileModalOpen} 
+        onClose={() => { setIsProfileModalOpen(false); setProfileForceEditMode(false); }} 
+        profile={selectedProfile} 
+        currentUser={currentUser} 
+        userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
+        onDeleteOffer={id => db.collection("offers").doc(id).delete()} 
+        onEditOffer={o => { setIsProfileModalOpen(false); setEditingOffer(o); setIsCreateModalOpen(true); }} // Implementation of the edit offer handler
+        onUpdateProfile={handleUpdateProfile} 
+        onContact={p => handleContact(p)} 
+        availableCategories={availableCategories} 
+        availableInterests={availableInterests} 
+        startInEditMode={profileForceEditMode} 
+        onOpenCreateOffer={p => { setIsProfileModalOpen(false); handleOpenCreate(p); }} 
+      />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => { setAuthStartOnRegister(true); setIsAuthModalOpen(true); }} />
       <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} onStartSearching={() => window.scrollTo({ top: 600, behavior: 'smooth' })} />
       <AccessibilityModal isOpen={isAccessibilityOpen} onClose={() => setIsAccessibilityOpen(false)} />
-      <PrivacyPolicyModal isOpen={isPrivacyPolicyOpen} onClose={() => setIsPrivacyPolicyOpen(false)} />
+      <PrivacyPolicyModal isOpen={isPrivacyPolicyOpen} onClose={() => setIsPrivacyPolicyOpen(true)} />
       <CookieConsentModal />
     </div>
   );
