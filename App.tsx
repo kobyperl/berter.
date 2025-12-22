@@ -41,7 +41,8 @@ const translateAuthError = (code: string) => {
     case 'auth/user-not-found': return 'לא נמצא משתמש עם האימייל הזה.';
     case 'auth/wrong-password': return 'הסיסמה שהזנת שגויה.';
     case 'auth/network-request-failed': return 'בעיית תקשורת, בדוק את החיבור לאינטרנט.';
-    default: return 'אירעה שגיאה, נא לנסות שוב מאוחר יותר.';
+    case 'auth/too-many-requests': return 'יותר מדי ניסיונות כושלים. נסה שוב מאוחר יותר.';
+    default: return 'אירעה שגיאה בתהליך האימות, נא לנסות שוב.';
   }
 };
 
@@ -70,7 +71,8 @@ export const App: React.FC = () => {
       setAuthUid(firebaseUser ? firebaseUser.uid : null);
       if (!firebaseUser) {
           setCurrentUser(null);
-          setUsers([]);
+          // If no user, we can finish auth loading, but data might still be loading in other effects
+          setIsLoading(false);
       }
     });
     return () => unsubscribeAuth();
@@ -82,39 +84,29 @@ export const App: React.FC = () => {
     const unsubscribeUserDoc = userDocRef.onSnapshot((docSnap) => {
         if (docSnap.exists) {
             setCurrentUser(docSnap.data() as UserProfile);
+        } else {
+            setCurrentUser(null);
         }
+        setIsLoading(false); 
+    }, (error) => {
+        console.error("User fetch error:", error);
+        setIsLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Main Data Loading ---
+  // --- EFFECT 1: Public Data (Immediate Load) ---
   useEffect(() => {
-    let unsubscribeUsers = () => {};
-    if (currentUser?.role === 'admin') {
-        unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
-          const fetchedUsers: UserProfile[] = [];
-          snapshot.forEach((doc) => fetchedUsers.push(doc.data() as UserProfile));
-          setUsers(fetchedUsers);
-        });
-    }
-
     const unsubscribeOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetchedOffers: BarterOffer[] = [];
       snapshot.forEach((doc) => fetchedOffers.push(doc.data() as BarterOffer));
       setOffers(fetchedOffers);
-      setIsLoading(false); 
     });
 
     const unsubscribeAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetchedAds: SystemAd[] = [];
       snapshot.forEach((doc) => fetchedAds.push(doc.data() as SystemAd));
       setSystemAds(fetchedAds);
-    });
-
-    const unsubscribeMessages = db.collection("messages").onSnapshot((snapshot) => {
-        const fetchedMessages: Message[] = [];
-        snapshot.forEach((doc) => fetchedMessages.push(doc.data() as Message));
-        setMessages(fetchedMessages);
     });
 
     const unsubscribeTaxonomy = db.collection("system_metadata").doc("taxonomy").onSnapshot((docSnap) => {
@@ -124,9 +116,41 @@ export const App: React.FC = () => {
     });
 
     return () => {
-      unsubscribeUsers(); unsubscribeOffers(); unsubscribeAds(); unsubscribeMessages(); unsubscribeTaxonomy();
+      unsubscribeOffers(); unsubscribeAds(); unsubscribeTaxonomy();
     };
+  }, []); // Run once on mount for maximum speed
+
+  // --- EFFECT 2: Admin Data (Fires immediately when role is detected) ---
+  useEffect(() => {
+    if (currentUser?.role !== 'admin') {
+        setUsers([]); // Clear if not admin
+        return;
+    }
+
+    const unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
+      const fetchedUsers: UserProfile[] = [];
+      snapshot.forEach((doc) => fetchedUsers.push(doc.data() as UserProfile));
+      setUsers(fetchedUsers);
+    });
+
+    return () => unsubscribeUsers();
   }, [currentUser?.role]); 
+
+  // --- EFFECT 3: User Private Data ---
+  useEffect(() => {
+    if (!currentUser?.id) {
+        setMessages([]);
+        return;
+    }
+
+    const unsubscribeMessages = db.collection("messages").onSnapshot((snapshot) => {
+        const fetchedMessages: Message[] = [];
+        snapshot.forEach((doc) => fetchedMessages.push(doc.data() as Message));
+        setMessages(fetchedMessages);
+    });
+
+    return () => unsubscribeMessages();
+  }, [currentUser?.id]);
 
   // --- Computed Lists ---
   const availableInterests = React.useMemo(() => {
@@ -196,11 +220,11 @@ export const App: React.FC = () => {
             joinedAt: new Date().toISOString()
         };
         await db.collection("users").doc(uid).set(userProfile);
-        setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
         setTimeout(() => setIsPostRegisterPromptOpen(true), 1000);
     } catch (error: any) { 
         alert(translateAuthError(error.code)); 
+        throw error;
     }
   };
 
@@ -210,6 +234,7 @@ export const App: React.FC = () => {
       setIsAuthModalOpen(false); 
     } catch (error: any) { 
       alert(translateAuthError(error.code)); 
+      throw error;
     }
   };
 
@@ -281,6 +306,14 @@ export const App: React.FC = () => {
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [offers, currentUser, viewFilter, searchQuery, keywordFilter, locationFilter, durationFilter, selectedCategories]);
 
+  if (isLoading) {
+    return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
+        </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <AccessibilityToolbar />
@@ -317,26 +350,22 @@ export const App: React.FC = () => {
             searchQuery={searchQuery} locationFilter={locationFilter} keywordFilter={keywordFilter}
         />
 
-        {isLoading ? (
-            <div className="flex items-center justify-center py-20"><Loader2 className="w-10 h-10 text-brand-500 animate-spin" /></div>
-        ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-              {filteredOffers.map((offer) => (
-                <OfferCard 
-                    key={offer.id} offer={offer} 
-                    onContact={p => handleContact(p, offer.title)} 
-                    onUserClick={p => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
-                    onRate={() => {}} currentUserId={currentUser?.id} viewMode={viewMode}
-                    onDelete={id => db.collection("offers").doc(id).delete()}
-                    onEdit={o => { setEditingOffer(o); setIsCreateModalOpen(true); }}
-                />
-              ))}
-              <div onClick={() => handleOpenCreate()} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group">
-                   <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
-                   <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+            {filteredOffers.map((offer) => (
+            <OfferCard 
+                key={offer.id} offer={offer} 
+                onContact={p => handleContact(p, offer.title)} 
+                onUserClick={p => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
+                onRate={() => {}} currentUserId={currentUser?.id} viewMode={viewMode}
+                onDelete={id => db.collection("offers").doc(id).delete()}
+                onEdit={o => { setEditingOffer(o); setIsCreateModalOpen(true); }}
+            />
+            ))}
+            <div onClick={() => handleOpenCreate()} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group min-h-[300px]">
+                <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
+                <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
             </div>
-        )}
+        </div>
       </main>
 
       <Footer onOpenAccessibility={() => setIsAccessibilityOpen(true)} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />

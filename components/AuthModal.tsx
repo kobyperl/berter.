@@ -21,6 +21,7 @@ const normalizeUrl = (url: string): string => {
     return `https://${trimmed}`;
 };
 
+// Aggressive compression to handle 10+ images within 1MB Firestore limit
 const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -30,7 +31,7 @@ const compressImage = (file: File): Promise<string> => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_SIZE = 800; 
+          const MAX_SIZE = 600; // Smaller size for better safety
           let width = img.width;
           let height = img.height;
   
@@ -45,8 +46,8 @@ const compressImage = (file: File): Promise<string> => {
           const ctx = canvas.getContext('2d');
           if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              // Use 0.7 quality to stay well under Firestore doc limits even with 10+ images
-              resolve(canvas.toDataURL('image/jpeg', 0.7));
+              // 0.4 quality ensures images are small (30-50KB) so 10+ fit in one document
+              resolve(canvas.toDataURL('image/jpeg', 0.4));
           } else { reject(new Error("Canvas context error")); }
         };
         img.onerror = (err) => reject(err);
@@ -106,48 +107,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (!files) return;
       setIsUploading(true);
       try {
-          // Fixed type error by casting iterated file to File
           const promises = Array.from(files).map(f => compressImage(f as File));
           const results = await Promise.all(promises);
-          setPortfolioImages(prev => [...prev, ...results].slice(0, 15)); // Limit to 15 images
+          setPortfolioImages(prev => [...prev, ...results].slice(0, 15)); // Safe limit of 15 compressed images
       } catch (err) { alert("שגיאה בטעינת התמונות"); }
       finally { setIsUploading(false); e.target.value = ''; }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setShowErrors(false); 
     
-    try {
-        if (isLoginMode) {
-          if (!email.trim() || !password.trim()) {
-              alert("נא למלא אימייל וסיסמה");
-              setIsSubmitting(false); return;
-          }
-          await onLogin(email, password);
-        } else {
-          if (!firstName.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !mainField.trim() || interestsList.length < 2 || !acceptedPrivacy) {
-              setShowErrors(true);
-              setIsSubmitting(false); return;
-          }
-
-          const newUser: Partial<UserProfile> = {
-            name: `${firstName} ${lastName}`,
-            email,
-            mainField: mainField.trim(),
-            portfolioUrl: normalizeUrl(portfolioUrl),
-            portfolioImages, 
-            expertise: ExpertiseLevel.MID,
-            avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
-            interests: interestsList
-          };
-          await onRegister(newUser, password);
+    if (isLoginMode) {
+        if (!email.trim() || !password.trim()) {
+            alert("נא למלא אימייל וסיסמה");
+            return;
         }
-    } catch (err) { setIsSubmitting(false); }
+        setIsSubmitting(true);
+        try {
+            await onLogin(email, password);
+        } catch (err) {
+            setIsSubmitting(false);
+        }
+    } else {
+        if (!firstName.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !mainField.trim() || interestsList.length < 2 || !acceptedPrivacy) {
+            setShowErrors(true);
+            if (password.length < 6) alert("הסיסמה חייבת להכיל לפחות 6 תווים");
+            return;
+        }
+        setIsSubmitting(true);
+        const newUser: Partial<UserProfile> = {
+          name: `${firstName} ${lastName}`,
+          email,
+          mainField: mainField.trim(),
+          portfolioUrl: normalizeUrl(portfolioUrl),
+          portfolioImages, 
+          expertise: ExpertiseLevel.MID,
+          avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
+          interests: interestsList
+        };
+        try {
+            await onRegister(newUser, password);
+        } catch (err) {
+            setIsSubmitting(false);
+        }
+    }
   };
 
-  const inputBaseClass = "w-full text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm border border-slate-300";
+  const inputBaseClass = "w-full text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm border border-slate-300 text-right";
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
@@ -166,7 +172,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         <div className="flex justify-center mb-4">
                             <div className="relative group cursor-pointer" onClick={() => !isUploading && avatarInputRef.current?.click()}>
                                 <div className="w-20 h-20 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-sm">
-                                    {avatarDataUrl ? <img src={avatarDataUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400"><Camera className="w-6 h-6" /></div>}
+                                    {avatarDataUrl ? <img src={avatarDataUrl} className="w-full h-full object-cover" alt="avatar" /> : <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400"><Camera className="w-6 h-6" /></div>}
                                 </div>
                                 <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><span className="text-white text-[10px] font-bold">החלף תמונה</span></div>
                                 <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
@@ -206,7 +212,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             <div className={`p-3 rounded-xl border ${showErrors && interestsList.length < 2 ? 'bg-red-50 border-red-200' : 'border-slate-200'}`}>
                                 <label className="block text-[11px] font-bold text-slate-700 mb-2">תחומי עניין (לפחות 2) *</label>
                                 <div className="flex gap-2 mb-2">
-                                    <input list="interests-list" className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs outline-none" placeholder="חפש או הוסף..." value={interestInput} onChange={e => setInterestInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), interestInput.trim() && (setInterestsList([...new Set([...interestsList, interestInput.trim()])]), setInterestInput('')))} />
+                                    <input list="interests-list" className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs outline-none text-right" placeholder="חפש או הוסף..." value={interestInput} onChange={e => setInterestInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), interestInput.trim() && (setInterestsList([...new Set([...interestsList, interestInput.trim()])]), setInterestInput('')))} />
                                     <button type="button" onClick={() => interestInput.trim() && (setInterestsList([...new Set([...interestsList, interestInput.trim()])]), setInterestInput(''))} className="bg-brand-600 text-white rounded-lg px-3"><Plus className="w-4 h-4" /></button>
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">{interestsList.map(int => <span key={int} className="bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1">{int}<button type="button" onClick={() => setInterestsList(interestsList.filter(i => i !== int))}><X className="w-3 h-3 text-slate-400" /></button></span>)}</div>
@@ -215,7 +221,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-brand-500" />גלריית עבודות (אופציונלי)</label>
                                 <div className="flex flex-wrap gap-2 mb-2">
-                                    {portfolioImages.map((img, idx) => <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden border group"><img src={img} className="w-full h-full object-cover" /><button type="button" onClick={() => setPortfolioImages(prev => prev.filter((_, i) => i !== idx))} className="absolute inset-0 bg-black/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Trash2 className="w-3 h-3" /></button></div>)}
+                                    {portfolioImages.map((img, idx) => <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden border group"><img src={img} className="w-full h-full object-cover" alt="work" /><button type="button" onClick={() => setPortfolioImages(prev => prev.filter((_, i) => i !== idx))} className="absolute inset-0 bg-black/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Trash2 className="w-3 h-3" /></button></div>)}
                                     <button type="button" onClick={() => !isUploading && portfolioInputRef.current?.click()} className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-white">{isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</button>
                                 </div>
                                 <input type="file" ref={portfolioInputRef} className="hidden" accept="image/*" multiple onChange={handlePortfolioUpload} />
