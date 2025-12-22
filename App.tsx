@@ -65,7 +65,7 @@ export const App: React.FC = () => {
                   name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'משתמש',
                   email: firebaseUser.email || '',
                   avatarUrl: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.email}&background=random`,
-                  role: 'user', 
+                  role: firebaseUser.email === ADMIN_EMAIL ? 'admin' : 'user', 
                   expertise: ExpertiseLevel.MID,
                   mainField: '', 
                   portfolioUrl: ''
@@ -146,6 +146,74 @@ export const App: React.FC = () => {
     };
   }, [currentUser?.role]); 
 
+  // --- Deletion Handlers ---
+
+  const handleDeleteUser = async (userId: string) => {
+      // Confirmation is now handled by the UI button component
+      try {
+          const batch = db.batch();
+          
+          // 1. Delete user document
+          const userRef = db.collection("users").doc(userId);
+          batch.delete(userRef);
+
+          // 2. Cascading delete for offers
+          const userOffers = offers.filter(o => o.profileId === userId);
+          userOffers.forEach(o => {
+              batch.delete(db.collection("offers").doc(o.id));
+          });
+
+          // 3. Cascading delete for messages
+          const userMessages = messages.filter(m => m.senderId === userId || m.receiverId === userId);
+          userMessages.forEach(m => {
+              batch.delete(db.collection("messages").doc(m.id));
+          });
+
+          await batch.commit();
+          console.log(`User ${userId} and related data deleted from Firestore.`);
+      } catch (error) {
+          console.error("Error during full user deletion:", error);
+          alert("שגיאה במחיקת המשתמש. אנא וודא שיש לך הרשאות ניהול.");
+      }
+  };
+
+  const handleDeleteOffer = async (offerId: string) => {
+      try {
+          await db.collection("offers").doc(offerId).delete();
+      } catch (error) {
+          console.error("Error deleting offer:", error);
+          alert("שגיאה במחיקת המודעה.");
+      }
+  };
+
+  const handleDeleteAd = async (adId: string) => {
+      try {
+          await db.collection("systemAds").doc(adId).delete();
+      } catch (error) {
+          console.error("Error deleting ad:", error);
+          alert("שגיאה במחיקת המודעה הממומנת.");
+      }
+  };
+
+  const handleBulkDeleteOffers = async (threshold: string) => {
+      const toDelete = offers.filter(o => new Date(o.createdAt) < new Date(threshold));
+      if (toDelete.length === 0) {
+          alert("לא נמצאו מודעות למחיקה בטווח התאריכים הנבחר.");
+          return;
+      }
+      
+      const batch = db.batch();
+      toDelete.forEach(o => batch.delete(db.collection("offers").doc(o.id)));
+      
+      try {
+          await batch.commit();
+          alert(`נמחקו ${toDelete.length} מודעות ישנות מהמערכת.`);
+      } catch (error) {
+          console.error("Bulk delete failed:", error);
+          alert("שגיאה במחיקה המרוכזת.");
+      }
+  };
+
   // --- Computed Lists ---
   const availableInterests = React.useMemo(() => {
     return Array.from(new Set([...(taxonomy.approvedInterests || COMMON_INTERESTS)])).sort();
@@ -158,6 +226,7 @@ export const App: React.FC = () => {
   // --- UI State ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
+  const [targetUserForOffer, setTargetUserForOffer] = useState<UserProfile | null>(null); // NEW: To attribute offer to specific user
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authStartOnRegister, setAuthStartOnRegister] = useState(false);
   const [isMessagingModalOpen, setIsMessagingModalOpen] = useState(false);
@@ -273,7 +342,12 @@ export const App: React.FC = () => {
           if (isAdmin) {
               const { pendingUpdate, ...dataToSave } = normalizedProfile;
               const firestoreUpdateData = { ...dataToSave, pendingUpdate: firebase.firestore.FieldValue.delete() };
-              if (currentUser?.id === normalizedProfile.id) setCurrentUser(dataToSave as UserProfile);
+              
+              // If the admin is editing THEIR OWN profile, update local state
+              if (currentUser?.id === normalizedProfile.id) {
+                  setCurrentUser(dataToSave as UserProfile);
+              }
+              
               await db.collection("users").doc(normalizedProfile.id).set(firestoreUpdateData, { merge: true });
               syncUserToOffers(normalizedProfile.id, dataToSave as UserProfile);
           } else {
@@ -396,13 +470,14 @@ export const App: React.FC = () => {
 
   const handleViewProfile = async (profile: UserProfile, openMessaging = false) => {
     let profileToView = profile;
-    if (currentUser && profile.id === currentUser.id) profileToView = currentUser;
-    else {
-        try {
-             const userDoc = await db.collection("users").doc(profile.id).get();
-             if (userDoc.exists) profileToView = userDoc.data() as UserProfile;
-        } catch (e) { console.error(e); }
+    // Always fetch freshest data from Firestore to allow admin editing to be consistent
+    try {
+         const userDoc = await db.collection("users").doc(profile.id).get();
+         if (userDoc.exists) profileToView = userDoc.data() as UserProfile;
+    } catch (e) { 
+        console.error("Error fetching profile detail:", e);
     }
+    
     setSelectedProfile(profileToView);
     if (!openMessaging) {
         setProfileForceEditMode(false);
@@ -410,9 +485,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleOpenCreate = () => {
+  const handleOpenCreate = (targetUser?: UserProfile) => {
     if (!currentUser) { setAuthStartOnRegister(true); setIsAuthModalOpen(true); return; }
     setEditingOffer(null);
+    // If an admin (or user on their own profile) wants to post, track which user it's for
+    setTargetUserForOffer(targetUser || currentUser);
     setIsCreateModalOpen(true);
     setIsPostRegisterPromptOpen(false); 
   };
@@ -439,14 +516,6 @@ export const App: React.FC = () => {
 
   const handleRejectUserUpdate = async (userId: string) => {
       await db.collection("users").doc(userId).update({ pendingUpdate: firebase.firestore.FieldValue.delete() });
-  };
-
-  const handleBulkDeleteOffers = async (threshold: string) => {
-      const toDelete = offers.filter(o => new Date(o.createdAt) < new Date(threshold));
-      const batch = db.batch();
-      toDelete.forEach(o => batch.delete(db.collection("offers").doc(o.id)));
-      await batch.commit();
-      alert(`נמחקו ${toDelete.length} מודעות.`);
   };
 
   const handleTaxonomyAction = async (type: 'category' | 'interest', action: 'add' | 'delete' | 'approve' | 'reject' | 'edit' | 'reassign', data: any) => {
@@ -545,7 +614,7 @@ export const App: React.FC = () => {
       <AccessibilityToolbar />
       <Navbar 
         currentUser={currentUser}
-        onOpenCreateModal={handleOpenCreate}
+        onOpenCreateModal={() => handleOpenCreate()}
         onOpenMessages={() => { if(!currentUser){ setIsAuthModalOpen(true); return; } setIsMessagingModalOpen(true); }}
         onOpenAuth={() => { setAuthStartOnRegister(false); setIsAuthModalOpen(true); }}
         onOpenProfile={() => { setSelectedProfile(currentUser); setProfileForceEditMode(false); setIsProfileModalOpen(true); }}
@@ -587,11 +656,11 @@ export const App: React.FC = () => {
                     onUserClick={(profile) => handleViewProfile(profile)} 
                     onRate={handleRateOffer} 
                     currentUserId={currentUser?.id} viewMode={viewMode}
-                    onDelete={(id) => db.collection("offers").doc(id).delete()}
+                    onDelete={handleDeleteOffer}
                     onEdit={(o) => { setEditingOffer(o); setIsCreateModalOpen(true); }}
                 />
               ))}
-              <div onClick={handleOpenCreate} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group">
+              <div onClick={() => handleOpenCreate()} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group">
                    <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
                    <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
                    <p className="text-slate-500 mt-2 text-sm">הפוך את הכישרון שלך למטבע עכשיו.</p>
@@ -606,9 +675,9 @@ export const App: React.FC = () => {
       {isAdminDashboardOpen && (
           <AdminDashboardModal 
             isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)}
-            users={users} currentUser={currentUser} onDeleteUser={(id) => db.collection("users").doc(id).delete()}
+            users={users} currentUser={currentUser} onDeleteUser={handleDeleteUser}
             onApproveUpdate={handleApproveUserUpdate} onRejectUpdate={handleRejectUserUpdate}
-            offers={offers} onDeleteOffer={(id) => db.collection("offers").doc(id).delete()}
+            offers={offers} onDeleteOffer={handleDeleteOffer}
             onBulkDelete={handleBulkDeleteOffers} onApproveOffer={(id) => db.collection("offers").doc(id).update({status:'active'})}
             onEditOffer={(o) => { setEditingOffer(o); setIsAdminDashboardOpen(false); setIsCreateModalOpen(true); }}
             availableCategories={availableCategories} availableInterests={availableInterests}
@@ -623,8 +692,8 @@ export const App: React.FC = () => {
             onEditInterest={(oldName, newName) => handleTaxonomyAction('interest', 'edit', {oldName, newName})}
             ads={systemAds} onAddAd={(ad) => db.collection("systemAds").doc(ad.id).set(ad)}
             onEditAd={(ad) => db.collection("systemAds").doc(ad.id).set(ad)}
-            onDeleteAd={(id) => db.collection("systemAds").doc(id).delete()}
-            onViewProfile={(u) => { setSelectedProfile(u); setIsProfileModalOpen(true); }}
+            onDeleteAd={handleDeleteAd}
+            onViewProfile={(u) => handleViewProfile(u)}
           />
       )}
 
@@ -633,7 +702,7 @@ export const App: React.FC = () => {
       <PostRegisterPrompt 
         isOpen={isPostRegisterPromptOpen} 
         onClose={() => setIsPostRegisterPromptOpen(false)} 
-        onStartOffer={handleOpenCreate}
+        onStartOffer={() => handleOpenCreate()}
         userName={currentUser?.name || ''}
       />
       
@@ -642,13 +711,21 @@ export const App: React.FC = () => {
         onClose={() => setIsProfessionalismPromptOpen(false)}
         onEditProfile={() => {
             setIsProfessionalismPromptOpen(false);
-            setSelectedProfile(currentUser);
-            setProfileForceEditMode(true);
-            setIsProfileModalOpen(true);
+            if (currentUser) {
+                handleViewProfile(currentUser);
+                setProfileForceEditMode(true);
+            }
         }}
       />
 
-      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onAddOffer={handleAddOffer} currentUser={currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:'', portfolioUrl:''}, id: 'temp' }} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
+      <CreateOfferModal 
+        isOpen={isCreateModalOpen} 
+        onClose={() => { setIsCreateModalOpen(false); setTargetUserForOffer(null); }} 
+        onAddOffer={handleAddOffer} 
+        currentUser={targetUserForOffer || currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:'', portfolioUrl:''}, id: 'temp' }} 
+        editingOffer={editingOffer} 
+        onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} 
+      />
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={currentUser?.id || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={(id) => db.collection("messages").doc(id).update({isRead: true})} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
       <ProfileModal 
@@ -657,12 +734,13 @@ export const App: React.FC = () => {
         profile={selectedProfile} 
         currentUser={currentUser} 
         userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
-        onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} 
+        onDeleteOffer={handleDeleteOffer} 
         onUpdateProfile={handleUpdateProfile} 
         onContact={(p) => handleContact(p)} 
         availableCategories={availableCategories} 
         availableInterests={availableInterests} 
         startInEditMode={profileForceEditMode}
+        onOpenCreateOffer={(p) => { setIsProfileModalOpen(false); handleOpenCreate(p); }} // NEW: Callback to open offer modal
       />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => { setAuthStartOnRegister(true); setIsAuthModalOpen(true); }} />
