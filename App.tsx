@@ -61,7 +61,7 @@ export const App: React.FC = () => {
   const messages = useMemo(() => {
     if (!authUid) return [];
     
-    // סינון והסרת כפילויות
+    // איחוד הודעות שנשלחו והתקבלו
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
     
@@ -95,7 +95,6 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!authUid) return;
-    // כאן התיקון הקריטי: מוסיפים את ה-ID באופן ידני
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
         if (docSnap.exists) {
             setCurrentUser({ ...(docSnap.data() as UserProfile), id: docSnap.id });
@@ -127,29 +126,37 @@ export const App: React.FC = () => {
     let unsubReceived = () => {};
 
     if (authUid && !isAuthLoading) {
+        // מאזין להודעות שנשלחו ע"י המשתמש הנוכחי
         unsubSent = db.collection("messages")
             .where("senderId", "==", authUid)
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setSentMessages(msgs);
-            }, (err) => console.error("Sent messages error:", err));
+            }, (err) => console.error("Sent messages listener failed:", err));
 
+        // מאזין להודעות שהתקבלו אצל המשתמש הנוכחי
         unsubReceived = db.collection("messages")
             .where("receiverId", "==", authUid)
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setReceivedMessages(msgs);
-            }, (err) => console.error("Received messages error:", err));
+            }, (err) => console.error("Received messages listener failed:", err));
     }
 
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
-          const data = doc.data();
-          // וידוא שגם בתוך ההצעה יש ID לפרופיל
-          fetched.push({ ...(data as any), id: doc.id });
+          const data = doc.data() as BarterOffer;
+          
+          // --- תיקון קריטי ---
+          // אם אובייקט ה-profile בתוך ההצעה חסר id, נזריק לו את ה-profileId
+          if (data.profile && !data.profile.id) {
+              data.profile.id = data.profileId;
+          }
+          
+          fetched.push({ ...data, id: doc.id });
       });
       setOffers(fetched);
       setIsLoading(false); 
@@ -172,20 +179,19 @@ export const App: React.FC = () => {
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    const user = auth.currentUser;
-    if (!user || !authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
+    if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    // בדיקה קריטית למניעת שליחה ל-undefined
-    if (!receiverId || receiverId === 'undefined') {
-        console.error("Recipient ID is missing!");
-        alert("תקלה טכנית: לא ניתן לזהות את הנמען. נסה לרענן את העמוד.");
+    // בדיקת תקינות נמען
+    if (!receiverId || receiverId === 'undefined' || receiverId.length < 5) {
+        console.error("Invalid Recipient ID:", receiverId);
+        alert("תקלה טכנית: לא ניתן לזהות את הנמען. אנא נסה לרענן את העמוד או לפנות למשתמש מהצעה אחרת.");
         return;
     }
 
     const newMessage = {
       senderId: authUid,
       receiverId: receiverId,
-      senderName: currentUser?.name || user.displayName || 'משתמש Barter',
+      senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
       subject: subject || 'צ\'אט חדש',
       content: content.trim(),
@@ -195,9 +201,10 @@ export const App: React.FC = () => {
 
     try {
         await db.collection("messages").add(newMessage);
+        // הודעה נשלחה בהצלחה - המאזין יעדכן את ה-UI אוטומטית
     } catch (e: any) {
         console.error("SendMessage Error:", e);
-        alert(`שגיאה בשליחה: ${e.message}`);
+        alert(`שגיאה בשליחת ההודעה: ${e.message}`);
     }
   };
 
@@ -345,7 +352,7 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        // וידוא שהפרופיל כולל ID לפני פתיחת צ'אט
+                        // הפרופיל כאן מובטח להכיל ID בזכות התיקון ב-onSnapshot
                         setSelectedProfile(p); 
                         setInitialMessageSubject(offer.title); 
                         setIsMessagingModalOpen(true); 
@@ -409,8 +416,32 @@ export const App: React.FC = () => {
       )}
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
-      <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={handleMarkAsRead} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} onUpdateProfile={async (p) => { await db.collection("users").doc(p.id).set(p); }} onContact={(p) => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={(p) => { setSelectedProfile(p); setIsCreateModalOpen(true); }} />
+      
+      <MessagingModal 
+          isOpen={isMessagingModalOpen} 
+          onClose={() => setIsMessagingModalOpen(false)} 
+          currentUser={authUid || 'guest'} 
+          messages={messages} 
+          onSendMessage={handleSendMessage} 
+          onMarkAsRead={handleMarkAsRead} 
+          recipientProfile={selectedProfile} 
+          initialSubject={initialMessageSubject} 
+      />
+
+      <ProfileModal 
+          isOpen={isProfileModalOpen} 
+          onClose={() => setIsProfileModalOpen(false)} 
+          profile={selectedProfile} 
+          currentUser={currentUser} 
+          userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
+          onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} 
+          onUpdateProfile={async (p) => { await db.collection("users").doc(p.id).set(p); }} 
+          onContact={(p) => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} 
+          availableCategories={availableCategories} 
+          availableInterests={availableInterests} 
+          onOpenCreateOffer={(p) => { setSelectedProfile(p); setIsCreateModalOpen(true); }} 
+      />
+
       <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={(o) => { db.collection("offers").doc(o.id).set(o); setTimeout(() => setIsProfessionalismPromptOpen(true), 1000); }} currentUser={selectedProfile || currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
       <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
