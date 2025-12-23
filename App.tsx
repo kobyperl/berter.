@@ -128,10 +128,13 @@ export const App: React.FC = () => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
-          // תיקון קריטי: הזרקת ה-ID של המשתמש לתוך אובייקט הפרופיל במידה והוא חסר
+          
+          // תיקון קריטי: מוודאים שכל פרופיל שנטען תמיד מכיל ID תקין
+          // אם הוא חסר באובייקט ה-profile, אנחנו לוקחים אותו מה-profileId של ההצעה
           if (data.profile) {
-              data.profile.id = data.profileId;
+              data.profile.id = data.profile.id || data.profileId;
           }
+          
           fetched.push({ ...data, id: doc.id });
       });
       setOffers(fetched);
@@ -157,21 +160,23 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!authUid) return;
 
+    // מאזין להודעות שנשלחו ע"י המשתמש
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
         .onSnapshot((snap) => {
             const msgs: Message[] = [];
             snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
             setSentMessages(msgs);
-        });
+        }, (err) => console.error("Sent messages listener failed:", err));
 
+    // מאזין להודעות שהתקבלו עבור המשתמש
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
         .onSnapshot((snap) => {
             const msgs: Message[] = [];
             snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
             setReceivedMessages(msgs);
-        });
+        }, (err) => console.error("Received messages listener failed:", err));
 
     return () => {
         unsubSent();
@@ -183,10 +188,10 @@ export const App: React.FC = () => {
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    // בדיקת תקינות נמען - מניעת שליחה ל-undefined
-    if (!receiverId || receiverId === 'undefined' || receiverId === 'guest') {
-        console.error("Attempted to send message to invalid ID:", receiverId);
-        alert("לא ניתן לזהות את המשתמש. אנא נסה לרענן את הדף.");
+    // בדיקת תקינות נמען קשיחה - מונע שליחה ל-"undefined"
+    if (!receiverId || receiverId === 'undefined' || receiverId === 'guest' || receiverId.length < 10) {
+        console.error("Critical: Invalid Recipient ID detected:", receiverId);
+        alert("תקלה טכנית: לא ניתן לזהות את הנמען. אנא רענן את הדף ונסה שוב.");
         return;
     }
 
@@ -203,6 +208,7 @@ export const App: React.FC = () => {
 
     try {
         await db.collection("messages").add(newMessage);
+        // הודעה נוספה ל-Firebase. המאזינים (Snapshot) ידאגו לעדכן את ה-UI מיד.
     } catch (e: any) {
         console.error("SendMessage Error:", e);
         alert(`שגיאה בשליחת ההודעה: ${e.message}`);
@@ -353,11 +359,17 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        setSelectedProfile(p); 
+                        // וידוא ID כאן ליתר ביטחון
+                        const cleanProfile = { ...p, id: p.id || offer.profileId };
+                        setSelectedProfile(cleanProfile); 
                         setInitialMessageSubject(offer.title); 
                         setIsMessagingModalOpen(true); 
                     }} 
-                    onUserClick={(p) => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
+                    onUserClick={(p) => { 
+                        const cleanProfile = { ...p, id: p.id || offer.profileId };
+                        setSelectedProfile(cleanProfile); 
+                        setIsProfileModalOpen(true); 
+                    }} 
                     onRate={async (id, score) => {
                         if (!authUid) return;
                         const ratings = [...(offer.ratings || []), { userId: authUid, score }];
