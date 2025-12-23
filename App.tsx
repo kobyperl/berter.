@@ -39,7 +39,7 @@ export const App: React.FC = () => {
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
 
-  // --- Data State ---
+  // --- Logic State ---
   const [offers, setOffers] = useState<BarterOffer[]>([]);
   const [sentMessages, setSentMessages] = useState<Message[]>([]);
   const [receivedMessages, setReceivedMessages] = useState<Message[]>([]);
@@ -54,18 +54,25 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // --- Combined Messages ---
+  // חישוב עדכוני פרופיל ממתינים עבור האדמין
+  const pendingUserUpdates = useMemo(() => {
+    return users.filter(u => u.pendingUpdate).length;
+  }, [users]);
+
+  // --- Combined Messages (Frontend Sorting) ---
+  // הפתרון להיעלמות ההודעות: אנחנו שולפים בלי מיון מהשרת וממיינים כאן.
   const messages = useMemo(() => {
     if (!authUid) return [];
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
     combined.forEach(m => { if (m.id) uniqueMap.set(m.id, m); });
+    
     return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [sentMessages, receivedMessages, authUid]);
 
-  // --- Auth & Profile ---
+  // --- Auth Listeners ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
@@ -75,6 +82,7 @@ export const App: React.FC = () => {
           setCurrentUser(null);
           setSentMessages([]);
           setReceivedMessages([]);
+          setUsers([]);
       }
     });
     return () => unsubscribeAuth();
@@ -84,53 +92,48 @@ export const App: React.FC = () => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
         if (docSnap.exists) setCurrentUser(docSnap.data() as UserProfile);
-    }, (err) => console.error("User doc fetch error:", err));
+    }, (err) => {
+        console.error("User doc fetch error (expected if new user):", err);
+    });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Main Data Listeners ---
+  // האזנה לכלל המשתמשים (רק עבור אדמין)
   useEffect(() => {
-    // 1. האזנה להודעות (דורש אינדקסים שיצרת ב-Console)
+      if (currentUser?.role !== 'admin') {
+          setUsers([]);
+          return;
+      }
+      const unsubUsers = db.collection("users").onSnapshot(snap => {
+          const uList: UserProfile[] = [];
+          snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
+          setUsers(uList);
+      }, (err) => console.error("Admin users listener error:", err));
+      return () => unsubUsers();
+  }, [currentUser?.role]);
+
+  // --- Data Listeners ---
+  useEffect(() => {
     let unsubSent = () => {};
     let unsubReceived = () => {};
 
     if (authUid) {
-        // שליפה ממוינת של הודעות ששלחתי
+        // שליפה ללא orderBy כדי למנוע את בעיית האינדקסים ב-Firebase
         unsubSent = db.collection("messages")
             .where("senderId", "==", authUid)
-            .orderBy("timestamp", "desc")
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setSentMessages(msgs);
-            }, (err) => {
-                console.error("Sent messages error:", err);
-                // אם האינדקס לא מוכן, נשלוף ללא מיון כגיבוי זמני
-                if (err.message.includes("index")) {
-                     db.collection("messages").where("senderId", "==", authUid).onSnapshot(s => {
-                         const m: Message[] = []; s.forEach(d => m.push({...(d.data() as any), id: d.id}));
-                         setSentMessages(m);
-                     });
-                }
-            });
+            }, (err) => console.error("Sent messages error:", err));
 
-        // שליפה ממוינת של הודעות שקיבלתי
         unsubReceived = db.collection("messages")
             .where("receiverId", "==", authUid)
-            .orderBy("timestamp", "desc")
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setReceivedMessages(msgs);
-            }, (err) => {
-                console.error("Received messages error:", err);
-                if (err.message.includes("index")) {
-                    db.collection("messages").where("receiverId", "==", authUid).onSnapshot(s => {
-                        const m: Message[] = []; s.forEach(d => m.push({...(d.data() as any), id: d.id}));
-                        setReceivedMessages(m);
-                    });
-                }
-            });
+            }, (err) => console.error("Received messages error:", err));
     }
 
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
@@ -138,49 +141,46 @@ export const App: React.FC = () => {
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setOffers(fetched);
       setIsLoading(false); 
-    });
+    }, (err) => console.error("Offers listener error:", err));
 
     const unsubAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetched: SystemAd[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setSystemAds(fetched);
-    });
+    }, (err) => console.error("Ads listener error:", err));
+
+    const unsubTaxonomy = db.collection("system").doc("taxonomy").onSnapshot((doc) => {
+        if (doc.exists) setTaxonomy(prev => ({ ...prev, ...doc.data() }));
+    }, (err) => console.warn("Taxonomy doc not found or restricted. Using defaults."));
 
     return () => {
-      unsubSent(); unsubReceived(); unsubOffers(); unsubAds();
+      unsubSent(); unsubReceived(); unsubOffers(); unsubAds(); unsubTaxonomy();
     };
   }, [authUid]);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    // וידוא UID מעודכן מהסטייט
-    if (!authUid) {
-        alert("עליך להתחבר כדי לשלוח הודעה.");
+    const user = auth.currentUser;
+    if (!user) {
+        alert("עליך להתחבר שוב.");
         return;
     }
 
     const newMessage = {
-      senderId: authUid,
+      senderId: user.uid,
       receiverId,
       senderName: currentUser?.name || 'משתמש',
       receiverName,
       subject,
-      content,
+      content: content.trim(),
       timestamp: new Date().toISOString(),
       isRead: false
     };
 
     try {
-        // הוספה ל-Firestore
-        const docRef = await db.collection("messages").add(newMessage);
-        console.log("Message sent with ID:", docRef.id);
+        await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        console.error("CRITICAL: Message send failed:", e);
-        if (e.code === 'permission-denied') {
-            alert("שגיאת הרשאות: השרת דחה את ההודעה. בדוק אם ה-Rules מעודכנים.");
-        } else {
-            alert(`תקלה בשליחה: ${e.message}`);
-        }
+        alert(`שגיאה בשליחה: ${e.message}`);
     }
   };
 
@@ -188,17 +188,15 @@ export const App: React.FC = () => {
       if (!authUid) return;
       try {
           await db.collection("messages").doc(id).update({ isRead: true });
-      } catch (e) {
-          console.error("Mark read error:", e);
-      }
+      } catch (e) { console.error(e); }
   };
 
-  // --- Rest of the app logic ---
   const handleLogout = async () => { 
     setSentMessages([]);
     setReceivedMessages([]);
     setCurrentUser(null);
     setAuthUid(null);
+    setUsers([]);
     await auth.signOut(); 
   };
 
@@ -235,7 +233,7 @@ export const App: React.FC = () => {
     } catch (error: any) { alert(error.message); }
   };
 
-  // --- UI State ---
+  // --- UI Control State ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -268,12 +266,20 @@ export const App: React.FC = () => {
   const filteredOffers = useMemo(() => {
     return offers.filter(o => {
       if (o.status !== 'active' && o.profileId !== authUid && currentUser?.role !== 'admin') return false;
+      if (selectedCategories.length > 0 && !selectedCategories.includes('הכל')) {
+          const matches = selectedCategories.some(cat => o.title.toLowerCase().includes(cat.toLowerCase()) || o.offeredService.toLowerCase().includes(cat.toLowerCase()));
+          if (!matches) return false;
+      }
       if (searchQuery && !o.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (locationInput && !o.location.toLowerCase().includes(locationInput.toLowerCase())) return false;
       if (durationFilter !== 'all' && o.durationType !== durationFilter) return false;
       return true;
-    }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [offers, searchQuery, locationInput, durationFilter, authUid, currentUser]);
+    }).sort((a,b) => {
+        if (sortBy === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (sortBy === 'rating') return (b.averageRating || 0) - (a.averageRating || 0);
+        return 0;
+    });
+  }, [offers, searchQuery, locationInput, durationFilter, authUid, currentUser, selectedCategories, sortBy]);
 
   const unreadCount = messages.filter(m => m.receiverId === authUid && !m.isRead).length;
 
@@ -282,13 +288,13 @@ export const App: React.FC = () => {
       <AccessibilityToolbar />
       <Navbar 
         currentUser={currentUser}
-        onOpenCreateModal={() => { if(!authUid){ setIsAuthModalOpen(true); return; } setIsCreateModalOpen(true); }}
+        onOpenCreateModal={() => { if(!authUid){ setAuthStartOnRegister(true); setIsAuthModalOpen(true); return; } setIsCreateModalOpen(true); }}
         onOpenMessages={() => { if(!authUid){ setIsAuthModalOpen(true); return; } setIsMessagingModalOpen(true); }}
         onOpenAuth={() => { setAuthStartOnRegister(false); setIsAuthModalOpen(true); }}
         onOpenProfile={() => { setSelectedProfile(currentUser); setIsProfileModalOpen(true); }}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenEmailCenter={() => setIsEmailCenterOpen(true)}
-        adminPendingCount={offers.filter(o => o.status === 'pending').length}
+        adminPendingCount={offers.filter(o => o.status === 'pending').length + pendingUserUpdates}
         onLogout={handleLogout}
         onSearch={setSearchQuery}
         unreadCount={unreadCount}
@@ -308,7 +314,7 @@ export const App: React.FC = () => {
             durationFilter={durationFilter} setDurationFilter={setDurationFilter}
             sortBy={sortBy} setSortBy={setSortBy}
             viewMode={viewMode} setViewMode={setViewMode}
-            selectedCategories={selectedCategories} toggleCategory={(cat) => setSelectedCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])}
+            selectedCategories={selectedCategories} toggleCategory={(cat) => setSelectedCategories(prev => cat === 'הכל' ? [] : (prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]))}
             displayedCategories={availableCategories} handleResetFilters={() => {setSearchQuery(''); setKeywordInput(''); setLocationInput(''); setDurationFilter('all'); setSelectedCategories([]);}}
             searchQuery={searchQuery} locationFilter={locationInput} keywordFilter={keywordInput}
         />
@@ -316,7 +322,7 @@ export const App: React.FC = () => {
         {isLoading ? (
             <div className="flex items-center justify-center py-20"><Loader2 className="w-10 h-10 text-brand-500 animate-spin" /></div>
         ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+            <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2" : "space-y-4 pt-2 max-w-4xl mx-auto"}>
               {filteredOffers.map((offer) => (
                 <OfferCard 
                     key={offer.id} offer={offer} 
@@ -329,7 +335,7 @@ export const App: React.FC = () => {
                         await db.collection("offers").doc(id).update({ ratings, averageRating: avg });
                     }} 
                     currentUserId={authUid || undefined} viewMode={viewMode}
-                    onDelete={(id) => db.collection("offers").doc(id).delete()}
+                    onDelete={(id) => { if(window.confirm('מחק?')) db.collection("offers").doc(id).delete() }}
                     onEdit={(o) => { setEditingOffer(o); setIsCreateModalOpen(true); }}
                 />
               ))}
@@ -348,15 +354,30 @@ export const App: React.FC = () => {
             isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)}
             users={users} currentUser={currentUser} 
             onDeleteUser={(id) => db.collection("users").doc(id).delete()}
-            onApproveUpdate={(id) => {}} onRejectUpdate={(id) => {}}
+            onApproveUpdate={(id) => {
+                const u = users.find(x => x.id === id);
+                if (u?.pendingUpdate) db.collection("users").doc(id).update({ ...u.pendingUpdate, pendingUpdate: firebase.firestore.FieldValue.delete() });
+            }} 
+            onRejectUpdate={(id) => db.collection("users").doc(id).update({ pendingUpdate: firebase.firestore.FieldValue.delete() })}
             offers={offers} onDeleteOffer={(id) => db.collection("offers").doc(id).delete()}
-            onBulkDelete={() => {}} onApproveOffer={(id) => db.collection("offers").doc(id).update({status:'active'})}
+            onBulkDelete={(date) => {
+                offers.filter(o => new Date(o.createdAt) < new Date(date)).forEach(o => db.collection("offers").doc(o.id).delete());
+            }} 
+            onApproveOffer={(id) => db.collection("offers").doc(id).update({status:'active'})}
             onEditOffer={(o) => { setEditingOffer(o); setIsCreateModalOpen(true); }}
             availableCategories={availableCategories} availableInterests={availableInterests}
             pendingCategories={taxonomy.pendingCategories || []} pendingInterests={taxonomy.pendingInterests || []}
-            onAddCategory={() => {}} onAddInterest={() => {}} onDeleteCategory={() => {}} onDeleteInterest={() => {}}
-            onApproveCategory={() => {}} onRejectCategory={() => {}} onReassignCategory={() => {}} 
-            onApproveInterest={() => {}} onRejectInterest={() => {}} onEditCategory={() => {}} onEditInterest={() => {}}
+            onAddCategory={(cat) => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat) })} 
+            onAddInterest={(int) => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int) })} 
+            onDeleteCategory={(cat) => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(cat) })} 
+            onDeleteInterest={(int) => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
+            onApproveCategory={(cat) => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat), pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
+            onRejectCategory={(cat) => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
+            onReassignCategory={(oldC, newC) => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldC) })}
+            onApproveInterest={(int) => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int), pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
+            onRejectInterest={(int) => db.collection("system").doc("taxonomy").update({ pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
+            onEditCategory={(oldN, newN) => { db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(oldN) }); db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(newN) }); }}
+            onEditInterest={(oldN, newN) => { db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(oldN) }); db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(newN) }); }}
             ads={systemAds} onAddAd={(ad) => db.collection("systemAds").doc(ad.id).set(ad)}
             onEditAd={(ad) => db.collection("systemAds").doc(ad.id).set(ad)}
             onDeleteAd={(id) => db.collection("systemAds").doc(id).delete()}
@@ -364,18 +385,18 @@ export const App: React.FC = () => {
           />
       )}
 
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} />
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={handleMarkAsRead} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} onUpdateProfile={async (p) => { await db.collection("users").doc(p.id).set(p); }} onContact={(p) => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} />
-      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onAddOffer={(o) => db.collection("offers").doc(o.id).set(o)} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
+      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} onUpdateProfile={async (p) => { await db.collection("users").doc(p.id).set(p); }} onContact={(p) => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={() => setIsCreateModalOpen(true)} />
+      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={(o) => { db.collection("offers").doc(o.id).set(o); setTimeout(() => setIsProfessionalismPromptOpen(true), 1000); }} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
       <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => setIsAuthModalOpen(true)} />
       <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} onStartSearching={() => {}} />
       <AccessibilityModal isOpen={isAccessibilityOpen} onClose={() => setIsAccessibilityOpen(false)} />
       <PrivacyPolicyModal isOpen={isPrivacyPolicyOpen} onClose={() => setIsPrivacyPolicyOpen(false)} />
-      <PostRegisterPrompt isOpen={isPostRegisterPromptOpen} onClose={() => setIsPostRegisterPromptOpen(false)} onStartOffer={() => setIsCreateModalOpen(true)} userName={currentUser?.name || ''} />
-      <ProfessionalismPrompt isOpen={isProfessionalismPromptOpen} onClose={() => setIsProfessionalismPromptOpen(false)} onEditProfile={() => setIsProfileModalOpen(true)} />
+      <PostRegisterPrompt isOpen={isPostRegisterPromptOpen} onClose={() => setIsPostRegisterPromptOpen(false)} onStartOffer={() => { setIsPostRegisterPromptOpen(false); setIsCreateModalOpen(true); }} userName={currentUser?.name || ''} />
+      <ProfessionalismPrompt isOpen={isProfessionalismPromptOpen} onClose={() => setIsProfessionalismPromptOpen(false)} onEditProfile={() => { setIsProfessionalismPromptOpen(false); setSelectedProfile(currentUser); setIsProfileModalOpen(true); }} />
       <CookieConsentModal />
     </div>
   );
