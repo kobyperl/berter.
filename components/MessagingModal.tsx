@@ -36,7 +36,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // מיפוי שיחות קיימות מהודעות
+  // מיפוי שיחות קיימות מהודעות (בדיקות ID מחמירות)
   const conversationsMap = useMemo<Map<string, Conversation>>(() => {
     const map = new Map<string, Conversation>();
     if (!currentUser || currentUser === 'guest') return map;
@@ -46,12 +46,11 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       const partnerId = isSender ? msg.receiverId : msg.senderId;
       const partnerName = isSender ? msg.receiverName : msg.senderName;
       
-      // הגנה קריטית: התעלמות מהודעות עם נמען לא תקין
-      if (!partnerId || partnerId === 'undefined' || partnerId === 'guest') return;
+      // הגנה קריטית: סינון הודעות שנשלחו בטעות ל-ID לא תקין
+      if (!partnerId || partnerId === 'undefined' || partnerId === 'guest' || partnerId === 'null') return;
 
       const existing = map.get(partnerId);
       
-      // שמירת ההודעה האחרונה בכל שיחה
       if (!existing || new Date(msg.timestamp).getTime() > new Date(existing.lastMessage.timestamp).getTime()) {
         map.set(partnerId, {
           partnerId,
@@ -87,9 +86,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל (למשל מהצעה)
+  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל
   useEffect(() => {
-    if (isOpen && recipientProfile?.id && recipientProfile.id !== 'guest') {
+    if (isOpen && recipientProfile?.id && recipientProfile.id !== 'guest' && recipientProfile.id !== 'undefined') {
         setActiveConversationId(recipientProfile.id);
         setSearchTerm('');
     }
@@ -114,7 +113,11 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [activeMessages, isOpen]);
 
   const handleSend = () => {
-    if (!newMessage.trim() || !activeConversationId || activeConversationId === 'guest') return;
+    // בדיקת תקינות ID הנמען רגע לפני השליחה
+    if (!newMessage.trim() || !activeConversationId || activeConversationId === 'guest' || activeConversationId === 'undefined') {
+        if (activeConversationId === 'undefined') alert("תקלה בזיהוי הנמען. נסה לרענן.");
+        return;
+    }
 
     let receiverName = 'משתמש';
     const conv = conversationsMap.get(activeConversationId);
@@ -130,12 +133,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
         subject = initialSubject;
     } else if (activeMessages.length > 0) {
         subject = activeMessages[activeMessages.length - 1].subject; 
-    }
-
-    // ולידציה קשיחה שניה לפני השליחה ל-Firebase
-    if (activeConversationId === 'undefined' || !activeConversationId) {
-        alert("תקלה בזיהוי המשתמש. אנא נסה שוב.");
-        return;
     }
 
     onSendMessage(activeConversationId, receiverName, subject, newMessage);
@@ -179,7 +176,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                     ) : (
                         <>
                             {/* אם התחלנו שיחה חדשה שאין בה עוד הודעות */}
-                            {recipientProfile && recipientProfile.id !== 'guest' && !conversationsMap.has(recipientProfile.id) && (
+                            {recipientProfile && recipientProfile.id && recipientProfile.id !== 'guest' && recipientProfile.id !== 'undefined' && !conversationsMap.has(recipientProfile.id) && (
                                 <div onClick={() => setActiveConversationId(recipientProfile.id)} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-brand-100 bg-brand-50 transition-colors border-r-4 border-brand-500`}>
                                     <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold shrink-0">{recipientProfile.name[0]}</div>
                                     <div className="flex-1 min-w-0">
