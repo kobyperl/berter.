@@ -52,6 +52,22 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
+  // --- Email Trigger Helper ---
+  const triggerEmailNotification = async (type: 'welcome' | 'chat_alert' | 'smart_match', to: string, data: any) => {
+      try {
+          const response = await fetch('/api/emails/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type, to, data })
+          });
+          if (!response.ok) {
+              console.error("Failed to send email trigger:", response.status);
+          }
+      } catch (err) {
+          console.error("Email trigger network error:", err);
+      }
+  };
+
   // --- Auth Listener & Current User Sync ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
@@ -149,69 +165,38 @@ export const App: React.FC = () => {
   // --- Deletion Handlers ---
 
   const handleDeleteUser = async (userId: string) => {
-      // Confirmation is now handled by the UI button component
       try {
           const batch = db.batch();
-          
-          // 1. Delete user document
           const userRef = db.collection("users").doc(userId);
           batch.delete(userRef);
-
-          // 2. Cascading delete for offers
           const userOffers = offers.filter(o => o.profileId === userId);
-          userOffers.forEach(o => {
-              batch.delete(db.collection("offers").doc(o.id));
-          });
-
-          // 3. Cascading delete for messages
+          userOffers.forEach(o => batch.delete(db.collection("offers").doc(o.id)));
           const userMessages = messages.filter(m => m.senderId === userId || m.receiverId === userId);
-          userMessages.forEach(m => {
-              batch.delete(db.collection("messages").doc(m.id));
-          });
-
+          userMessages.forEach(m => batch.delete(db.collection("messages").doc(m.id)));
           await batch.commit();
-          console.log(`User ${userId} and related data deleted from Firestore.`);
       } catch (error) {
           console.error("Error during full user deletion:", error);
-          alert("שגיאה במחיקת המשתמש. אנא וודא שיש לך הרשאות ניהול.");
+          alert("שגיאה במחיקת המשתמש.");
       }
   };
 
   const handleDeleteOffer = async (offerId: string) => {
-      try {
-          await db.collection("offers").doc(offerId).delete();
-      } catch (error) {
-          console.error("Error deleting offer:", error);
-          alert("שגיאה במחיקת המודעה.");
-      }
+      try { await db.collection("offers").doc(offerId).delete(); } 
+      catch (error) { alert("שגיאה במחיקת המודעה."); }
   };
 
   const handleDeleteAd = async (adId: string) => {
-      try {
-          await db.collection("systemAds").doc(adId).delete();
-      } catch (error) {
-          console.error("Error deleting ad:", error);
-          alert("שגיאה במחיקת המודעה הממומנת.");
-      }
+      try { await db.collection("systemAds").doc(adId).delete(); } 
+      catch (error) { alert("שגיאה במחיקת המודעה הממומנת."); }
   };
 
   const handleBulkDeleteOffers = async (threshold: string) => {
       const toDelete = offers.filter(o => new Date(o.createdAt) < new Date(threshold));
-      if (toDelete.length === 0) {
-          alert("לא נמצאו מודעות למחיקה בטווח התאריכים הנבחר.");
-          return;
-      }
-      
+      if (toDelete.length === 0) { alert("לא נמצאו מודעות למחיקה."); return; }
       const batch = db.batch();
       toDelete.forEach(o => batch.delete(db.collection("offers").doc(o.id)));
-      
-      try {
-          await batch.commit();
-          alert(`נמחקו ${toDelete.length} מודעות ישנות מהמערכת.`);
-      } catch (error) {
-          console.error("Bulk delete failed:", error);
-          alert("שגיאה במחיקה המרוכזת.");
-      }
+      try { await batch.commit(); alert(`נמחקו ${toDelete.length} מודעות.`); } 
+      catch (error) { alert("שגיאה במחיקה."); }
   };
 
   // --- Computed Lists ---
@@ -226,7 +211,7 @@ export const App: React.FC = () => {
   // --- UI State ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
-  const [targetUserForOffer, setTargetUserForOffer] = useState<UserProfile | null>(null); // NEW: To attribute offer to specific user
+  const [targetUserForOffer, setTargetUserForOffer] = useState<UserProfile | null>(null); 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authStartOnRegister, setAuthStartOnRegister] = useState(false);
   const [isMessagingModalOpen, setIsMessagingModalOpen] = useState(false);
@@ -234,33 +219,17 @@ export const App: React.FC = () => {
   const [profileForceEditMode, setProfileForceEditMode] = useState(false);
   const [isPostRegisterPromptOpen, setIsPostRegisterPromptOpen] = useState(false);
   const [isProfessionalismPromptOpen, setIsProfessionalismPromptOpen] = useState(false); 
-  
-  // Admin UI States
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isEmailCenterOpen, setIsEmailCenterOpen] = useState(false);
-  
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isWhoIsItForOpen, setIsWhoIsItForOpen] = useState(false);
   const [isSearchTipsOpen, setIsSearchTipsOpen] = useState(false);
   const [isAccessibilityOpen, setIsAccessibilityOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false); 
-  
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [initialMessageSubject, setInitialMessageSubject] = useState<string>('');
-
   const [viewFilter, setViewFilter] = useState<'all' | 'for_you'>('all');
-
-  const displayedCategories = React.useMemo(() => {
-      return [...availableCategories].sort((a, b) => {
-          const isASelected = selectedCategories.includes(a);
-          const isBSelected = selectedCategories.includes(b);
-          if (isASelected && !isBSelected) return -1;
-          if (!isASelected && isBSelected) return 1;
-          return a.localeCompare(b, 'he'); 
-      });
-  }, [availableCategories, selectedCategories]);
-  
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [locationInput, setLocationInput] = useState<string>('');
   const [keywordInput, setKeywordInput] = useState<string>('');
@@ -342,12 +311,7 @@ export const App: React.FC = () => {
           if (isAdmin) {
               const { pendingUpdate, ...dataToSave } = normalizedProfile;
               const firestoreUpdateData = { ...dataToSave, pendingUpdate: firebase.firestore.FieldValue.delete() };
-              
-              // If the admin is editing THEIR OWN profile, update local state
-              if (currentUser?.id === normalizedProfile.id) {
-                  setCurrentUser(dataToSave as UserProfile);
-              }
-              
+              if (currentUser?.id === normalizedProfile.id) setCurrentUser(dataToSave as UserProfile);
               await db.collection("users").doc(normalizedProfile.id).set(firestoreUpdateData, { merge: true });
               syncUserToOffers(normalizedProfile.id, dataToSave as UserProfile);
           } else {
@@ -381,18 +345,15 @@ export const App: React.FC = () => {
         setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
 
-        setTimeout(() => {
-            setIsPostRegisterPromptOpen(true);
-        }, 1000);
-
-        if (normalizedMainField) checkForNewCategory(normalizedMainField).catch(e => {});
-        if (normalizedInterests.length > 0) {
-            normalizedInterests.forEach(interest => checkForNewInterest(interest).catch(e => {}));
+        // --- NEW: Trigger Welcome Email ---
+        if (userProfile.email) {
+            triggerEmailNotification('welcome', userProfile.email, { userName: userProfile.name });
         }
-    } catch (error: any) { 
-        console.error("Registration Error:", error);
-        alert(`שגיאה בהרשמה: ${error.message}`); 
-    }
+
+        setTimeout(() => setIsPostRegisterPromptOpen(true), 1000);
+        if (normalizedMainField) checkForNewCategory(normalizedMainField).catch(e => {});
+        if (normalizedInterests.length > 0) normalizedInterests.forEach(interest => checkForNewInterest(interest).catch(e => {}));
+    } catch (error: any) { alert(`שגיאה בהרשמה: ${error.message}`); }
   };
 
   const handleLogin = async (email: string, pass: string) => {
@@ -405,7 +366,6 @@ export const App: React.FC = () => {
   const handleAddOffer = async (newOffer: BarterOffer) => {
     try { 
         await db.collection("offers").doc(newOffer.id).set(newOffer);
-        
         const hasShownThisSession = sessionStorage.getItem('prof_prompt_shown');
         if (!hasShownThisSession) {
             setTimeout(() => {
@@ -419,76 +379,70 @@ export const App: React.FC = () => {
 
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     const newMessage: Message = {
-      id: Date.now().toString(), senderId: currentUser?.id || 'guest', receiverId, senderName: currentUser?.name || 'אורח', receiverName, subject, content, timestamp: new Date().toISOString(), isRead: false
+      id: Date.now().toString(), 
+      senderId: currentUser?.id || 'guest', 
+      receiverId, 
+      senderName: currentUser?.name || 'אורח', 
+      receiverName, 
+      subject, 
+      content, 
+      timestamp: new Date().toISOString(), 
+      isRead: false
     };
-    try { await db.collection("messages").doc(newMessage.id).set(newMessage); } 
+
+    try { 
+        await db.collection("messages").doc(newMessage.id).set(newMessage);
+
+        // --- NEW: Trigger Chat Alert Email to Recipient ---
+        const receiverDoc = await db.collection("users").doc(receiverId).get();
+        if (receiverDoc.exists) {
+            const receiverProfile = receiverDoc.data() as UserProfile;
+            if (receiverProfile.email) {
+                triggerEmailNotification('chat_alert', receiverProfile.email, {
+                    userName: receiverProfile.name,
+                    senderName: currentUser?.name || 'משתמש באתר'
+                });
+            }
+        }
+    } 
     catch (error) { console.error("Error saving message:", error); }
   };
 
   const handleContact = (profile: UserProfile, subject: string = '') => {
-    if (!currentUser) { 
-        setAuthStartOnRegister(false); 
-        setIsAuthModalOpen(true); 
-        return; 
-    }
+    if (!currentUser) { setAuthStartOnRegister(false); setIsAuthModalOpen(true); return; }
     setSelectedProfile(profile);
     setInitialMessageSubject(subject);
     setIsMessagingModalOpen(true);
   };
 
   const handleRateOffer = async (offerId: string, rating: number) => {
-    if (!currentUser) { 
-        setIsAuthModalOpen(true); 
-        return; 
-    }
-    
+    if (!currentUser) { setIsAuthModalOpen(true); return; }
     const offer = offers.find(o => o.id === offerId);
     if (!offer) return;
-
     const existingRatings = offer.ratings || [];
     const userRatingIndex = existingRatings.findIndex(r => r.userId === currentUser.id);
-    
     let newRatings = [...existingRatings];
-    if (userRatingIndex > -1) {
-        newRatings[userRatingIndex] = { userId: currentUser.id, score: rating };
-    } else {
-        newRatings.push({ userId: currentUser.id, score: rating });
-    }
-
+    if (userRatingIndex > -1) newRatings[userRatingIndex] = { userId: currentUser.id, score: rating };
+    else newRatings.push({ userId: currentUser.id, score: rating });
     const totalScore = newRatings.reduce((acc, curr) => acc + curr.score, 0);
     const averageRating = totalScore / newRatings.length;
-
-    try {
-        await db.collection("offers").doc(offerId).update({
-            ratings: newRatings,
-            averageRating: averageRating
-        });
-    } catch (error) {
-        console.error("Error rating offer:", error);
-    }
+    try { await db.collection("offers").doc(offerId).update({ ratings: newRatings, averageRating: averageRating }); } 
+    catch (error) { console.error("Error rating offer:", error); }
   };
 
   const handleViewProfile = async (profile: UserProfile, openMessaging = false) => {
     let profileToView = profile;
-    // Always fetch freshest data from Firestore to allow admin editing to be consistent
     try {
          const userDoc = await db.collection("users").doc(profile.id).get();
          if (userDoc.exists) profileToView = userDoc.data() as UserProfile;
-    } catch (e) { 
-        console.error("Error fetching profile detail:", e);
-    }
-    
+    } catch (e) { console.error("Error fetching profile detail:", e); }
     setSelectedProfile(profileToView);
-    if (!openMessaging) {
-        setProfileForceEditMode(false);
-        setIsProfileModalOpen(true);
-    }
+    if (!openMessaging) { setProfileForceEditMode(false); setIsProfileModalOpen(true); }
   };
 
   const handleOpenCreate = (targetUser?: UserProfile) => {
     if (!currentUser) { setAuthStartOnRegister(true); setIsAuthModalOpen(true); return; }
     setEditingOffer(null);
-    // If an admin (or user on their own profile) wants to post, track which user it's for
     setTargetUserForOffer(targetUser || currentUser);
     setIsCreateModalOpen(true);
     setIsPostRegisterPromptOpen(false); 
@@ -569,15 +523,13 @@ export const App: React.FC = () => {
           const matchesMyProfession = offer.requestedService.includes(myProfession) || (offer.tags && offer.tags.some(t => t === myProfession));
           if (!matchesMyProfession) return false;
       }
-      const title = offer.title || '';
-      const description = offer.description || '';
       if (searchQuery) {
           const query = searchQuery.toLowerCase();
-          if (!(title.toLowerCase().includes(query) || description.toLowerCase().includes(query))) return false;
+          if (!((offer.title || '').toLowerCase().includes(query) || (offer.description || '').toLowerCase().includes(query))) return false;
       }
       if (keywordFilter) {
           const query = keywordFilter.toLowerCase();
-          if (!(title.toLowerCase().includes(query) || description.toLowerCase().includes(query))) return false;
+          if (!((offer.title || '').toLowerCase().includes(query) || (offer.description || '').toLowerCase().includes(query))) return false;
       }
       if (locationFilter && !(offer.location || '').toLowerCase().includes(locationFilter.toLowerCase())) return false;
       if (durationFilter !== 'all' && offer.durationType !== durationFilter) return false;
@@ -592,18 +544,12 @@ export const App: React.FC = () => {
             const ratingB = b.averageRating || 0;
             if (ratingB !== ratingA) return ratingB - ratingA;
         }
-        
         if (sortBy === 'deadline') {
             if (a.expirationDate && !b.expirationDate) return -1;
             if (!a.expirationDate && b.expirationDate) return 1;
-            if (a.expirationDate && b.expirationDate) {
-                return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
-            }
+            if (a.expirationDate && b.expirationDate) return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
         }
-
-        const dateA = new Date(a.createdAt).getTime();
-        const dateB = new Date(b.createdAt).getTime();
-        return dateB - dateA;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [offers, currentUser, viewFilter, searchQuery, keywordFilter, locationFilter, durationFilter, selectedCategories, sortBy]);
 
@@ -641,7 +587,7 @@ export const App: React.FC = () => {
             sortBy={sortBy} setSortBy={setSortBy}
             viewMode={viewMode} setViewMode={setViewMode}
             selectedCategories={selectedCategories} toggleCategory={toggleCategory}
-            displayedCategories={displayedCategories} handleResetFilters={handleResetFilters}
+            displayedCategories={availableCategories} handleResetFilters={handleResetFilters}
             searchQuery={searchQuery} locationFilter={locationFilter} keywordFilter={keywordFilter}
         />
 
@@ -671,7 +617,6 @@ export const App: React.FC = () => {
 
       <Footer onOpenAccessibility={() => setIsAccessibilityOpen(true)} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
       
-      {/* Modals & Popups */}
       {isAdminDashboardOpen && (
           <AdminDashboardModal 
             isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)}
@@ -698,50 +643,12 @@ export const App: React.FC = () => {
       )}
 
       {isEmailCenterOpen && <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />}
-
-      <PostRegisterPrompt 
-        isOpen={isPostRegisterPromptOpen} 
-        onClose={() => setIsPostRegisterPromptOpen(false)} 
-        onStartOffer={() => handleOpenCreate()}
-        userName={currentUser?.name || ''}
-      />
-      
-      <ProfessionalismPrompt 
-        isOpen={isProfessionalismPromptOpen}
-        onClose={() => setIsProfessionalismPromptOpen(false)}
-        onEditProfile={() => {
-            setIsProfessionalismPromptOpen(false);
-            if (currentUser) {
-                handleViewProfile(currentUser);
-                setProfileForceEditMode(true);
-            }
-        }}
-      />
-
-      <CreateOfferModal 
-        isOpen={isCreateModalOpen} 
-        onClose={() => { setIsCreateModalOpen(false); setTargetUserForOffer(null); }} 
-        onAddOffer={handleAddOffer} 
-        currentUser={targetUserForOffer || currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:'', portfolioUrl:''}, id: 'temp' }} 
-        editingOffer={editingOffer} 
-        onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} 
-      />
+      <PostRegisterPrompt isOpen={isPostRegisterPromptOpen} onClose={() => setIsPostRegisterPromptOpen(false)} onStartOffer={() => handleOpenCreate()} userName={currentUser?.name || ''} />
+      <ProfessionalismPrompt isOpen={isProfessionalismPromptOpen} onClose={() => setIsProfessionalismPromptOpen(false)} onEditProfile={() => { setIsProfessionalismPromptOpen(false); if (currentUser) { handleViewProfile(currentUser); setProfileForceEditMode(true); } }} />
+      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setTargetUserForOffer(null); }} onAddOffer={handleAddOffer} currentUser={targetUserForOffer || currentUser || { ...{id:'guest', name:'אורח', avatarUrl:'', role:'user', expertise:ExpertiseLevel.JUNIOR, mainField:'', portfolioUrl:''}, id: 'temp' }} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
       <MessagingModal isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={currentUser?.id || 'guest'} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={(id) => db.collection("messages").doc(id).update({isRead: true})} recipientProfile={selectedProfile} initialSubject={initialMessageSubject} />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
-      <ProfileModal 
-        isOpen={isProfileModalOpen} 
-        onClose={() => { setIsProfileModalOpen(false); setProfileForceEditMode(false); }} 
-        profile={selectedProfile} 
-        currentUser={currentUser} 
-        userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
-        onDeleteOffer={handleDeleteOffer} 
-        onUpdateProfile={handleUpdateProfile} 
-        onContact={(p) => handleContact(p)} 
-        availableCategories={availableCategories} 
-        availableInterests={availableInterests} 
-        startInEditMode={profileForceEditMode}
-        onOpenCreateOffer={(p) => { setIsProfileModalOpen(false); handleOpenCreate(p); }} // NEW: Callback to open offer modal
-      />
+      <ProfileModal isOpen={isProfileModalOpen} onClose={() => { setIsProfileModalOpen(false); setProfileForceEditMode(false); }} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={handleDeleteOffer} onUpdateProfile={handleUpdateProfile} onContact={(p) => handleContact(p)} availableCategories={availableCategories} availableInterests={availableInterests} startInEditMode={profileForceEditMode} onOpenCreateOffer={(p) => { setIsProfileModalOpen(false); handleOpenCreate(p); }} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => { setAuthStartOnRegister(true); setIsAuthModalOpen(true); }} />
       <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} onStartSearching={() => window.scrollTo({ top: 600, behavior: 'smooth' })} />
