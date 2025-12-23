@@ -46,7 +46,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       const partnerId = String(isSender ? msg.receiverId : msg.senderId).trim();
       
       // סינון מזהים לא תקינים
-      if (!partnerId || partnerId === 'undefined' || partnerId === 'guest') return;
+      if (!partnerId || partnerId === 'undefined' || partnerId === 'null' || partnerId === 'guest') return;
 
       const partnerName = isSender ? msg.receiverName : msg.senderName;
       const existing = map[partnerId];
@@ -66,7 +66,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [messages, currentUser]);
 
   const sortedConversations = useMemo<Conversation[]>(() => {
-    // Explicitly cast Object.values(conversationsMap) to Conversation[] to fix 'unknown' type error on 'lastMessage' property access
     return (Object.values(conversationsMap) as Conversation[]).sort((a, b) => 
         new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime()
     );
@@ -92,7 +91,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   useEffect(() => {
     if (isOpen && recipientProfile?.id) {
         const safeId = String(recipientProfile.id).trim();
-        if (safeId !== 'guest' && safeId !== 'undefined') {
+        if (safeId !== 'guest' && safeId !== 'undefined' && safeId !== 'null') {
+            console.log("MessagingModal: Auto-setting active conversation to:", safeId);
             setActiveConversationId(safeId);
             setSearchTerm('');
         }
@@ -149,7 +149,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                         <div className="text-center p-12 text-slate-400 text-sm italic flex flex-col items-center gap-3"><Mail className="w-10 h-10 opacity-10" />אין הודעות עדיין</div>
                     ) : (
                         <>
-                            {recipientProfile && recipientProfile.id && String(recipientProfile.id).trim() !== 'guest' && !conversationsMap[String(recipientProfile.id).trim()] && (
+                            {recipientProfile && recipientProfile.id && String(recipientProfile.id).trim() !== 'guest' && String(recipientProfile.id).trim() !== 'undefined' && !conversationsMap[String(recipientProfile.id).trim()] && (
                                 <div onClick={() => setActiveConversationId(String(recipientProfile.id).trim())} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-brand-100 bg-brand-50 transition-colors border-r-4 border-brand-500`}>
                                     <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold shrink-0 shadow-sm">{recipientProfile.name[0]}</div>
                                     <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-1"><h3 className="font-bold text-slate-900 truncate text-sm">{recipientProfile.name}</h3><span className="bg-brand-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">חדש</span></div><p className="text-xs text-brand-600 truncate font-medium">התחל שיחה עכשיו...</p></div>
