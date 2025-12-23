@@ -7,29 +7,19 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Helper function to generate HTML content based on type (Backend rendering)
 const generateEmailHtml = (type: string, data: any) => {
-    const headerStyle = `font-family: sans-serif; text-align: right; direction: rtl; background-color: #f8fafc; padding: 30px; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 600px; margin: 0 auto;`;
-    const btnStyle = `display: inline-block; background-color: #0d9488; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px; font-size: 16px;`;
-    const footerStyle = `margin-top: 30px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px;`;
+    const headerStyle = `font-family: sans-serif; text-align: right; direction: rtl; background-color: #f8fafc; padding: 20px; border-radius: 8px;`;
+    const btnStyle = `display: inline-block; background-color: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 16px;`;
 
     if (type === 'welcome') {
         return `
             <div style="${headerStyle}">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <span style="font-size: 40px;">🌟</span>
-                </div>
-                <h1 style="color: #0d9488; font-size: 24px; margin-bottom: 16px;">איזה כיף שהצטרפת!</h1>
-                <p style="font-size: 16px; color: #475569; line-height: 1.6;">
-                    היי ${data.userName || 'חדש'},<br/><br/>
-                    שמחים שבחרת להצטרף לקהילת <strong>Barter.org.il</strong> - זירת הברטר המקצועית של העצמאים בישראל.<br/><br/>
-                    מעכשיו תוכל למנף את הכישורים שלך כמטבע, לחסוך הוצאות ולייצר קשרים עסקיים איכותיים.<br/>
-                    השלב הבא? פרסום ההצעה הראשונה שלך!
+                <h1 style="color: #0d9488;">איזה כיף שהצטרפת!</h1>
+                <p style="font-size: 16px; color: #475569;">
+                    היי ${data.userName},<br/><br/>
+                    שמחים שבחרת להצטרף לקהילת Barter.org.il.<br/>
+                    מעכשיו תוכל לפרסם הצעות בקלות, למצוא שיתופי פעולה מדויקים ולקבל פניות רלוונטיות.
                 </p>
-                <div style="text-align: center;">
-                    <a href="https://barter.org.il" style="${btnStyle}">פרסם הצעה ראשונה עכשיו</a>
-                </div>
-                <div style="${footerStyle}">
-                    © 2024 Barter.org.il | כלכלה שיתופית לעצמאים
-                </div>
+                <a href="https://barter.org.il" style="${btnStyle}">כנס והעלה את ההצעה הראשונה שלך</a>
             </div>
         `;
     }
@@ -37,21 +27,13 @@ const generateEmailHtml = (type: string, data: any) => {
     if (type === 'chat_alert') {
         return `
             <div style="${headerStyle}">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <span style="font-size: 40px;">💬</span>
-                </div>
-                <h1 style="color: #0d9488; font-size: 24px; margin-bottom: 16px;">הודעה חדשה מחכה לך</h1>
-                <p style="font-size: 16px; color: #475569; line-height: 1.6;">
-                    היי ${data.userName || 'יקר/ה'},<br/><br/>
-                    קיבלת הודעה חדשה מ-<strong>${data.senderName || 'משתמש באתר'}</strong> בנוגע להצעה שלך.<br/>
-                    הברטרים הטובים ביותר נסגרים כשההצעה חמה - אל תחכה!
+                <h1 style="color: #0d9488;">הודעה חדשה מחכה לך</h1>
+                <p style="font-size: 16px; color: #475569;">
+                    היי ${data.userName},<br/><br/>
+                    <strong>${data.senderName}</strong> שלח לך הודעה חדשה בצ'אט באתר.<br/>
+                    אל תיתן להזדמנות להתקרר!
                 </p>
-                <div style="text-align: center;">
-                    <a href="https://barter.org.il" style="${btnStyle}">עבור לצ'אט כדי להשיב</a>
-                </div>
-                <div style="${footerStyle}">
-                    נשלח אליך כי ההודעה הגיעה בזמן שלא היית מחובר/ת לאתר.
-                </div>
+                <a href="https://barter.org.il" style="${btnStyle}">עבור לצ'אט כדי להשיב</a>
             </div>
         `;
     }
@@ -59,26 +41,16 @@ const generateEmailHtml = (type: string, data: any) => {
     if (type === 'smart_match') {
         return `
             <div style="${headerStyle}">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <span style="font-size: 40px;">🎯</span>
-                </div>
-                <h1 style="color: #0d9488; font-size: 24px; margin-bottom: 16px;">מצאנו התאמה בול בשבילך!</h1>
-                <p style="font-size: 16px; color: #475569; line-height: 1.6;">
-                    היי ${data.userName || 'יקר/ה'},<br/><br/>
-                    האלגוריתם שלנו זיהה הצעות חדשות באתר שמתאימות בדיוק לתחום העיסוק והצרכים שלך.<br/>
-                    בוא לראות מי מחפש את מה שיש לך לתת.
+                <h1 style="color: #0d9488;">מצאנו התאמה עבורך!</h1>
+                <p style="font-size: 16px; color: #475569;">
+                    האלגוריתם שלנו זיהה הצעות חדשות שמתאימות בול לפרופיל המקצועי שלך.
                 </p>
-                <div style="text-align: center;">
-                    <a href="https://barter.org.il" style="${btnStyle}">לצפייה בהתאמות שלי</a>
-                </div>
-                <div style="${footerStyle}">
-                    עדכונים חכמים מבוססי AI - Barter.org.il
-                </div>
+                <a href="https://barter.org.il" style="${btnStyle}">לצפייה בכל ההתאמות</a>
             </div>
         `;
     }
 
-    return `<div style="${headerStyle}"><p>הודעה ממערכת Barter.org.il</p></div>`;
+    return `<p>הודעה ממערכת Barter.org.il</p>`;
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -95,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -108,15 +81,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     let subject = '';
     
+    // Determine subject based on type
     switch (type) {
-        case 'welcome': subject = 'ברוכים הבאים ל-Barter.org.il! 🌟'; break;
-        case 'chat_alert': subject = `💬 הודעה חדשה מחכה לך מ-${data.senderName || 'משתמש'}`; break;
-        case 'smart_match': subject = '🎯 מצאנו התאמה חכמה עבורך!'; break;
-        default: subject = 'עדכון חשוב מ-Barter.org.il';
+        case 'welcome': subject = 'ברוכים הבאים ל-Barter.org.il!'; break;
+        case 'chat_alert': subject = `הודעה חדשה מ-${data.senderName}`; break;
+        case 'smart_match': subject = 'מצאנו עבורך פרויקטים חדשים!'; break;
+        default: subject = 'עדכון מ-Barter.org.il';
     }
 
-    const fromEmail = 'Barter.org.il <info@barter.org.il>';
+    // Using the verified domain sender address
+    const fromEmail = 'Barter IL <info@barter.org.il>';
+    
+    // Safety check: Ensure 'to' is an array
     const recipients = Array.isArray(to) ? to : [to];
+
+    console.log(`Sending email [${type}] from ${fromEmail} to ${recipients.join(', ')}`);
 
     const { data: emailData, error } = await resend.emails.send({
       from: fromEmail,
@@ -126,8 +105,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (error) {
-      console.error('Resend API Error:', error);
-      return res.status(400).json({ error: 'Email Sending Failed', details: error.message });
+      console.error('Resend API Error:', JSON.stringify(error, null, 2));
+      return res.status(400).json({ 
+          error: 'Email Sending Failed', 
+          details: error.message,
+          code: error.name
+      });
     }
 
     return res.status(200).json({ success: true, id: emailData?.id });
