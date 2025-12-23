@@ -55,17 +55,21 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // חישוב עדכוני פרופיל ממתינים
-  const pendingUserUpdates = useMemo(() => {
-    return users.filter(u => u.pendingUpdate).length;
-  }, [users]);
+  const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
 
-  // מיון הודעות ב-Frontend למניעת צורך באינדקסים מורכבים
+  // עיבוד הודעות עם סינון אבטחה כפול ב-Client
   const messages = useMemo(() => {
     if (!authUid) return [];
+    
+    // איחוד וסינון הודעות ששייכות למשתמש
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
-    combined.forEach(m => { if (m.id) uniqueMap.set(m.id, m); });
+    
+    combined.forEach(m => { 
+        if (m.id && (m.senderId === authUid || m.receiverId === authUid)) {
+            uniqueMap.set(m.id, m); 
+        }
+    });
     
     return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -77,6 +81,7 @@ export const App: React.FC = () => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
           setAuthUid(firebaseUser.uid);
+          // אל תבטל את הטעינה עדיין, חכה למסמך המשתמש
       } else {
           setAuthUid(null);
           setCurrentUser(null);
@@ -97,15 +102,14 @@ export const App: React.FC = () => {
         }
         setIsAuthLoading(false);
     }, (err) => {
-        console.warn("User doc listener error:", err);
+        console.error("User doc error:", err);
         setIsAuthLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // האזנה לכלל המשתמשים (רק לאדמין)
+  // אדמין בלבד
   useEffect(() => {
-      // חשוב: לא לנסות להאזין אם לא בטוחים ב-100% שהמשתמש אדמין
       if (!currentUser || currentUser.role !== 'admin') {
           setUsers([]);
           return;
@@ -114,42 +118,43 @@ export const App: React.FC = () => {
           const uList: UserProfile[] = [];
           snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
           setUsers(uList);
-      }, (err) => {
-          console.error("Admin Users Listener Permission Error:", err);
       });
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Data Listeners ---
+  // --- Message Listeners (The Core Fix) ---
   useEffect(() => {
-    let unsubSent = () => {};
-    let unsubReceived = () => {};
+    if (!authUid || isAuthLoading) return;
 
-    // Safety: Don't start message listeners until we know WHO is logged in
-    if (authUid && !isAuthLoading) {
-        unsubSent = db.collection("messages")
-            .where("senderId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-                setSentMessages(msgs);
-            }, (err) => console.warn("Sent messages access denied (possibly no messages yet)"));
+    console.log("Starting message listeners for:", authUid);
 
-        unsubReceived = db.collection("messages")
-            .where("receiverId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-                setReceivedMessages(msgs);
-            }, (err) => console.warn("Received messages access denied"));
-    }
+    const unsubSent = db.collection("messages")
+        .where("senderId", "==", authUid)
+        .onSnapshot((snap) => {
+            const msgs: Message[] = [];
+            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+            setSentMessages(msgs);
+        }, (err) => console.error("Sent messages listener error:", err));
 
+    const unsubReceived = db.collection("messages")
+        .where("receiverId", "==", authUid)
+        .onSnapshot((snap) => {
+            const msgs: Message[] = [];
+            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+            setReceivedMessages(msgs);
+        }, (err) => console.error("Received messages listener error:", err));
+
+    return () => { unsubSent(); unsubReceived(); };
+  }, [authUid, isAuthLoading]);
+
+  // --- Other Data Listeners ---
+  useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setOffers(fetched);
       setIsLoading(false); 
-    }, (err) => console.error("Offers fetch error:", err));
+    });
 
     const unsubAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetched: SystemAd[] = [];
@@ -159,24 +164,25 @@ export const App: React.FC = () => {
 
     const unsubTaxonomy = db.collection("system").doc("taxonomy").onSnapshot((doc) => {
         if (doc.exists) setTaxonomy(prev => ({ ...prev, ...doc.data() }));
-    }, (err) => console.log("Taxonomy fetch skipped (defaulting)"));
+    });
 
-    return () => {
-      unsubSent(); unsubReceived(); unsubOffers(); unsubAds(); unsubTaxonomy();
-    };
-  }, [authUid, isAuthLoading]);
+    return () => { unsubOffers(); unsubAds(); unsubTaxonomy(); };
+  }, []);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     const user = auth.currentUser;
-    if (!user) { alert("עליך להתחבר שוב."); return; }
+    if (!user) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
+
+    // וידוא ששם השולח קיים, גם אם הפרופיל עוד לא נטען לגמרי
+    const senderName = currentUser?.name || user.displayName || 'משתמש Barter';
 
     const newMessage = {
       senderId: user.uid,
       receiverId,
-      senderName: currentUser?.name || 'משתמש',
-      receiverName,
-      subject,
+      senderName: senderName,
+      receiverName: receiverName || 'משתמש',
+      subject: subject || 'צ\'אט חדש',
       content: content.trim(),
       timestamp: new Date().toISOString(),
       isRead: false
@@ -185,7 +191,7 @@ export const App: React.FC = () => {
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        console.error("Critical Send Message Error:", e);
+        console.error("SendMessage Error:", e);
         alert(`שגיאה בשליחה: ${e.message}`);
     }
   };
@@ -198,11 +204,13 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = async () => { 
+    // ניקוי State מיידי כדי למנוע זליגת מידע למשתמש הבא באותו דפדפן
     setSentMessages([]);
     setReceivedMessages([]);
     setUsers([]);
     setCurrentUser(null);
     setAuthUid(null);
+    setIsAuthLoading(true);
     await auth.signOut(); 
   };
 
@@ -239,7 +247,7 @@ export const App: React.FC = () => {
     } catch (error: any) { alert(error.message); }
   };
 
-  // --- UI Control State ---
+  // --- UI Logic ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
