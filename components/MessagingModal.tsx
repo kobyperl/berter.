@@ -65,8 +65,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [messages, currentUser]);
 
   const sortedConversations = useMemo(() => {
+    // Adding explicit types to sort parameters to fix 'unknown' type inference error
     return Array.from(conversationsMap.values())
-      .sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
+      .sort((a: Conversation, b: Conversation) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
 
   const filteredConversations = useMemo(() => {
