@@ -57,21 +57,15 @@ export const App: React.FC = () => {
   // --- Combined Messages ---
   const messages = useMemo(() => {
     if (!authUid) return [];
-    
-    // מיזוג הודעות וסילוק כפילויות
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
-    
-    combined.forEach(m => {
-        if (m.id) uniqueMap.set(m.id, m);
-    });
-    
+    combined.forEach(m => { if (m.id) uniqueMap.set(m.id, m); });
     return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [sentMessages, receivedMessages, authUid]);
 
-  // --- Listeners ---
+  // --- Auth & Profile ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
@@ -90,34 +84,55 @@ export const App: React.FC = () => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
         if (docSnap.exists) setCurrentUser(docSnap.data() as UserProfile);
-    }, (err) => console.error("User doc error:", err));
+    }, (err) => console.error("User doc fetch error:", err));
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
+  // --- Main Data Listeners ---
   useEffect(() => {
-    // 1. האזנה להודעות ששלחתי
+    // 1. האזנה להודעות (דורש אינדקסים שיצרת ב-Console)
     let unsubSent = () => {};
     let unsubReceived = () => {};
 
     if (authUid) {
+        // שליפה ממוינת של הודעות ששלחתי
         unsubSent = db.collection("messages")
             .where("senderId", "==", authUid)
+            .orderBy("timestamp", "desc")
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setSentMessages(msgs);
-            }, (err) => console.error("Sent messages listener failed:", err));
+            }, (err) => {
+                console.error("Sent messages error:", err);
+                // אם האינדקס לא מוכן, נשלוף ללא מיון כגיבוי זמני
+                if (err.message.includes("index")) {
+                     db.collection("messages").where("senderId", "==", authUid).onSnapshot(s => {
+                         const m: Message[] = []; s.forEach(d => m.push({...(d.data() as any), id: d.id}));
+                         setSentMessages(m);
+                     });
+                }
+            });
 
+        // שליפה ממוינת של הודעות שקיבלתי
         unsubReceived = db.collection("messages")
             .where("receiverId", "==", authUid)
+            .orderBy("timestamp", "desc")
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setReceivedMessages(msgs);
-            }, (err) => console.error("Received messages listener failed:", err));
+            }, (err) => {
+                console.error("Received messages error:", err);
+                if (err.message.includes("index")) {
+                    db.collection("messages").where("receiverId", "==", authUid).onSnapshot(s => {
+                        const m: Message[] = []; s.forEach(d => m.push({...(d.data() as any), id: d.id}));
+                        setReceivedMessages(m);
+                    });
+                }
+            });
     }
 
-    // 2. האזנה לשאר הנתונים
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
@@ -138,13 +153,14 @@ export const App: React.FC = () => {
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    if (!auth.currentUser) {
-        alert("נא להתחבר שוב");
+    // וידוא UID מעודכן מהסטייט
+    if (!authUid) {
+        alert("עליך להתחבר כדי לשלוח הודעה.");
         return;
     }
 
     const newMessage = {
-      senderId: auth.currentUser.uid,
+      senderId: authUid,
       receiverId,
       senderName: currentUser?.name || 'משתמש',
       receiverName,
@@ -155,13 +171,15 @@ export const App: React.FC = () => {
     };
 
     try {
-        await db.collection("messages").add(newMessage);
+        // הוספה ל-Firestore
+        const docRef = await db.collection("messages").add(newMessage);
+        console.log("Message sent with ID:", docRef.id);
     } catch (e: any) {
-        console.error("Error sending message:", e);
+        console.error("CRITICAL: Message send failed:", e);
         if (e.code === 'permission-denied') {
-            alert("שגיאת אבטחה: וודא שאתה מחובר ופרטי הנמען נכונים.");
+            alert("שגיאת הרשאות: השרת דחה את ההודעה. בדוק אם ה-Rules מעודכנים.");
         } else {
-            alert("שגיאה בשליחה. נסה שוב.");
+            alert(`תקלה בשליחה: ${e.message}`);
         }
     }
   };
@@ -175,6 +193,7 @@ export const App: React.FC = () => {
       }
   };
 
+  // --- Rest of the app logic ---
   const handleLogout = async () => { 
     setSentMessages([]);
     setReceivedMessages([]);
