@@ -37,34 +37,26 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // יצירת רשימת שיחות מבוססת על הודעות שמתקבלות מהשרת
-  // Added explicit return type to useMemo to ensure Map generic is preserved
-  const conversationsMap = useMemo<Map<string, Conversation>>(() => {
+  const conversationsMap = useMemo(() => {
     const map = new Map<string, Conversation>();
     if (!currentUser || currentUser === 'guest') return map;
 
     messages.forEach(msg => {
-      // וידוא אקסטרה: שהודעה באמת קשורה למשתמש הנוכחי
-      const isUserSender = msg.senderId === currentUser;
-      const isUserReceiver = msg.receiverId === currentUser;
-      
-      if (!isUserSender && !isUserReceiver) return; // מתעלם מהודעות של אחרים
+      const isSender = msg.senderId === currentUser;
+      const partnerId = isSender ? msg.receiverId : msg.senderId;
+      const partnerName = isSender ? msg.receiverName : msg.senderName;
 
-      const partnerId = isUserSender ? msg.receiverId : msg.senderId;
-      const partnerName = isUserSender ? msg.receiverName : msg.senderName;
-
-      // Type cast Map.get result to Conversation | undefined to resolve 'unknown' error
-      const existing = map.get(partnerId) as Conversation | undefined;
+      const existing = map.get(partnerId);
       
       // אם השיחה לא קיימת או שההודעה הנוכחית חדשה יותר מהקודמת
-      // Explicitly checking existing for truthiness before accessing properties
       if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
         map.set(partnerId, {
           partnerId,
           partnerName,
           lastMessage: msg,
-          unreadCount: (existing?.unreadCount || 0) + (isUserReceiver && !msg.isRead ? 1 : 0)
+          unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
         });
-      } else if (isUserReceiver && !msg.isRead) {
+      } else if (!isSender && !msg.isRead) {
           // רק לעדכן מונה אם זה לא האחרון
           if (existing) existing.unreadCount += 1;
       }
@@ -72,21 +64,20 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     return map;
   }, [messages, currentUser]);
 
-  // Added explicit Conversation[] return type and parameter types to sort to fix 'unknown' issue
-  const sortedConversations = useMemo<Conversation[]>(() => {
+  const sortedConversations = useMemo(() => {
+    // Adding explicit types to sort parameters to fix 'unknown' type inference error
     return Array.from(conversationsMap.values())
       .sort((a: Conversation, b: Conversation) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
 
-  // Added explicit Conversation[] return type and parameter type to filter to fix 'unknown' issue
-  const filteredConversations = useMemo<Conversation[]>(() => {
-    return sortedConversations.filter((c: Conversation) => 
+  const filteredConversations = useMemo(() => {
+    return sortedConversations.filter(c => 
       c.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.lastMessage.content.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [sortedConversations, searchTerm]);
 
-  // הודעות בשיחה הפעילה - מוודאים סינון מלא
+  // הודעות בשיחה הפעילה
   const activeMessages = useMemo(() => {
     if (!activeConversationId || !currentUser) return [];
     return messages.filter(m => 
