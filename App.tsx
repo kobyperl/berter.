@@ -56,9 +56,8 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // איחוד הודעות ממוין
+  // איחוד הודעות ממוין (לפי זמן יורד - החדש ביותר למעלה)
   const messages = useMemo(() => {
-    // Explicitly cast Object.values(messagesMap) to Message[] to fix 'unknown' type error on 'timestamp' property access
     return (Object.values(messagesMap) as Message[]).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
@@ -87,15 +86,17 @@ export const App: React.FC = () => {
             setCurrentUser({ ...data, id: docSnap.id });
         }
         setIsAuthLoading(false);
-    }, () => setIsAuthLoading(false));
+    }, (err) => {
+        console.error("User doc fetch error:", err);
+        setIsAuthLoading(false);
+    });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Robust Messaging Listener ---
+  // --- Messaging Listener (With Index Optimization) ---
   useEffect(() => {
     if (!authUid) return;
 
-    // פונקציית עדכון מפות משותפת למניעת כפילויות ואיבוד נתונים
     const updateMessages = (snap: firebase.firestore.QuerySnapshot) => {
         setMessagesMap(prev => {
             const newMap = { ...prev };
@@ -106,8 +107,20 @@ export const App: React.FC = () => {
         });
     };
 
-    const unsubSent = db.collection("messages").where("senderId", "==", authUid).onSnapshot(updateMessages);
-    const unsubReceived = db.collection("messages").where("receiverId", "==", authUid).onSnapshot(updateMessages);
+    const handleError = (type: string, err: any) => {
+        console.error(`Firestore ${type} messages error:`, err);
+    };
+
+    // שימוש ב-orderBy כדי להתאים לאינדקסים שהגדרת ב-Console
+    const unsubSent = db.collection("messages")
+        .where("senderId", "==", authUid)
+        .orderBy("timestamp", "desc")
+        .onSnapshot(updateMessages, (e) => handleError("sent", e));
+
+    const unsubReceived = db.collection("messages")
+        .where("receiverId", "==", authUid)
+        .orderBy("timestamp", "desc")
+        .onSnapshot(updateMessages, (e) => handleError("received", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -118,8 +131,7 @@ export const App: React.FC = () => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
-          // וידוא ID תקין - קריטי לחיבור הודעות
-          const profileId = String(data.profileId || data.profile?.id).trim();
+          const profileId = String(data.profileId || data.profile?.id || '').trim();
           fetched.push({ ...data, id: doc.id, profileId });
       });
       setOffers(fetched);
@@ -150,13 +162,13 @@ export const App: React.FC = () => {
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Messaging Handlers ---
+  // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
     const cleanReceiverId = String(receiverId).trim();
-    if (!cleanReceiverId || cleanReceiverId === 'undefined' || cleanReceiverId === 'guest') {
-        alert("שגיאה: המשתמש אינו מזוהה. נסה לרענן את הדף.");
+    if (!cleanReceiverId || cleanReceiverId === 'undefined' || cleanReceiverId === 'null' || cleanReceiverId === 'guest') {
+        alert("תקלה: לא ניתן לזהות את הנמען. נסה לרענן את המודעה.");
         return;
     }
 
@@ -165,16 +177,19 @@ export const App: React.FC = () => {
       receiverId: cleanReceiverId,
       senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
-      subject: subject || 'צ\'אט חדש',
+      subject: subject || 'צ\'אט ברטר',
       content: content.trim(),
       timestamp: new Date().toISOString(),
       isRead: false
     };
 
+    console.log("App: Attempting to send message:", { from: authUid, to: cleanReceiverId });
+
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        alert(`שגיאה בשליחת הודעה: ${e.message}`);
+        console.error("App: Send message error:", e);
+        alert(`שגיאת אבטחה ב-Firebase: ${e.message}`);
     }
   };
 
@@ -317,13 +332,13 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        const safeId = String(offer.profileId || p.id).trim();
+                        const safeId = String(offer.profileId || p.id || '').trim();
                         setSelectedProfile({ ...p, id: safeId }); 
                         setInitialMessageSubject(offer.title); 
                         setIsMessagingModalOpen(true); 
                     }} 
                     onUserClick={(p) => { 
-                        const safeId = String(offer.profileId || p.id).trim();
+                        const safeId = String(offer.profileId || p.id || '').trim();
                         setSelectedProfile({ ...p, id: safeId }); 
                         setIsProfileModalOpen(true); 
                     }} 
@@ -402,7 +417,7 @@ export const App: React.FC = () => {
           onClose={() => setIsProfileModalOpen(false)} 
           profile={selectedProfile} 
           currentUser={currentUser} 
-          userOffers={offers.filter(o => String(o.profileId).trim() === String(selectedProfile?.id).trim())} 
+          userOffers={offers.filter(o => String(o.profileId).trim() === String(selectedProfile?.id || '').trim())} 
           onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} 
           onUpdateProfile={async (p) => { await db.collection("users").doc(p.id).set(p); }} 
           onContact={(p) => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} 
