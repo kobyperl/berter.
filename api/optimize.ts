@@ -1,9 +1,10 @@
 
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from "@google/genai";
 
-export default async function handler(req, res) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
@@ -20,68 +21,50 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  let body = req.body;
-  if (typeof body === 'string') {
-    try {
-      body = JSON.parse(body);
-    } catch (e) {
-      console.error("Failed to parse request body:", e);
-      return res.status(400).json({ error: 'Invalid JSON body' });
-    }
-  }
-
-  const { rawInput } = body || {};
+  const { rawInput } = req.body || {};
 
   if (!rawInput) {
     return res.status(400).json({ error: 'Missing rawInput in request body' });
   }
 
-  // The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-  const apiKey = process.env.API_KEY;
-
-  if (!apiKey) {
-    console.error("CRITICAL: No valid API Key found in environment variables.");
-    return res.status(500).json({ 
-        error: 'Server configuration error: API Key missing'
-    });
+  if (!process.env.API_KEY) {
+    console.error("API_KEY is missing in environment variables");
+    return res.status(500).json({ error: 'Server configuration error' });
   }
 
   try {
-    // Always use the latest SDK implementation as per guidelines
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const today = new Date().toISOString().split('T')[0];
+    
     const prompt = `
       Current Date: ${today}
       Analyze this barter offer request: "${rawInput}"
-      
       Extract structured data in Hebrew.
     `;
 
-    // Define JSON Schema for strict output using Type from @google/genai
     const responseSchema = {
-        type: Type.OBJECT,
-        properties: {
-            title: { type: Type.STRING, description: "A professional and catchy title for the barter offer (Hebrew)." },
-            description: { type: Type.STRING, description: "A persuasive and clear description of the offer (Hebrew)." },
-            offeredService: { type: Type.STRING, description: "Short 2-4 words summarizing what is given (Hebrew)." },
-            requestedService: { type: Type.STRING, description: "Short 2-4 words summarizing what is requested (Hebrew)." },
-            location: { type: Type.STRING, description: "The city or area mentioned. If none mentioned, return 'כל הארץ'." },
-            tags: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "Up to 10 relevant tags (professions, skills, or interests)."
-            },
-            durationType: { 
-                type: Type.STRING, 
-                enum: ["one-time", "ongoing"],
-                description: "ongoing for retainers/subscriptions/long-term, one-time for projects."
-            },
-            expirationDate: { type: Type.STRING, description: "YYYY-MM-DD format if a deadline is explicitly mentioned." }
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING, description: "A professional and catchy title (Hebrew)." },
+        description: { type: Type.STRING, description: "A persuasive and clear description (Hebrew)." },
+        offeredService: { type: Type.STRING, description: "Short summary of what is given (Hebrew)." },
+        requestedService: { type: Type.STRING, description: "Short summary of what is requested (Hebrew)." },
+        location: { type: Type.STRING, description: "The city or 'כל הארץ'." },
+        tags: { 
+          type: Type.ARRAY, 
+          items: { type: Type.STRING },
+          description: "Up to 5 relevant tags."
         },
-        required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
+        durationType: { 
+          type: Type.STRING, 
+          enum: ["one-time", "ongoing"],
+          description: "Duration of the barter."
+        },
+        expirationDate: { type: Type.STRING, description: "YYYY-MM-DD if mentioned." }
+      },
+      required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
     };
 
-    // Use gemini-3-flash-preview for Basic Text Tasks
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text: prompt }] }],
@@ -91,25 +74,16 @@ export default async function handler(req, res) {
       },
     });
 
-    // Extract text output from GenerateContentResponse
     const jsonStr = response.text;
-
-    if (jsonStr) {
-      let jsonResponse;
-      try {
-        jsonResponse = JSON.parse(jsonStr.trim());
-      } catch (parseError) {
-        console.error("Failed to parse Gemini response as JSON:", jsonStr);
-        return res.status(500).json({ error: 'AI returned invalid JSON', raw: jsonStr });
-      }
-      return res.status(200).json(jsonResponse);
-    } else {
-      console.error("Gemini returned empty text.");
-      return res.status(500).json({ error: 'No content generated by AI' });
+    if (!jsonStr) {
+      throw new Error("Empty response from Gemini");
     }
 
+    const jsonResponse = JSON.parse(jsonStr.trim());
+    return res.status(200).json(jsonResponse);
+
   } catch (error: any) {
-    console.error("Server execution failed:", error);
+    console.error("Gemini optimization error:", error);
     return res.status(500).json({ error: 'Failed to optimize offer', details: error.message });
   }
 }
