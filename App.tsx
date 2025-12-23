@@ -54,30 +54,15 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // --- Email Helper ---
-  const triggerEmailNotification = async (type: 'welcome' | 'chat_alert' | 'smart_match', to: string, data: any) => {
-      if (!to) return;
-      try {
-          await fetch('/api/emails/send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type, to, data })
-          });
-      } catch (err) {
-          console.error("Email trigger error:", err);
-      }
-  };
-
-  // --- Combined Messages (Calculated for UI) ---
+  // --- Combined Messages ---
   const messages = useMemo(() => {
     if (!authUid) return [];
     
-    // מיזוג הודעות ששלחתי והודעות שקיבלתי
+    // מיזוג הודעות וסילוק כפילויות
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
     
     combined.forEach(m => {
-        // וודא שיש ID למסמך כדי למנוע דריסה
         if (m.id) uniqueMap.set(m.id, m);
     });
     
@@ -86,7 +71,7 @@ export const App: React.FC = () => {
     );
   }, [sentMessages, receivedMessages, authUid]);
 
-  // --- Auth Listeners ---
+  // --- Listeners ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
@@ -110,101 +95,73 @@ export const App: React.FC = () => {
   }, [authUid]);
 
   useEffect(() => {
-    let unsubscribeUsers = () => {};
-    if (currentUser?.role === 'admin') {
-        unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
-          const fetched: UserProfile[] = [];
-          snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
-          setUsers(fetched);
-        });
+    // 1. האזנה להודעות ששלחתי
+    let unsubSent = () => {};
+    let unsubReceived = () => {};
+
+    if (authUid) {
+        unsubSent = db.collection("messages")
+            .where("senderId", "==", authUid)
+            .onSnapshot((snap) => {
+                const msgs: Message[] = [];
+                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+                setSentMessages(msgs);
+            }, (err) => console.error("Sent messages listener failed:", err));
+
+        unsubReceived = db.collection("messages")
+            .where("receiverId", "==", authUid)
+            .onSnapshot((snap) => {
+                const msgs: Message[] = [];
+                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+                setReceivedMessages(msgs);
+            }, (err) => console.error("Received messages listener failed:", err));
     }
 
-    const unsubscribeOffers = db.collection("offers").onSnapshot((snapshot) => {
+    // 2. האזנה לשאר הנתונים
+    const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setOffers(fetched);
       setIsLoading(false); 
     });
 
-    const unsubscribeAds = db.collection("systemAds").onSnapshot((snapshot) => {
+    const unsubAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetched: SystemAd[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setSystemAds(fetched);
     });
 
-    // PRIVACY: האזנה מסוננת שתואמת את ה-Security Rules
-    let unsubscribeSent = () => {};
-    let unsubscribeReceived = () => {};
-
-    if (authUid) {
-        // האזנה רק להודעות ששלחתי (מותר לפי Rules)
-        unsubscribeSent = db.collection("messages")
-            .where("senderId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-                setSentMessages(msgs);
-            }, (err) => console.error("Sent messages query blocked by rules or missing index:", err));
-
-        // האזנה רק להודעות שקיבלתי (מותר לפי Rules)
-        unsubscribeReceived = db.collection("messages")
-            .where("receiverId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-                setReceivedMessages(msgs);
-            }, (err) => console.error("Received messages query blocked by rules:", err));
-    }
-
     return () => {
-      unsubscribeUsers(); unsubscribeOffers(); unsubscribeAds();
-      unsubscribeSent(); unsubscribeReceived();
+      unsubSent(); unsubReceived(); unsubOffers(); unsubAds();
     };
-  }, [currentUser?.role, authUid]);
+  }, [authUid]);
 
-  // --- Messaging Logic ---
+  // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    const authenticatedUid = auth.currentUser?.uid;
-    if (!authenticatedUid) {
-        alert("עליך להתחבר כדי לשלוח הודעה.");
+    if (!auth.currentUser) {
+        alert("נא להתחבר שוב");
         return;
     }
-    
-    // יצירת מזהה מסמך חדש מראש
-    const messageDoc = db.collection("messages").doc();
-    const newMessage: Message = {
-      id: messageDoc.id, 
-      senderId: authenticatedUid, 
-      receiverId, 
-      senderName: currentUser?.name || 'משתמש', 
-      receiverName, 
-      subject, 
-      content, 
-      timestamp: new Date().toISOString(), 
+
+    const newMessage = {
+      senderId: auth.currentUser.uid,
+      receiverId,
+      senderName: currentUser?.name || 'משתמש',
+      receiverName,
+      subject,
+      content,
+      timestamp: new Date().toISOString(),
       isRead: false
     };
 
-    try { 
-        // שמירה ל-Firestore. החוק יאשר רק אם senderId == ה-UID המחובר
-        await messageDoc.set(newMessage);
-        
-        // התראה במייל לנמען
-        const recipientSnap = await db.collection("users").doc(receiverId).get();
-        if (recipientSnap.exists) {
-            const recipient = recipientSnap.data() as UserProfile;
-            if (recipient.email) {
-                triggerEmailNotification('chat_alert', recipient.email, {
-                    userName: recipient.name,
-                    senderName: currentUser?.name || 'משתמש מהאתר'
-                });
-            }
-        }
-    } catch (e: any) { 
-        console.error("Firestore Message Send Failed:", e);
+    try {
+        await db.collection("messages").add(newMessage);
+    } catch (e: any) {
+        console.error("Error sending message:", e);
         if (e.code === 'permission-denied') {
-            alert("שגיאת אבטחה: השרת דחה את שליחת ההודעה. נסה להתחבר מחדש.");
+            alert("שגיאת אבטחה: וודא שאתה מחובר ופרטי הנמען נכונים.");
         } else {
-            alert("חלה שגיאה בשליחת ההודעה.");
+            alert("שגיאה בשליחה. נסה שוב.");
         }
     }
   };
@@ -212,22 +169,18 @@ export const App: React.FC = () => {
   const handleMarkAsRead = async (id: string) => {
       if (!authUid) return;
       try {
-          // חוק ה-Update מאפשר רק למקבל ההודעה לעדכן
           await db.collection("messages").doc(id).update({ isRead: true });
       } catch (e) {
-          console.error("Mark as read failed (possibly not authorized):", e);
+          console.error("Mark read error:", e);
       }
   };
 
-  // --- Auth Handlers ---
   const handleLogout = async () => { 
-    try {
-      setSentMessages([]);
-      setReceivedMessages([]);
-      setCurrentUser(null);
-      setAuthUid(null);
-      await auth.signOut(); 
-    } catch (e) { console.error("Logout error:", e); }
+    setSentMessages([]);
+    setReceivedMessages([]);
+    setCurrentUser(null);
+    setAuthUid(null);
+    await auth.signOut(); 
   };
 
   const handleRegister = async (newUser: Partial<UserProfile>, pass: string) => {
@@ -250,7 +203,6 @@ export const App: React.FC = () => {
         await db.collection("users").doc(uid).set(userProfile);
         setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
-        triggerEmailNotification('welcome', userProfile.email!, { userName: userProfile.name });
         setTimeout(() => setIsPostRegisterPromptOpen(true), 1000);
     } catch (error: any) { alert(error.message); }
   };
@@ -352,7 +304,8 @@ export const App: React.FC = () => {
                     onContact={(p) => { setSelectedProfile(p); setInitialMessageSubject(offer.title); setIsMessagingModalOpen(true); }} 
                     onUserClick={(p) => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
                     onRate={async (id, score) => {
-                        const ratings = [...(offer.ratings || []), { userId: authUid!, score }];
+                        if (!authUid) return;
+                        const ratings = [...(offer.ratings || []), { userId: authUid, score }];
                         const avg = ratings.reduce((a,b) => a+b.score, 0) / ratings.length;
                         await db.collection("offers").doc(id).update({ ratings, averageRating: avg });
                     }} 
