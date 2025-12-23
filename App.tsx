@@ -40,9 +40,8 @@ export const App: React.FC = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
 
-  // --- Messaging State ---
-  const [sentMessages, setSentMessages] = useState<Message[]>([]);
-  const [receivedMessages, setReceivedMessages] = useState<Message[]>([]);
+  // --- Unified Messaging State ---
+  const [messagesMap, setMessagesMap] = useState<Record<string, Message>>({});
 
   // --- Data State ---
   const [offers, setOffers] = useState<BarterOffer[]>([]);
@@ -57,19 +56,13 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
-
-  // איחוד הודעות מכל המקורות ללא כפילויות
+  // איחוד הודעות ממוין
   const messages = useMemo(() => {
-    const combined = [...sentMessages, ...receivedMessages];
-    const uniqueMap = new Map<string, Message>();
-    combined.forEach(m => {
-        if (m.id) uniqueMap.set(m.id, m);
-    });
-    return Array.from(uniqueMap.values()).sort((a, b) => 
+    // Explicitly cast Object.values(messagesMap) to Message[] to fix 'unknown' type error on 'timestamp' property access
+    return (Object.values(messagesMap) as Message[]).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-  }, [sentMessages, receivedMessages]);
+  }, [messagesMap]);
 
   // --- Auth Listeners ---
   useEffect(() => {
@@ -79,8 +72,7 @@ export const App: React.FC = () => {
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setSentMessages([]);
-          setReceivedMessages([]);
+          setMessagesMap({});
           setIsAuthLoading(false);
       }
     });
@@ -95,49 +87,40 @@ export const App: React.FC = () => {
             setCurrentUser({ ...data, id: docSnap.id });
         }
         setIsAuthLoading(false);
-    }, (err) => {
-        console.warn("User fetch error:", err);
-        setIsAuthLoading(false);
-    });
+    }, () => setIsAuthLoading(false));
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Messaging Listeners (Split for Security Rules) ---
+  // --- Robust Messaging Listener ---
   useEffect(() => {
     if (!authUid) return;
 
-    // מאזין 1: הודעות ששלחתי
-    const unsubSent = db.collection("messages")
-        .where("senderId", "==", authUid)
-        .onSnapshot(snap => {
-            const msgs: Message[] = [];
-            snap.forEach(doc => msgs.push({ ...(doc.data() as Message), id: doc.id }));
-            setSentMessages(msgs);
+    // פונקציית עדכון מפות משותפת למניעת כפילויות ואיבוד נתונים
+    const updateMessages = (snap: firebase.firestore.QuerySnapshot) => {
+        setMessagesMap(prev => {
+            const newMap = { ...prev };
+            snap.forEach(doc => {
+                newMap[doc.id] = { ...(doc.data() as Message), id: doc.id };
+            });
+            return newMap;
         });
+    };
 
-    // מאזין 2: הודעות שקיבלתי
-    const unsubReceived = db.collection("messages")
-        .where("receiverId", "==", authUid)
-        .onSnapshot(snap => {
-            const msgs: Message[] = [];
-            snap.forEach(doc => msgs.push({ ...(doc.data() as Message), id: doc.id }));
-            setReceivedMessages(msgs);
-        });
+    const unsubSent = db.collection("messages").where("senderId", "==", authUid).onSnapshot(updateMessages);
+    const unsubReceived = db.collection("messages").where("receiverId", "==", authUid).onSnapshot(updateMessages);
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
 
-  // --- Public Data Listeners ---
+  // --- Data Listeners ---
   useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
-          // וידוא ID קשיח לכל פרופיל שנטען
-          if (data.profile) {
-              data.profile.id = data.profileId; 
-          }
-          fetched.push({ ...data, id: doc.id });
+          // וידוא ID תקין - קריטי לחיבור הודעות
+          const profileId = String(data.profileId || data.profile?.id).trim();
+          fetched.push({ ...data, id: doc.id, profileId });
       });
       setOffers(fetched);
       setIsLoading(false); 
@@ -167,23 +150,22 @@ export const App: React.FC = () => {
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Handlers ---
+  // --- Messaging Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    const cleanId = String(receiverId).trim();
-    // בדיקת תקינות ID נמען - הגנה מפני נמענים לא קיימים
-    if (!cleanId || cleanId === 'undefined' || cleanId === 'null' || cleanId === 'guest') {
-        alert("תקלת זיהוי: המשתמש אליו אתה מנסה לשלוח הודעה אינו מזוהה במערכת. נסה לרענן את המודעה.");
+    const cleanReceiverId = String(receiverId).trim();
+    if (!cleanReceiverId || cleanReceiverId === 'undefined' || cleanReceiverId === 'guest') {
+        alert("שגיאה: המשתמש אינו מזוהה. נסה לרענן את הדף.");
         return;
     }
 
     const newMessage = {
       senderId: authUid,
-      receiverId: cleanId,
+      receiverId: cleanReceiverId,
       senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
-      subject: subject || 'צ\'אט ברטר',
+      subject: subject || 'צ\'אט חדש',
       content: content.trim(),
       timestamp: new Date().toISOString(),
       isRead: false
@@ -192,8 +174,7 @@ export const App: React.FC = () => {
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        console.error("Firebase send error:", e);
-        alert(`שגיאה בשליחה: ${e.message}`);
+        alert(`שגיאה בשליחת הודעה: ${e.message}`);
     }
   };
 
@@ -203,8 +184,7 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = async () => { 
-    setSentMessages([]);
-    setReceivedMessages([]);
+    setMessagesMap({});
     setUsers([]);
     setCurrentUser(null);
     setAuthUid(null);
@@ -223,7 +203,6 @@ export const App: React.FC = () => {
             role: newUser.email === ADMIN_EMAIL ? 'admin' : 'user',
             avatarUrl: newUser.avatarUrl || `https://ui-avatars.com/api/?name=${newUser.name}&background=random`,
             portfolioUrl: newUser.portfolioUrl || '',
-            portfolioImages: newUser.portfolioImages || [],
             expertise: newUser.expertise || ExpertiseLevel.MID,
             mainField: newUser.mainField || 'כללי', 
             interests: newUser.interests || [],
@@ -238,8 +217,7 @@ export const App: React.FC = () => {
 
   const handleLogin = async (email: string, pass: string) => {
     try { 
-        setSentMessages([]);
-        setReceivedMessages([]);
+        setMessagesMap({});
         await auth.signInWithEmailAndPassword(email, pass); 
         setIsAuthModalOpen(false); 
     } catch (error: any) { alert(error.message); }
@@ -306,7 +284,7 @@ export const App: React.FC = () => {
         onOpenProfile={() => { setSelectedProfile(currentUser); setIsProfileModalOpen(true); }}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenEmailCenter={() => setIsEmailCenterOpen(true)}
-        adminPendingCount={offers.filter(o => o.status === 'pending').length + pendingUserUpdates}
+        adminPendingCount={offers.filter(o => o.status === 'pending').length + (users.filter(u => u.pendingUpdate).length)}
         onLogout={handleLogout}
         onSearch={setSearchQuery}
         unreadCount={unreadCount}
@@ -339,15 +317,14 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        // הכרחת שימוש ב-profileId מהמסמך
-                        const forcedProfile = { ...p, id: offer.profileId };
-                        setSelectedProfile(forcedProfile); 
+                        const safeId = String(offer.profileId || p.id).trim();
+                        setSelectedProfile({ ...p, id: safeId }); 
                         setInitialMessageSubject(offer.title); 
                         setIsMessagingModalOpen(true); 
                     }} 
                     onUserClick={(p) => { 
-                        const forcedProfile = { ...p, id: offer.profileId };
-                        setSelectedProfile(forcedProfile); 
+                        const safeId = String(offer.profileId || p.id).trim();
+                        setSelectedProfile({ ...p, id: safeId }); 
                         setIsProfileModalOpen(true); 
                     }} 
                     onRate={async (id, score) => {
@@ -425,7 +402,7 @@ export const App: React.FC = () => {
           onClose={() => setIsProfileModalOpen(false)} 
           profile={selectedProfile} 
           currentUser={currentUser} 
-          userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
+          userOffers={offers.filter(o => String(o.profileId).trim() === String(selectedProfile?.id).trim())} 
           onDeleteOffer={(id) => db.collection("offers").doc(id).delete()} 
           onUpdateProfile={async (p) => { await db.collection("users").doc(p.id).set(p); }} 
           onContact={(p) => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} 
