@@ -61,7 +61,7 @@ export const App: React.FC = () => {
   const messages = useMemo(() => {
     if (!authUid) return [];
     
-    // איחוד הודעות שנשלחו והתקבלו
+    // איחוד הודעות שנשלחו והתקבלו עם סינון כפילויות
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
     
@@ -97,7 +97,8 @@ export const App: React.FC = () => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
         if (docSnap.exists) {
-            setCurrentUser({ ...(docSnap.data() as UserProfile), id: docSnap.id });
+            const data = docSnap.data() as UserProfile;
+            setCurrentUser({ ...data, id: docSnap.id });
         }
         setIsAuthLoading(false);
     }, (err) => {
@@ -107,6 +108,7 @@ export const App: React.FC = () => {
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
+  // --- Admin Specific User Listener ---
   useEffect(() => {
       if (!currentUser || currentUser.role !== 'admin') {
           setUsers([]);
@@ -120,42 +122,16 @@ export const App: React.FC = () => {
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Data Listeners ---
+  // --- Public Data Listeners (Run once on mount) ---
   useEffect(() => {
-    let unsubSent = () => {};
-    let unsubReceived = () => {};
-
-    if (authUid && !isAuthLoading) {
-        // מאזין להודעות שנשלחו ע"י המשתמש הנוכחי
-        unsubSent = db.collection("messages")
-            .where("senderId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-                setSentMessages(msgs);
-            }, (err) => console.error("Sent messages listener failed:", err));
-
-        // מאזין להודעות שהתקבלו אצל המשתמש הנוכחי
-        unsubReceived = db.collection("messages")
-            .where("receiverId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-                setReceivedMessages(msgs);
-            }, (err) => console.error("Received messages listener failed:", err));
-    }
-
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
-          
-          // --- תיקון קריטי ---
-          // אם אובייקט ה-profile בתוך ההצעה חסר id, נזריק לו את ה-profileId
-          if (data.profile && !data.profile.id) {
+          // תיקון קריטי: הזרקת ה-ID של המשתמש לתוך אובייקט הפרופיל במידה והוא חסר
+          if (data.profile) {
               data.profile.id = data.profileId;
           }
-          
           fetched.push({ ...data, id: doc.id });
       });
       setOffers(fetched);
@@ -173,18 +149,44 @@ export const App: React.FC = () => {
     });
 
     return () => {
-      unsubSent(); unsubReceived(); unsubOffers(); unsubAds(); unsubTaxonomy();
+      unsubOffers(); unsubAds(); unsubTaxonomy();
     };
-  }, [authUid, isAuthLoading]);
+  }, []);
+
+  // --- Private Message Listeners (Run only when logged in) ---
+  useEffect(() => {
+    if (!authUid) return;
+
+    const unsubSent = db.collection("messages")
+        .where("senderId", "==", authUid)
+        .onSnapshot((snap) => {
+            const msgs: Message[] = [];
+            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+            setSentMessages(msgs);
+        });
+
+    const unsubReceived = db.collection("messages")
+        .where("receiverId", "==", authUid)
+        .onSnapshot((snap) => {
+            const msgs: Message[] = [];
+            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+            setReceivedMessages(msgs);
+        });
+
+    return () => {
+        unsubSent();
+        unsubReceived();
+    };
+  }, [authUid]);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    // בדיקת תקינות נמען
-    if (!receiverId || receiverId === 'undefined' || receiverId.length < 5) {
-        console.error("Invalid Recipient ID:", receiverId);
-        alert("תקלה טכנית: לא ניתן לזהות את הנמען. אנא נסה לרענן את העמוד או לפנות למשתמש מהצעה אחרת.");
+    // בדיקת תקינות נמען - מניעת שליחה ל-undefined
+    if (!receiverId || receiverId === 'undefined' || receiverId === 'guest') {
+        console.error("Attempted to send message to invalid ID:", receiverId);
+        alert("לא ניתן לזהות את המשתמש. אנא נסה לרענן את הדף.");
         return;
     }
 
@@ -201,7 +203,6 @@ export const App: React.FC = () => {
 
     try {
         await db.collection("messages").add(newMessage);
-        // הודעה נשלחה בהצלחה - המאזין יעדכן את ה-UI אוטומטית
     } catch (e: any) {
         console.error("SendMessage Error:", e);
         alert(`שגיאה בשליחת ההודעה: ${e.message}`);
@@ -352,7 +353,6 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        // הפרופיל כאן מובטח להכיל ID בזכות התיקון ב-onSnapshot
                         setSelectedProfile(p); 
                         setInitialMessageSubject(offer.title); 
                         setIsMessagingModalOpen(true); 
