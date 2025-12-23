@@ -42,8 +42,7 @@ export const App: React.FC = () => {
 
   // --- Logic State ---
   const [offers, setOffers] = useState<BarterOffer[]>([]);
-  const [sentMessages, setSentMessages] = useState<Message[]>([]);
-  const [receivedMessages, setReceivedMessages] = useState<Message[]>([]);
+  const [allUserMessages, setAllUserMessages] = useState<Message[]>([]);
   const [systemAds, setSystemAds] = useState<SystemAd[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -57,25 +56,12 @@ export const App: React.FC = () => {
 
   const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
 
-  // --- Messaging Logic (Robust Sync) ---
+  // איחוד הודעות ומיון
   const messages = useMemo(() => {
-    if (!authUid) return [];
-    
-    // איחוד וסינון כפילויות של הודעות
-    const combined = [...sentMessages, ...receivedMessages];
-    const uniqueMap = new Map<string, Message>();
-    
-    combined.forEach(m => { 
-        // הגנה: רק הודעות ששייכות למשתמש הנוכחי ושמכילות ID תקין
-        if (m.id && (m.senderId === authUid || m.receiverId === authUid)) {
-            uniqueMap.set(m.id, m); 
-        }
-    });
-    
-    return Array.from(uniqueMap.values()).sort((a, b) => 
+    return [...allUserMessages].sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-  }, [sentMessages, receivedMessages, authUid]);
+  }, [allUserMessages]);
 
   // --- Auth Listeners ---
   useEffect(() => {
@@ -85,9 +71,7 @@ export const App: React.FC = () => {
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setSentMessages([]);
-          setReceivedMessages([]);
-          setUsers([]);
+          setAllUserMessages([]);
           setIsAuthLoading(false);
       }
     });
@@ -103,18 +87,14 @@ export const App: React.FC = () => {
         }
         setIsAuthLoading(false);
     }, (err) => {
-        console.warn("User doc error:", err);
         setIsAuthLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Admin Specific User Listener ---
+  // Admin User List
   useEffect(() => {
-      if (!currentUser || currentUser.role !== 'admin') {
-          setUsers([]);
-          return;
-      }
+      if (currentUser?.role !== 'admin') { setUsers([]); return; }
       const unsubUsers = db.collection("users").onSnapshot(snap => {
           const uList: UserProfile[] = [];
           snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
@@ -123,20 +103,16 @@ export const App: React.FC = () => {
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Public Data Listeners (Force ID Sync) ---
+  // Public Data + Forces ID Sync on Offers
   useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
-          
-          // תיקון קריטי: סנכרון כפוי של ID הנמען.
-          // אנחנו מוודאים שה-ID בתוך אובייקט הפרופיל תמיד זהה ל-profileId של המודעה.
-          // זה מונע מצב שבו המשתמש מעדכן פרופיל וההודעות נשלחות לכתובת שגויה.
+          // וידוא שהפרופיל תמיד מכיל את ה-ID הנכון מהמסמך
           if (data.profile) {
               data.profile.id = data.profileId; 
           }
-          
           fetched.push({ ...data, id: doc.id });
       });
       setOffers(fetched);
@@ -153,53 +129,45 @@ export const App: React.FC = () => {
         if (doc.exists) setTaxonomy(prev => ({ ...prev, ...doc.data() }));
     });
 
-    return () => {
-      unsubOffers(); unsubAds(); unsubTaxonomy();
-    };
+    return () => { unsubOffers(); unsubAds(); unsubTaxonomy(); };
   }, []);
 
-  // --- Private Message Listeners ---
+  // Private Messages Listener (Combined Sent & Received)
   useEffect(() => {
     if (!authUid) return;
 
-    // האזנה להודעות יוצאות
-    const unsubSent = db.collection("messages")
-        .where("senderId", "==", authUid)
+    // מאזין אחד לכל הודעה שבה המשתמש הוא השולח או המקבל
+    const unsubMessages = db.collection("messages")
+        .where(firebase.firestore.FieldPath.documentId(), '>=', '') // dummy filter to allow OR logic later if needed
         .onSnapshot((snap) => {
             const msgs: Message[] = [];
-            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-            setSentMessages(msgs);
-        }, (err) => console.error("Sent messages listener failed:", err));
+            snap.forEach(doc => {
+                const data = doc.data() as Message;
+                if (data.senderId === authUid || data.receiverId === authUid) {
+                    msgs.push({ ...data, id: doc.id });
+                }
+            });
+            setAllUserMessages(msgs);
+        });
 
-    // האזנה להודעות נכנסות
-    const unsubReceived = db.collection("messages")
-        .where("receiverId", "==", authUid)
-        .onSnapshot((snap) => {
-            const msgs: Message[] = [];
-            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-            setReceivedMessages(msgs);
-        }, (err) => console.error("Received messages listener failed:", err));
-
-    return () => {
-        unsubSent();
-        unsubReceived();
-    };
+    return () => unsubMessages();
   }, [authUid]);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    // ולידציה קשיחה לפני פנייה ל-Firebase
-    if (!receiverId || receiverId === 'undefined' || receiverId === 'guest' || receiverId === 'null') {
-        console.error("BLOCKING: Invalid Recipient ID:", receiverId);
-        alert("תקלת זיהוי: לא ניתן לשלוח הודעה למשתמש זה. אנא נסה לרענן את הדף.");
+    // בדיקת תקינות נמען מחמירה
+    const cleanReceiverId = String(receiverId).trim();
+    if (!cleanReceiverId || cleanReceiverId === 'undefined' || cleanReceiverId === 'null' || cleanReceiverId === 'guest') {
+        console.error("BLOCKING: Invalid Receiver ID attempt:", receiverId);
+        alert("תקלה בזיהוי המשתמש. נא לרענן את הדף ולנסות שוב.");
         return;
     }
 
     const newMessage = {
       senderId: authUid,
-      receiverId: receiverId.trim(),
+      receiverId: cleanReceiverId,
       senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
       subject: subject || 'צ\'אט חדש',
@@ -211,21 +179,17 @@ export const App: React.FC = () => {
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        console.error("SendMessage Error:", e);
-        alert(`שגיאה בשליחת ההודעה: ${e.message}`);
+        alert(`שגיאה בשליחה: ${e.message}`);
     }
   };
 
   const handleMarkAsRead = async (id: string) => {
       if (!authUid) return;
-      try {
-          await db.collection("messages").doc(id).update({ isRead: true });
-      } catch (e) { console.error(e); }
+      try { await db.collection("messages").doc(id).update({ isRead: true }); } catch (e) {}
   };
 
   const handleLogout = async () => { 
-    setSentMessages([]);
-    setReceivedMessages([]);
+    setAllUserMessages([]);
     setUsers([]);
     setCurrentUser(null);
     setAuthUid(null);
@@ -259,14 +223,13 @@ export const App: React.FC = () => {
 
   const handleLogin = async (email: string, pass: string) => {
     try { 
-        setSentMessages([]);
-        setReceivedMessages([]);
+        setAllUserMessages([]);
         await auth.signInWithEmailAndPassword(email, pass); 
         setIsAuthModalOpen(false); 
     } catch (error: any) { alert(error.message); }
   };
 
-  // --- UI Control State ---
+  // UI Control
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -360,7 +323,7 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        // מקור האמת היחיד הוא profileId של המודעה
+                        // שימוש תמידי ב-profileId המקורי של ההצעה
                         const forcedProfile = { ...p, id: offer.profileId };
                         setSelectedProfile(forcedProfile); 
                         setInitialMessageSubject(offer.title); 
