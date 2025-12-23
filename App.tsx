@@ -58,7 +58,8 @@ export const App: React.FC = () => {
 
   // איחוד הודעות ממוין (לפי זמן יורד - החדש ביותר למעלה)
   const messages = useMemo(() => {
-    return (Object.values(messagesMap) as Message[]).sort((a, b) => 
+    const list = Object.values(messagesMap) as Message[];
+    return list.sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [messagesMap]);
@@ -87,15 +88,18 @@ export const App: React.FC = () => {
         }
         setIsAuthLoading(false);
     }, (err) => {
-        console.error("User doc fetch error:", err);
         setIsAuthLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Messaging Listener (With Index Optimization) ---
+  // --- Robust Messaging Listener ---
   useEffect(() => {
-    if (!authUid) return;
+    // קריטי: לא מפעילים מאזינים אם ה-UID ריק או 'guest' כדי למנוע שגיאות הרשאה
+    const currentUid = auth.currentUser?.uid || authUid;
+    if (!currentUid || currentUid === 'guest' || currentUid === 'null') {
+        return;
+    }
 
     const updateMessages = (snap: firebase.firestore.QuerySnapshot) => {
         setMessagesMap(prev => {
@@ -107,22 +111,25 @@ export const App: React.FC = () => {
         });
     };
 
-    const handleError = (type: string, err: any) => {
-        console.error(`Firestore ${type} messages error:`, err);
-    };
-
-    // שימוש ב-orderBy כדי להתאים לאינדקסים שהגדרת ב-Console
+    // המאזינים משתמשים ב-currentUid המאומת והמיון שתואם לאינדקס
     const unsubSent = db.collection("messages")
-        .where("senderId", "==", authUid)
+        .where("senderId", "==", currentUid)
         .orderBy("timestamp", "desc")
-        .onSnapshot(updateMessages, (e) => handleError("sent", e));
+        .onSnapshot(updateMessages, (e) => {
+            if (e.code === 'permission-denied') console.warn("Sent messages: Permission denied");
+        });
 
     const unsubReceived = db.collection("messages")
-        .where("receiverId", "==", authUid)
+        .where("receiverId", "==", currentUid)
         .orderBy("timestamp", "desc")
-        .onSnapshot(updateMessages, (e) => handleError("received", e));
+        .onSnapshot(updateMessages, (e) => {
+            if (e.code === 'permission-denied') console.warn("Received messages: Permission denied");
+        });
 
-    return () => { unsubSent(); unsubReceived(); };
+    return () => { 
+        unsubSent(); 
+        unsubReceived(); 
+    };
   }, [authUid]);
 
   // --- Data Listeners ---
@@ -164,7 +171,8 @@ export const App: React.FC = () => {
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
+    const currentUid = auth.currentUser?.uid || authUid;
+    if (!currentUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
     const cleanReceiverId = String(receiverId).trim();
     if (!cleanReceiverId || cleanReceiverId === 'undefined' || cleanReceiverId === 'null' || cleanReceiverId === 'guest') {
@@ -173,7 +181,7 @@ export const App: React.FC = () => {
     }
 
     const newMessage = {
-      senderId: authUid,
+      senderId: currentUid,
       receiverId: cleanReceiverId,
       senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
@@ -183,12 +191,9 @@ export const App: React.FC = () => {
       isRead: false
     };
 
-    console.log("App: Attempting to send message:", { from: authUid, to: cleanReceiverId });
-
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        console.error("App: Send message error:", e);
         alert(`שגיאת אבטחה ב-Firebase: ${e.message}`);
     }
   };
@@ -343,8 +348,9 @@ export const App: React.FC = () => {
                         setIsProfileModalOpen(true); 
                     }} 
                     onRate={async (id, score) => {
-                        if (!authUid) return;
-                        const ratings = [...(offer.ratings || []), { userId: authUid, score }];
+                        const currentUid = auth.currentUser?.uid || authUid;
+                        if (!currentUid) return;
+                        const ratings = [...(offer.ratings || []), { userId: currentUid, score }];
                         const avg = ratings.reduce((a,b) => a+b.score, 0) / ratings.length;
                         await db.collection("offers").doc(id).update({ ratings, averageRating: avg });
                     }} 
