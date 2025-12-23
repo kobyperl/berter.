@@ -37,7 +37,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // מיפוי שיחות קיימות מהודעות
-  // Added explicit type Map<string, Conversation> to useMemo to ensure proper inference for downstream hooks
   const conversationsMap = useMemo<Map<string, Conversation>>(() => {
     const map = new Map<string, Conversation>();
     if (!currentUser || currentUser === 'guest') return map;
@@ -47,11 +46,12 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       const partnerId = isSender ? msg.receiverId : msg.senderId;
       const partnerName = isSender ? msg.receiverName : msg.senderName;
       
-      // הגנה מפני נתונים חסרים - הבסיס לפתרון הבעיה
+      // הגנה קריטית: התעלמות מהודעות עם נמען לא תקין
       if (!partnerId || partnerId === 'undefined' || partnerId === 'guest') return;
 
       const existing = map.get(partnerId);
       
+      // שמירת ההודעה האחרונה בכל שיחה
       if (!existing || new Date(msg.timestamp).getTime() > new Date(existing.lastMessage.timestamp).getTime()) {
         map.set(partnerId, {
           partnerId,
@@ -67,13 +67,11 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [messages, currentUser]);
 
   const sortedConversations = useMemo<Conversation[]>(() => {
-    // Ensuring sort arguments are typed as Conversation to avoid 'unknown' errors
     return Array.from(conversationsMap.values())
       .sort((a: Conversation, b: Conversation) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
 
   const filteredConversations = useMemo(() => {
-    // Explicitly typed callback parameter c to resolve 'Property lastMessage does not exist on type unknown'
     return sortedConversations.filter((c: Conversation) => 
       c.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.lastMessage.content.toLowerCase().includes(searchTerm.toLowerCase())
@@ -89,7 +87,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל
+  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל (למשל מהצעה)
   useEffect(() => {
     if (isOpen && recipientProfile?.id && recipientProfile.id !== 'guest') {
         setActiveConversationId(recipientProfile.id);
@@ -134,6 +132,12 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
         subject = activeMessages[activeMessages.length - 1].subject; 
     }
 
+    // ולידציה קשיחה שניה לפני השליחה ל-Firebase
+    if (activeConversationId === 'undefined' || !activeConversationId) {
+        alert("תקלה בזיהוי המשתמש. אנא נסה שוב.");
+        return;
+    }
+
     onSendMessage(activeConversationId, receiverName, subject, newMessage);
     setNewMessage('');
   };
@@ -149,7 +153,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
       <div className="relative bg-white w-full max-w-5xl h-[90vh] sm:h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 animate-in fade-in zoom-in-95 duration-200">
             {/* Sidebar - רשימת שיחות */}
-            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId && activeMessages.length > 0 ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                     <h2 className="font-bold text-slate-800 text-lg">הודעות</h2>
                     <button onClick={onClose} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X /></button>
