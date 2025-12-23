@@ -57,15 +57,15 @@ export const App: React.FC = () => {
 
   const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
 
-  // עיבוד הודעות עם סינון אבטחה כפול ב-Client
+  // --- Messaging Logic (Safety Filter) ---
   const messages = useMemo(() => {
     if (!authUid) return [];
     
-    // איחוד וסינון הודעות ששייכות למשתמש
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
     
     combined.forEach(m => { 
+        // וידוא שהודעה שייכת למשתמש הנוכחי
         if (m.id && (m.senderId === authUid || m.receiverId === authUid)) {
             uniqueMap.set(m.id, m); 
         }
@@ -81,7 +81,6 @@ export const App: React.FC = () => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
           setAuthUid(firebaseUser.uid);
-          // אל תבטל את הטעינה עדיין, חכה למסמך המשתמש
       } else {
           setAuthUid(null);
           setCurrentUser(null);
@@ -102,13 +101,12 @@ export const App: React.FC = () => {
         }
         setIsAuthLoading(false);
     }, (err) => {
-        console.error("User doc error:", err);
+        console.warn("User doc listener error (Normal for new users):", err);
         setIsAuthLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // אדמין בלבד
   useEffect(() => {
       if (!currentUser || currentUser.role !== 'admin') {
           setUsers([]);
@@ -118,37 +116,42 @@ export const App: React.FC = () => {
           const uList: UserProfile[] = [];
           snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
           setUsers(uList);
-      });
+      }, (err) => console.error("Admin user list error:", err));
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Message Listeners (The Core Fix) ---
+  // --- Data Listeners ---
   useEffect(() => {
-    if (!authUid || isAuthLoading) return;
+    let unsubSent = () => {};
+    let unsubReceived = () => {};
 
-    console.log("Starting message listeners for:", authUid);
+    if (authUid && !isAuthLoading) {
+        // האזנה להודעות שנשלחו על ידי
+        unsubSent = db.collection("messages")
+            .where("senderId", "==", authUid)
+            .onSnapshot((snap) => {
+                const msgs: Message[] = [];
+                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+                setSentMessages(msgs);
+            }, (err) => {
+                console.error("Sent messages listener error:", err);
+                if (err.message.includes("permission-denied")) {
+                    console.warn("Check Firebase Rules for messages collection.");
+                }
+            });
 
-    const unsubSent = db.collection("messages")
-        .where("senderId", "==", authUid)
-        .onSnapshot((snap) => {
-            const msgs: Message[] = [];
-            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-            setSentMessages(msgs);
-        }, (err) => console.error("Sent messages listener error:", err));
+        // האזנה להודעות שהתקבלו אצלי
+        unsubReceived = db.collection("messages")
+            .where("receiverId", "==", authUid)
+            .onSnapshot((snap) => {
+                const msgs: Message[] = [];
+                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+                setReceivedMessages(msgs);
+            }, (err) => {
+                console.error("Received messages listener error:", err);
+            });
+    }
 
-    const unsubReceived = db.collection("messages")
-        .where("receiverId", "==", authUid)
-        .onSnapshot((snap) => {
-            const msgs: Message[] = [];
-            snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
-            setReceivedMessages(msgs);
-        }, (err) => console.error("Received messages listener error:", err));
-
-    return () => { unsubSent(); unsubReceived(); };
-  }, [authUid, isAuthLoading]);
-
-  // --- Other Data Listeners ---
-  useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
@@ -166,21 +169,20 @@ export const App: React.FC = () => {
         if (doc.exists) setTaxonomy(prev => ({ ...prev, ...doc.data() }));
     });
 
-    return () => { unsubOffers(); unsubAds(); unsubTaxonomy(); };
-  }, []);
+    return () => {
+      unsubSent(); unsubReceived(); unsubOffers(); unsubAds(); unsubTaxonomy();
+    };
+  }, [authUid, isAuthLoading]);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     const user = auth.currentUser;
     if (!user) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
 
-    // וידוא ששם השולח קיים, גם אם הפרופיל עוד לא נטען לגמרי
-    const senderName = currentUser?.name || user.displayName || 'משתמש Barter';
-
     const newMessage = {
       senderId: user.uid,
       receiverId,
-      senderName: senderName,
+      senderName: currentUser?.name || user.displayName || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
       subject: subject || 'צ\'אט חדש',
       content: content.trim(),
@@ -190,9 +192,14 @@ export const App: React.FC = () => {
 
     try {
         await db.collection("messages").add(newMessage);
+        console.log("Message sent successfully");
     } catch (e: any) {
         console.error("SendMessage Error:", e);
-        alert(`שגיאה בשליחה: ${e.message}`);
+        if (e.message.includes("permission-denied")) {
+            alert("שגיאת אבטחה: אין לך הרשאה לשלוח הודעה למשתמש זה. וודא שאתה מחובר כראוי.");
+        } else {
+            alert(`שגיאה בשליחה: ${e.message}`);
+        }
     }
   };
 
@@ -200,11 +207,10 @@ export const App: React.FC = () => {
       if (!authUid) return;
       try {
           await db.collection("messages").doc(id).update({ isRead: true });
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error("MarkAsRead Error:", e); }
   };
 
   const handleLogout = async () => { 
-    // ניקוי State מיידי כדי למנוע זליגת מידע למשתמש הבא באותו דפדפן
     setSentMessages([]);
     setReceivedMessages([]);
     setUsers([]);
@@ -247,7 +253,7 @@ export const App: React.FC = () => {
     } catch (error: any) { alert(error.message); }
   };
 
-  // --- UI Logic ---
+  // --- UI Control State ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
