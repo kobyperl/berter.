@@ -36,42 +36,44 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // מיפוי שיחות קיימות - הגנה מחמירה על IDs
-  const conversationsMap = useMemo<Map<string, Conversation>>(() => {
-    const map = new Map<string, Conversation>();
+  // יצירת מפת שיחות ייחודית לפי מזהה שותף
+  const conversationsMap = useMemo(() => {
+    const map: Record<string, Conversation> = {};
     if (!currentUser || currentUser === 'guest') return map;
 
     messages.forEach(msg => {
       const isSender = msg.senderId === currentUser;
-      const partnerId = isSender ? String(msg.receiverId) : String(msg.senderId);
+      const partnerId = String(isSender ? msg.receiverId : msg.senderId).trim();
       
-      // ולידציה: מניעת IDs לא תקינים בשיחות
-      if (!partnerId || partnerId === 'undefined' || partnerId === 'null' || partnerId === 'guest') return;
+      // סינון מזהים לא תקינים
+      if (!partnerId || partnerId === 'undefined' || partnerId === 'guest') return;
 
-      const partnerNameFromMsg = isSender ? msg.receiverName : msg.senderName;
-      const existing = map.get(partnerId);
-      
-      if (!existing || new Date(msg.timestamp).getTime() > new Date(existing.lastMessage.timestamp).getTime()) {
-        map.set(partnerId, {
-          partnerId,
-          partnerName: partnerNameFromMsg || 'משתמש',
-          lastMessage: msg,
-          unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
-        });
+      const partnerName = isSender ? msg.receiverName : msg.senderName;
+      const existing = map[partnerId];
+
+      if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
+          map[partnerId] = {
+              partnerId,
+              partnerName: partnerName || 'משתמש',
+              lastMessage: msg,
+              unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
+          };
       } else if (!isSender && !msg.isRead) {
-          if (existing) existing.unreadCount += 1;
+          map[partnerId].unreadCount += 1;
       }
     });
     return map;
   }, [messages, currentUser]);
 
   const sortedConversations = useMemo<Conversation[]>(() => {
-    const convs: Conversation[] = Array.from(conversationsMap.values());
-    return convs.sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
+    // Explicitly cast Object.values(conversationsMap) to Conversation[] to fix 'unknown' type error on 'lastMessage' property access
+    return (Object.values(conversationsMap) as Conversation[]).sort((a, b) => 
+        new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime()
+    );
   }, [conversationsMap]);
 
-  const filteredConversations = useMemo<Conversation[]>(() => {
-    return sortedConversations.filter((c: Conversation) => 
+  const filteredConversations = useMemo(() => {
+    return sortedConversations.filter(c => 
       c.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.lastMessage.content.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -86,15 +88,18 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // פתיחת שיחה אוטומטית אם הגענו מפרופיל ספציפי
+  // פתיחה אוטומטית של שיחה
   useEffect(() => {
-    if (isOpen && recipientProfile?.id && String(recipientProfile.id) !== 'undefined' && String(recipientProfile.id) !== 'guest') {
-        setActiveConversationId(String(recipientProfile.id));
-        setSearchTerm('');
+    if (isOpen && recipientProfile?.id) {
+        const safeId = String(recipientProfile.id).trim();
+        if (safeId !== 'guest' && safeId !== 'undefined') {
+            setActiveConversationId(safeId);
+            setSearchTerm('');
+        }
     }
   }, [isOpen, recipientProfile]);
 
-  // סימון הודעות כנקראו
+  // סימון כנקרא
   useEffect(() => {
     if (isOpen && activeConversationId && activeMessages.length > 0) {
         activeMessages.forEach(msg => {
@@ -105,7 +110,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     }
   }, [isOpen, activeConversationId, activeMessages, currentUser, onMarkAsRead]);
 
-  // גלילה לסוף השיחה
+  // גלילה
   useEffect(() => {
     if (isOpen && activeMessages.length > 0) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -113,33 +118,23 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [activeMessages, isOpen]);
 
   const handleSend = () => {
-    const cid = String(activeConversationId);
-    if (!newMessage.trim() || !cid || cid === 'undefined' || cid === 'null' || cid === 'guest') {
-        if (cid === 'guest') alert("משתמש אורח אינו יכול לקבל הודעות.");
-        return;
-    }
+    if (!newMessage.trim() || !activeConversationId) return;
 
-    let receiverName = 'משתמש';
-    const conv = conversationsMap.get(cid);
-    if (conv) {
-        receiverName = conv.partnerName;
-    } else if (recipientProfile && String(recipientProfile.id) === cid) {
-        receiverName = recipientProfile.name;
-    }
+    let partnerName = 'משתמש';
+    const conv = conversationsMap[activeConversationId];
+    if (conv) partnerName = conv.partnerName;
+    else if (recipientProfile && String(recipientProfile.id).trim() === activeConversationId) partnerName = recipientProfile.name;
 
     let subject = initialSubject || "צ'אט ברטר";
-    if (activeMessages.length > 0) {
-        const lastMsg = activeMessages[activeMessages.length - 1];
-        subject = lastMsg.subject || subject;
-    }
+    if (activeMessages.length > 0) subject = activeMessages[activeMessages.length - 1].subject;
 
-    onSendMessage(cid, receiverName, subject, newMessage);
+    onSendMessage(activeConversationId, partnerName, subject, newMessage);
     setNewMessage('');
   };
 
   if (!isOpen) return null;
 
-  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || 'שיחה';
+  const activePartnerName = conversationsMap[activeConversationId!]?.partnerName || recipientProfile?.name || 'שיחה';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6" role="dialog" aria-modal="true">
@@ -154,8 +149,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                         <div className="text-center p-12 text-slate-400 text-sm italic flex flex-col items-center gap-3"><Mail className="w-10 h-10 opacity-10" />אין הודעות עדיין</div>
                     ) : (
                         <>
-                            {recipientProfile && recipientProfile.id && String(recipientProfile.id) !== 'undefined' && String(recipientProfile.id) !== 'guest' && !conversationsMap.has(String(recipientProfile.id)) && (
-                                <div onClick={() => setActiveConversationId(String(recipientProfile.id))} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-brand-100 bg-brand-50 transition-colors border-r-4 border-brand-500`}>
+                            {recipientProfile && recipientProfile.id && String(recipientProfile.id).trim() !== 'guest' && !conversationsMap[String(recipientProfile.id).trim()] && (
+                                <div onClick={() => setActiveConversationId(String(recipientProfile.id).trim())} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-brand-100 bg-brand-50 transition-colors border-r-4 border-brand-500`}>
                                     <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold shrink-0 shadow-sm">{recipientProfile.name[0]}</div>
                                     <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-1"><h3 className="font-bold text-slate-900 truncate text-sm">{recipientProfile.name}</h3><span className="bg-brand-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">חדש</span></div><p className="text-xs text-brand-600 truncate font-medium">התחל שיחה עכשיו...</p></div>
                                 </div>
