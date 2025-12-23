@@ -40,9 +40,12 @@ export const App: React.FC = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
 
-  // --- Logic State ---
+  // --- Messaging State ---
+  const [sentMessages, setSentMessages] = useState<Message[]>([]);
+  const [receivedMessages, setReceivedMessages] = useState<Message[]>([]);
+
+  // --- Data State ---
   const [offers, setOffers] = useState<BarterOffer[]>([]);
-  const [allUserMessages, setAllUserMessages] = useState<Message[]>([]);
   const [systemAds, setSystemAds] = useState<SystemAd[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -56,12 +59,17 @@ export const App: React.FC = () => {
 
   const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
 
-  // איחוד הודעות ומיון
+  // איחוד הודעות מכל המקורות ללא כפילויות
   const messages = useMemo(() => {
-    return [...allUserMessages].sort((a, b) => 
+    const combined = [...sentMessages, ...receivedMessages];
+    const uniqueMap = new Map<string, Message>();
+    combined.forEach(m => {
+        if (m.id) uniqueMap.set(m.id, m);
+    });
+    return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-  }, [allUserMessages]);
+  }, [sentMessages, receivedMessages]);
 
   // --- Auth Listeners ---
   useEffect(() => {
@@ -71,7 +79,8 @@ export const App: React.FC = () => {
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setAllUserMessages([]);
+          setSentMessages([]);
+          setReceivedMessages([]);
           setIsAuthLoading(false);
       }
     });
@@ -87,29 +96,44 @@ export const App: React.FC = () => {
         }
         setIsAuthLoading(false);
     }, (err) => {
+        console.warn("User fetch error:", err);
         setIsAuthLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // Admin User List
+  // --- Messaging Listeners (Split for Security Rules) ---
   useEffect(() => {
-      if (currentUser?.role !== 'admin') { setUsers([]); return; }
-      const unsubUsers = db.collection("users").onSnapshot(snap => {
-          const uList: UserProfile[] = [];
-          snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
-          setUsers(uList);
-      });
-      return () => unsubUsers();
-  }, [currentUser?.role]);
+    if (!authUid) return;
 
-  // Public Data + Forces ID Sync on Offers
+    // מאזין 1: הודעות ששלחתי
+    const unsubSent = db.collection("messages")
+        .where("senderId", "==", authUid)
+        .onSnapshot(snap => {
+            const msgs: Message[] = [];
+            snap.forEach(doc => msgs.push({ ...(doc.data() as Message), id: doc.id }));
+            setSentMessages(msgs);
+        });
+
+    // מאזין 2: הודעות שקיבלתי
+    const unsubReceived = db.collection("messages")
+        .where("receiverId", "==", authUid)
+        .onSnapshot(snap => {
+            const msgs: Message[] = [];
+            snap.forEach(doc => msgs.push({ ...(doc.data() as Message), id: doc.id }));
+            setReceivedMessages(msgs);
+        });
+
+    return () => { unsubSent(); unsubReceived(); };
+  }, [authUid]);
+
+  // --- Public Data Listeners ---
   useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
-          // וידוא שהפרופיל תמיד מכיל את ה-ID הנכון מהמסמך
+          // וידוא ID קשיח לכל פרופיל שנטען
           if (data.profile) {
               data.profile.id = data.profileId; 
           }
@@ -132,45 +156,34 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTaxonomy(); };
   }, []);
 
-  // Private Messages Listener (Combined Sent & Received)
+  // Admin User List
   useEffect(() => {
-    if (!authUid) return;
-
-    // מאזין אחד לכל הודעה שבה המשתמש הוא השולח או המקבל
-    const unsubMessages = db.collection("messages")
-        .where(firebase.firestore.FieldPath.documentId(), '>=', '') // dummy filter to allow OR logic later if needed
-        .onSnapshot((snap) => {
-            const msgs: Message[] = [];
-            snap.forEach(doc => {
-                const data = doc.data() as Message;
-                if (data.senderId === authUid || data.receiverId === authUid) {
-                    msgs.push({ ...data, id: doc.id });
-                }
-            });
-            setAllUserMessages(msgs);
-        });
-
-    return () => unsubMessages();
-  }, [authUid]);
+      if (currentUser?.role !== 'admin') { setUsers([]); return; }
+      const unsubUsers = db.collection("users").onSnapshot(snap => {
+          const uList: UserProfile[] = [];
+          snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
+          setUsers(uList);
+      });
+      return () => unsubUsers();
+  }, [currentUser?.role]);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    // בדיקת תקינות נמען מחמירה
-    const cleanReceiverId = String(receiverId).trim();
-    if (!cleanReceiverId || cleanReceiverId === 'undefined' || cleanReceiverId === 'null' || cleanReceiverId === 'guest') {
-        console.error("BLOCKING: Invalid Receiver ID attempt:", receiverId);
-        alert("תקלה בזיהוי המשתמש. נא לרענן את הדף ולנסות שוב.");
+    const cleanId = String(receiverId).trim();
+    // בדיקת תקינות ID נמען - הגנה מפני נמענים לא קיימים
+    if (!cleanId || cleanId === 'undefined' || cleanId === 'null' || cleanId === 'guest') {
+        alert("תקלת זיהוי: המשתמש אליו אתה מנסה לשלוח הודעה אינו מזוהה במערכת. נסה לרענן את המודעה.");
         return;
     }
 
     const newMessage = {
       senderId: authUid,
-      receiverId: cleanReceiverId,
+      receiverId: cleanId,
       senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
-      subject: subject || 'צ\'אט חדש',
+      subject: subject || 'צ\'אט ברטר',
       content: content.trim(),
       timestamp: new Date().toISOString(),
       isRead: false
@@ -179,6 +192,7 @@ export const App: React.FC = () => {
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
+        console.error("Firebase send error:", e);
         alert(`שגיאה בשליחה: ${e.message}`);
     }
   };
@@ -189,7 +203,8 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = async () => { 
-    setAllUserMessages([]);
+    setSentMessages([]);
+    setReceivedMessages([]);
     setUsers([]);
     setCurrentUser(null);
     setAuthUid(null);
@@ -223,7 +238,8 @@ export const App: React.FC = () => {
 
   const handleLogin = async (email: string, pass: string) => {
     try { 
-        setAllUserMessages([]);
+        setSentMessages([]);
+        setReceivedMessages([]);
         await auth.signInWithEmailAndPassword(email, pass); 
         setIsAuthModalOpen(false); 
     } catch (error: any) { alert(error.message); }
@@ -323,7 +339,7 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        // שימוש תמידי ב-profileId המקורי של ההצעה
+                        // הכרחת שימוש ב-profileId מהמסמך
                         const forcedProfile = { ...p, id: offer.profileId };
                         setSelectedProfile(forcedProfile); 
                         setInitialMessageSubject(offer.title); 
@@ -418,7 +434,7 @@ export const App: React.FC = () => {
           onOpenCreateOffer={(p) => { setSelectedProfile(p); setIsCreateModalOpen(true); }} 
       />
 
-      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={(o) => { db.collection("offers").doc(o.id).set(o); setTimeout(() => setIsProfessionalismPromptOpen(true), 1000); }} currentUser={selectedProfile || currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
+      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={(o) => { db.collection("offers").doc(o.id).set(o); setTimeout(() => setIsProfessionalismPromptOpen(true), 1000); }} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={(o) => db.collection("offers").doc(o.id).set(o)} />
       <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => setIsAuthModalOpen(true)} />
