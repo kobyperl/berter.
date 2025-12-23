@@ -11,7 +11,7 @@ const firebaseConfig = {
   storageBucket: "barter-app-final.firebasestorage.app",
   messagingSenderId: "376228645270",
   appId: "1:376228645270:web:d048f54c13a280051db5b7",
-  measurementId: "G-XXXXXXXXXX"
+  measurementId: "G-7BB9BSYYRZ" // Updated to match your server value
 };
 
 if (!firebase.apps.length) {
