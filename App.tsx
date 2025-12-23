@@ -57,15 +57,16 @@ export const App: React.FC = () => {
 
   const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
 
-  // --- Messaging Logic (Safety Filter) ---
+  // --- Messaging Logic (Robust Sync) ---
   const messages = useMemo(() => {
     if (!authUid) return [];
     
-    // איחוד הודעות שנשלחו והתקבלו עם סינון כפילויות
+    // איחוד וסינון כפילויות של הודעות
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
     
     combined.forEach(m => { 
+        // הגנה: רק הודעות ששייכות למשתמש הנוכחי ושמכילות ID תקין
         if (m.id && (m.senderId === authUid || m.receiverId === authUid)) {
             uniqueMap.set(m.id, m); 
         }
@@ -122,17 +123,18 @@ export const App: React.FC = () => {
       return () => unsubUsers();
   }, [currentUser?.role]);
 
-  // --- Public Data Listeners (Run once on mount) ---
+  // --- Public Data Listeners (Force ID Sync) ---
   useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
       const fetched: BarterOffer[] = [];
       snapshot.forEach((doc) => {
           const data = doc.data() as BarterOffer;
           
-          // תיקון קריטי: מוודאים שכל פרופיל שנטען תמיד מכיל ID תקין
-          // אם הוא חסר באובייקט ה-profile, אנחנו לוקחים אותו מה-profileId של ההצעה
+          // תיקון קריטי: סנכרון כפוי של ID הנמען.
+          // אנחנו מוודאים שה-ID בתוך אובייקט הפרופיל תמיד זהה ל-profileId של המודעה.
+          // זה מונע מצב שבו המשתמש מעדכן פרופיל וההודעות נשלחות לכתובת שגויה.
           if (data.profile) {
-              data.profile.id = data.profile.id || data.profileId;
+              data.profile.id = data.profileId; 
           }
           
           fetched.push({ ...data, id: doc.id });
@@ -156,11 +158,11 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // --- Private Message Listeners (Run only when logged in) ---
+  // --- Private Message Listeners ---
   useEffect(() => {
     if (!authUid) return;
 
-    // מאזין להודעות שנשלחו ע"י המשתמש
+    // האזנה להודעות יוצאות
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
         .onSnapshot((snap) => {
@@ -169,7 +171,7 @@ export const App: React.FC = () => {
             setSentMessages(msgs);
         }, (err) => console.error("Sent messages listener failed:", err));
 
-    // מאזין להודעות שהתקבלו עבור המשתמש
+    // האזנה להודעות נכנסות
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
         .onSnapshot((snap) => {
@@ -188,16 +190,16 @@ export const App: React.FC = () => {
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     if (!authUid) { alert("יש להתחבר כדי לשלוח הודעה"); return; }
     
-    // בדיקת תקינות נמען קשיחה - מונע שליחה ל-"undefined"
-    if (!receiverId || receiverId === 'undefined' || receiverId === 'guest' || receiverId.length < 10) {
-        console.error("Critical: Invalid Recipient ID detected:", receiverId);
-        alert("תקלה טכנית: לא ניתן לזהות את הנמען. אנא רענן את הדף ונסה שוב.");
+    // ולידציה קשיחה לפני פנייה ל-Firebase
+    if (!receiverId || receiverId === 'undefined' || receiverId === 'guest' || receiverId === 'null') {
+        console.error("BLOCKING: Invalid Recipient ID:", receiverId);
+        alert("תקלת זיהוי: לא ניתן לשלוח הודעה למשתמש זה. אנא נסה לרענן את הדף.");
         return;
     }
 
     const newMessage = {
       senderId: authUid,
-      receiverId: receiverId,
+      receiverId: receiverId.trim(),
       senderName: currentUser?.name || 'משתמש Barter',
       receiverName: receiverName || 'משתמש',
       subject: subject || 'צ\'אט חדש',
@@ -208,7 +210,6 @@ export const App: React.FC = () => {
 
     try {
         await db.collection("messages").add(newMessage);
-        // הודעה נוספה ל-Firebase. המאזינים (Snapshot) ידאגו לעדכן את ה-UI מיד.
     } catch (e: any) {
         console.error("SendMessage Error:", e);
         alert(`שגיאה בשליחת ההודעה: ${e.message}`);
@@ -359,15 +360,15 @@ export const App: React.FC = () => {
                 <OfferCard 
                     key={offer.id} offer={offer} 
                     onContact={(p) => { 
-                        // וידוא ID כאן ליתר ביטחון
-                        const cleanProfile = { ...p, id: p.id || offer.profileId };
-                        setSelectedProfile(cleanProfile); 
+                        // מקור האמת היחיד הוא profileId של המודעה
+                        const forcedProfile = { ...p, id: offer.profileId };
+                        setSelectedProfile(forcedProfile); 
                         setInitialMessageSubject(offer.title); 
                         setIsMessagingModalOpen(true); 
                     }} 
                     onUserClick={(p) => { 
-                        const cleanProfile = { ...p, id: p.id || offer.profileId };
-                        setSelectedProfile(cleanProfile); 
+                        const forcedProfile = { ...p, id: offer.profileId };
+                        setSelectedProfile(forcedProfile); 
                         setIsProfileModalOpen(true); 
                     }} 
                     onRate={async (id, score) => {
