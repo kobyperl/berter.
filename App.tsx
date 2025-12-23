@@ -70,16 +70,16 @@ export const App: React.FC = () => {
 
   // --- Combined Messages (Calculated for UI) ---
   const messages = useMemo(() => {
-    // SECURITY: Only process if we have an authenticated user
     if (!authUid) return [];
     
-    // Merge only messages where the user is actually a participant
-    const combined = [...sentMessages, ...receivedMessages].filter(m => 
-        m.senderId === authUid || m.receiverId === authUid
-    );
+    // מיזוג ההודעות והסרת כפילויות לפי ID
+    const combined = [...sentMessages, ...receivedMessages];
+    const uniqueMap = new Map();
+    combined.forEach(m => {
+        if (m.id) uniqueMap.set(m.id, m);
+    });
     
-    const uniqueMap = new Map(combined.map(m => [m.id, m]));
-    return Array.from(uniqueMap.values()).sort((a, b) => 
+    return Array.from(uniqueMap.values()).sort((a: any, b: any) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [sentMessages, receivedMessages, authUid]);
@@ -87,7 +87,6 @@ export const App: React.FC = () => {
   // --- Auth Handlers ---
   const handleLogout = async () => { 
     try {
-      // PRE-EMPTIVE CLEANUP: Clear everything from memory before Firebase completes logout
       setSentMessages([]);
       setReceivedMessages([]);
       setCurrentUser(null);
@@ -126,7 +125,6 @@ export const App: React.FC = () => {
 
   const handleLogin = async (email: string, pass: string) => {
     try { 
-        // Reset state before new login to prevent UI flashing old data
         setSentMessages([]);
         setReceivedMessages([]);
         await auth.signInWithEmailAndPassword(email, pass); 
@@ -180,31 +178,37 @@ export const App: React.FC = () => {
       setSystemAds(fetched);
     });
 
-    // PRIVACY: Strict separation using Queries that MUST match Firebase Rules
+    // PRIVACY: שליפת הודעות רק עבור המשתמש המחובר, תואם ל-Security Rules
     let unsubscribeSent = () => {};
     let unsubscribeReceived = () => {};
 
     if (authUid) {
-        // Query sent messages
+        // הודעות ששלחתי
         unsubscribeSent = db.collection("messages")
             .where("senderId", "==", authUid)
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push(doc.data() as Message));
+                snap.forEach(doc => {
+                    // קריטי: מיזוג ה-ID של המסמך לתוך האובייקט
+                    msgs.push({ ...(doc.data() as any), id: doc.id });
+                });
                 setSentMessages(msgs);
             }, (err) => {
-                console.warn("Sent messages query failed. Indexing might be required or permissions denied.", err);
+                console.error("Sent messages query failed:", err);
             });
 
-        // Query received messages
+        // הודעות שקיבלתי
         unsubscribeReceived = db.collection("messages")
             .where("receiverId", "==", authUid)
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
-                snap.forEach(doc => msgs.push(doc.data() as Message));
+                snap.forEach(doc => {
+                    // קריטי: מיזוג ה-ID של המסמך לתוך האובייקט
+                    msgs.push({ ...(doc.data() as any), id: doc.id });
+                });
                 setReceivedMessages(msgs);
             }, (err) => {
-                console.warn("Received messages query failed.", err);
+                console.error("Received messages query failed:", err);
             });
     }
 
@@ -216,13 +220,13 @@ export const App: React.FC = () => {
 
   // --- Messaging Logic ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    // SECURITY: Always use auth.currentUser for the senderId to satisfy Rules
     const authenticatedUid = auth.currentUser?.uid;
     if (!authenticatedUid) {
         alert("עליך להתחבר כדי לשלוח הודעות");
         return;
     }
     
+    // יצירת מסמך חדש
     const messageDoc = db.collection("messages").doc();
     const newMessage: Message = {
       id: messageDoc.id, 
@@ -237,9 +241,10 @@ export const App: React.FC = () => {
     };
 
     try { 
-        // This will succeed only if senderId === authenticatedUid (per your Rules)
+        // שמירה ל-Firestore. חוק ה-Create יאשר רק אם senderId == ה-UID המחובר
         await messageDoc.set(newMessage);
         
+        // שליחת מייל התראה לנמען
         const recipientSnap = await db.collection("users").doc(receiverId).get();
         if (recipientSnap.exists) {
             const recipient = recipientSnap.data() as UserProfile;
@@ -253,9 +258,9 @@ export const App: React.FC = () => {
     } catch (e: any) { 
         console.error("Message send failed:", e);
         if (e.code === 'permission-denied') {
-            alert("שגיאת אבטחה: אין הרשאה לשלוח הודעה זו.");
+            alert("שגיאת אבטחה: השרת דחה את השליחה. וודא שאתה מחובר ופרטי השולח נכונים.");
         } else {
-            alert("שגיאה בשליחת ההודעה.");
+            alert("שגיאה טכנית בשליחת ההודעה.");
         }
     }
   };
@@ -263,10 +268,10 @@ export const App: React.FC = () => {
   const handleMarkAsRead = async (id: string) => {
       if (!authUid) return;
       try {
-          // This will succeed only if authUid === receiverId (per your Rules)
+          // חוק ה-Update מאפשר רק ל-receiverId לעדכן
           await db.collection("messages").doc(id).update({ isRead: true });
       } catch (e) {
-          console.error("Failed to mark as read (possibly permission denied):", e);
+          console.error("Failed to mark as read:", e);
       }
   };
 
