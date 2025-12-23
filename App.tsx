@@ -90,6 +90,7 @@ export const App: React.FC = () => {
       } else {
           setCurrentUser(null);
           setUsers([]);
+          setMessages([]);
       }
     });
     return () => unsubscribeAuth();
@@ -133,11 +134,42 @@ export const App: React.FC = () => {
       setSystemAds(fetchedAds);
     });
 
-    const unsubscribeMessages = db.collection("messages").onSnapshot((snapshot) => {
-        const fetchedMessages: Message[] = [];
-        snapshot.forEach((doc) => fetchedMessages.push(doc.data() as Message));
-        setMessages(fetchedMessages);
-    });
+    // --- PRIVACY FIX: Load only messages where current user is involved ---
+    let unsubscribeSent = () => {};
+    let unsubscribeReceived = () => {};
+
+    if (authUid) {
+        const mergeMessages = (newMsgs: Message[], source: 'sent' | 'received') => {
+            setMessages(prev => {
+                const otherSourceMsgs = source === 'sent' 
+                    ? prev.filter(m => m.receiverId === authUid) 
+                    : prev.filter(m => m.senderId === authUid);
+                
+                // Use a Map to deduplicate by ID
+                const all = [...otherSourceMsgs, ...newMsgs];
+                const unique = Array.from(new Map(all.map(m => [m.id, m])).values());
+                return unique;
+            });
+        };
+
+        unsubscribeSent = db.collection("messages")
+            .where("senderId", "==", authUid)
+            .onSnapshot((snapshot) => {
+                const msgs: Message[] = [];
+                snapshot.forEach(doc => msgs.push(doc.data() as Message));
+                mergeMessages(msgs, 'sent');
+            });
+
+        unsubscribeReceived = db.collection("messages")
+            .where("receiverId", "==", authUid)
+            .onSnapshot((snapshot) => {
+                const msgs: Message[] = [];
+                snapshot.forEach(doc => msgs.push(doc.data() as Message));
+                mergeMessages(msgs, 'received');
+            });
+    } else {
+        setMessages([]);
+    }
 
     const unsubscribeTaxonomy = db.collection("system_metadata").doc("taxonomy").onSnapshot((docSnap) => {
         if (docSnap.exists) {
@@ -157,10 +189,11 @@ export const App: React.FC = () => {
       unsubscribeUsers();
       unsubscribeOffers();
       unsubscribeAds();
-      unsubscribeMessages();
+      unsubscribeSent();
+      unsubscribeReceived();
       unsubscribeTaxonomy();
     };
-  }, [currentUser?.role]); 
+  }, [currentUser?.role, authUid]); 
 
   // --- Deletion Handlers ---
 
@@ -171,6 +204,7 @@ export const App: React.FC = () => {
           batch.delete(userRef);
           const userOffers = offers.filter(o => o.profileId === userId);
           userOffers.forEach(o => batch.delete(db.collection("offers").doc(o.id)));
+          // This will only delete messages the admin can see (due to safety, better handled via Cloud Functions in production)
           const userMessages = messages.filter(m => m.senderId === userId || m.receiverId === userId);
           userMessages.forEach(m => batch.delete(db.collection("messages").doc(m.id)));
           await batch.commit();
@@ -345,7 +379,7 @@ export const App: React.FC = () => {
         setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
 
-        // --- NEW: Trigger Welcome Email ---
+        // --- TRIGGER: Welcome Email ---
         if (userProfile.email) {
             triggerEmailNotification('welcome', userProfile.email, { userName: userProfile.name });
         }
@@ -361,7 +395,10 @@ export const App: React.FC = () => {
     catch (error: any) { alert("שגיאה בהתחברות: " + error.message); }
   };
 
-  const handleLogout = async () => { await auth.signOut(); };
+  const handleLogout = async () => { 
+    await auth.signOut(); 
+    setMessages([]);
+  };
   
   const handleAddOffer = async (newOffer: BarterOffer) => {
     try { 
@@ -393,14 +430,15 @@ export const App: React.FC = () => {
     try { 
         await db.collection("messages").doc(newMessage.id).set(newMessage);
 
-        // --- NEW: Trigger Chat Alert Email to Recipient ---
-        const receiverDoc = await db.collection("users").doc(receiverId).get();
-        if (receiverDoc.exists) {
-            const receiverProfile = receiverDoc.data() as UserProfile;
-            if (receiverProfile.email) {
-                triggerEmailNotification('chat_alert', receiverProfile.email, {
-                    userName: receiverProfile.name,
-                    senderName: currentUser?.name || 'משתמש באתר'
+        // --- TRIGGER: Chat Alert Email to Recipient ---
+        // We fetch the recipient's real email from Firestore (safely)
+        const recipientSnap = await db.collection("users").doc(receiverId).get();
+        if (recipientSnap.exists) {
+            const recipientData = recipientSnap.data() as UserProfile;
+            if (recipientData.email) {
+                triggerEmailNotification('chat_alert', recipientData.email, {
+                    userName: recipientData.name,
+                    senderName: currentUser?.name || 'משתמש מהאתר'
                 });
             }
         }
