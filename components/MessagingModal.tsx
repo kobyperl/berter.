@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-/* Added Mail to imports */
 import { X, Send, Search, User, Loader2, Mail } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 
@@ -38,7 +37,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // מיפוי שיחות קיימות מהודעות
-  const conversationsMap = useMemo(() => {
+  // Added explicit type Map<string, Conversation> to useMemo to ensure proper inference for downstream hooks
+  const conversationsMap = useMemo<Map<string, Conversation>>(() => {
     const map = new Map<string, Conversation>();
     if (!currentUser || currentUser === 'guest') return map;
 
@@ -47,15 +47,15 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       const partnerId = isSender ? msg.receiverId : msg.senderId;
       const partnerName = isSender ? msg.receiverName : msg.senderName;
       
-      // הגנה מפני נתונים חסרים
-      if (!partnerId || partnerId === 'undefined') return;
+      // הגנה מפני נתונים חסרים - הבסיס לפתרון הבעיה
+      if (!partnerId || partnerId === 'undefined' || partnerId === 'guest') return;
 
       const existing = map.get(partnerId);
       
-      if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
+      if (!existing || new Date(msg.timestamp).getTime() > new Date(existing.lastMessage.timestamp).getTime()) {
         map.set(partnerId, {
           partnerId,
-          partnerName,
+          partnerName: partnerName || 'משתמש',
           lastMessage: msg,
           unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
         });
@@ -67,13 +67,14 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [messages, currentUser]);
 
   const sortedConversations = useMemo<Conversation[]>(() => {
-    /* Explicitly typed sort parameters to fix 'unknown' type error on line 70 */
+    // Ensuring sort arguments are typed as Conversation to avoid 'unknown' errors
     return Array.from(conversationsMap.values())
       .sort((a: Conversation, b: Conversation) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
 
   const filteredConversations = useMemo(() => {
-    return sortedConversations.filter(c => 
+    // Explicitly typed callback parameter c to resolve 'Property lastMessage does not exist on type unknown'
+    return sortedConversations.filter((c: Conversation) => 
       c.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.lastMessage.content.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -88,9 +89,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל (למשל מכרטיס הצעה)
+  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל
   useEffect(() => {
-    if (isOpen && recipientProfile?.id) {
+    if (isOpen && recipientProfile?.id && recipientProfile.id !== 'guest') {
         setActiveConversationId(recipientProfile.id);
         setSearchTerm('');
     }
@@ -115,7 +116,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [activeMessages, isOpen]);
 
   const handleSend = () => {
-    if (!newMessage.trim() || !activeConversationId) return;
+    if (!newMessage.trim() || !activeConversationId || activeConversationId === 'guest') return;
 
     let receiverName = 'משתמש';
     const conv = conversationsMap.get(activeConversationId);
@@ -168,14 +169,13 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredConversations.length === 0 && !recipientProfile ? (
                         <div className="text-center p-8 text-slate-400 text-sm italic flex flex-col items-center gap-3">
-                            /* Fixed missing import for Mail */
                             <Mail className="w-8 h-8 opacity-20" />
                             אין הודעות עדיין
                         </div>
                     ) : (
                         <>
                             {/* אם התחלנו שיחה חדשה שאין בה עוד הודעות */}
-                            {recipientProfile && !conversationsMap.has(recipientProfile.id) && (
+                            {recipientProfile && recipientProfile.id !== 'guest' && !conversationsMap.has(recipientProfile.id) && (
                                 <div onClick={() => setActiveConversationId(recipientProfile.id)} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-brand-100 bg-brand-50 transition-colors border-r-4 border-brand-500`}>
                                     <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold shrink-0">{recipientProfile.name[0]}</div>
                                     <div className="flex-1 min-w-0">
@@ -228,7 +228,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             {activeMessages.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
                                     <div className="bg-white p-6 rounded-full shadow-sm">
-                                        /* Fixed missing import for Mail */
                                         <Mail className="w-12 h-12 text-brand-200" />
                                     </div>
                                     <div>
