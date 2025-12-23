@@ -36,22 +36,19 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // סינון הודעות ששייכות למשתמש הנוכחי בלבד (ליתר ביטחון)
-  const myStrictMessages = useMemo(() => {
-    if (!currentUser || currentUser === 'guest') return [];
-    return messages.filter(m => m.senderId === currentUser || m.receiverId === currentUser);
-  }, [messages, currentUser]);
-
-  // יצירת רשימת שיחות
+  // יצירת רשימת שיחות מבוססת על הודעות שמתקבלות מהשרת
   const conversationsMap = useMemo(() => {
     const map = new Map<string, Conversation>();
-    myStrictMessages.forEach(msg => {
+    if (!currentUser || currentUser === 'guest') return map;
+
+    messages.forEach(msg => {
       const isSender = msg.senderId === currentUser;
       const partnerId = isSender ? msg.receiverId : msg.senderId;
       const partnerName = isSender ? msg.receiverName : msg.senderName;
 
       const existing = map.get(partnerId);
       
+      // אם השיחה לא קיימת או שההודעה הנוכחית חדשה יותר מהקודמת
       if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
         map.set(partnerId, {
           partnerId,
@@ -60,11 +57,12 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
           unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
         });
       } else if (!isSender && !msg.isRead) {
+          // רק לעדכן מונה אם זה לא האחרון
           if (existing) existing.unreadCount += 1;
       }
     });
     return map;
-  }, [myStrictMessages, currentUser]);
+  }, [messages, currentUser]);
 
   const sortedConversations = useMemo(() => {
     return Array.from(conversationsMap.values())
@@ -81,20 +79,21 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   // הודעות בשיחה הפעילה
   const activeMessages = useMemo(() => {
     if (!activeConversationId || !currentUser) return [];
-    return myStrictMessages.filter(m => 
+    return messages.filter(m => 
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [myStrictMessages, currentUser, activeConversationId]);
+  }, [messages, currentUser, activeConversationId]);
 
-  // אפקטים
+  // פתיחת שיחה לפי פרופיל שנבחר מחוץ למודל
   useEffect(() => {
-    if (isOpen) {
-        if (recipientProfile) setActiveConversationId(recipientProfile.id);
+    if (isOpen && recipientProfile) {
+        setActiveConversationId(recipientProfile.id);
         setSearchTerm('');
     }
   }, [isOpen, recipientProfile]);
 
+  // סימון הודעות כנקראו בתוך השיחה הפעילה
   useEffect(() => {
     if (isOpen && activeConversationId && activeMessages.length > 0) {
         activeMessages.forEach(msg => {
@@ -103,8 +102,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
             }
         });
     }
-  }, [isOpen, activeConversationId, activeMessages, currentUser]);
+  }, [isOpen, activeConversationId, activeMessages, currentUser, onMarkAsRead]);
 
+  // גלילה אוטומטית לסוף
   useEffect(() => {
     if (isOpen && activeMessages.length > 0) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -162,7 +162,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredConversations.length === 0 && !recipientProfile ? (
-                        <div className="text-center p-8 text-slate-400 text-sm">אין הודעות עדיין</div>
+                        <div className="text-center p-8 text-slate-400 text-sm italic">אין הודעות עדיין</div>
                     ) : (
                         filteredConversations.map(conv => (
                             <div key={conv.partnerId} onClick={() => setActiveConversationId(conv.partnerId)} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-slate-50 transition-colors ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-brand-500' : 'hover:bg-slate-50'}`}>
@@ -170,7 +170,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-center mb-1">
                                         <h3 className="font-bold text-slate-900 truncate text-sm">{conv.partnerName}</h3>
-                                        {conv.unreadCount > 0 && <span className="bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{conv.unreadCount}</span>}
+                                        {conv.unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">{conv.unreadCount}</span>}
                                     </div>
                                     <p className="text-xs text-slate-500 truncate">{conv.lastMessage.content}</p>
                                 </div>
@@ -188,7 +188,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             <div className="flex items-center gap-3">
                                 <button onClick={() => setActiveConversationId(null)} className="sm:hidden text-slate-500"><X /></button>
                                 <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold">{activePartnerName[0]}</div>
-                                <div><h3 className="font-bold text-slate-800 text-sm">{activePartnerName}</h3><span className="text-[10px] text-green-600 font-bold">מחובר/ת</span></div>
+                                <div><h3 className="font-bold text-slate-800 text-sm">{activePartnerName}</h3><span className="text-[10px] text-green-600 font-bold">פעיל/ה כעת</span></div>
                             </div>
                             <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
                         </div>
@@ -216,12 +216,12 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                             />
-                            <button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full transition-all active:scale-95 disabled:opacity-50"><Send className="w-5 h-5" /></button>
+                            <button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Send className="w-5 h-5" /></button>
                         </div>
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                        <div className="bg-white p-6 rounded-full mb-4 shadow-sm"><User className="w-12 h-12" /></div>
+                        <div className="bg-white p-6 rounded-full mb-4 shadow-sm border border-slate-100"><User className="w-12 h-12" /></div>
                         <p className="font-bold text-slate-600">בחר שיחה מהרשימה כדי להתחיל להתכתב</p>
                     </div>
                 )}
