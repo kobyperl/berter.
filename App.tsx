@@ -70,22 +70,24 @@ export const App: React.FC = () => {
 
   // --- Combined Messages (Calculated for UI) ---
   const messages = useMemo(() => {
-    const combined = [...sentMessages, ...receivedMessages];
+    // SECURITY: Ensure we only combine messages belonging to current UID
+    if (!authUid) return [];
+    const combined = [...sentMessages, ...receivedMessages].filter(m => m.senderId === authUid || m.receiverId === authUid);
     const uniqueMap = new Map(combined.map(m => [m.id, m]));
     return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-  }, [sentMessages, receivedMessages]);
+  }, [sentMessages, receivedMessages, authUid]);
 
   // --- Auth Handlers ---
   const handleLogout = async () => { 
     try {
-      await auth.signOut(); 
-      // CRITICAL: Wipe all personal data from state on logout
-      setCurrentUser(null);
-      setAuthUid(null);
+      // PRE-WIPE: Clear state BEFORE signing out to avoid race conditions
       setSentMessages([]);
       setReceivedMessages([]);
+      setCurrentUser(null);
+      setAuthUid(null);
+      await auth.signOut(); 
     } catch (e) { console.error(e); }
   };
 
@@ -110,7 +112,6 @@ export const App: React.FC = () => {
         setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
 
-        // TRIGGER: Welcome Email to CUSTOMER
         if (userProfile.email) {
             triggerEmailNotification('welcome', userProfile.email, { userName: userProfile.name });
         }
@@ -119,8 +120,13 @@ export const App: React.FC = () => {
   };
 
   const handleLogin = async (email: string, pass: string) => {
-    try { await auth.signInWithEmailAndPassword(email, pass); setIsAuthModalOpen(false); } 
-    catch (error: any) { alert(error.message); }
+    try { 
+        // Clear previous user's messages before logging in
+        setSentMessages([]);
+        setReceivedMessages([]);
+        await auth.signInWithEmailAndPassword(email, pass); 
+        setIsAuthModalOpen(false); 
+    } catch (error: any) { alert(error.message); }
   };
 
   // --- Auth Listeners ---
@@ -170,7 +176,7 @@ export const App: React.FC = () => {
       setSystemAds(fetched);
     });
 
-    // PRIVACY: Strict separation of queries by UID
+    // PRIVACY: Strict separation of queries by UID with explicit cleanup
     let unsubscribeSent = () => {};
     let unsubscribeReceived = () => {};
 
@@ -205,7 +211,6 @@ export const App: React.FC = () => {
     try { 
         await db.collection("messages").doc(newMessage.id).set(newMessage);
         
-        // TRIGGER: Alert to receiver's real email
         const recipientSnap = await db.collection("users").doc(receiverId).get();
         if (recipientSnap.exists) {
             const recipient = recipientSnap.data() as UserProfile;
