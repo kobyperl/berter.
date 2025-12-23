@@ -37,6 +37,7 @@ export const App: React.FC = () => {
   // --- Auth State ---
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authUid, setAuthUid] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
 
   // --- Logic State ---
@@ -54,13 +55,12 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // חישוב עדכוני פרופיל ממתינים עבור האדמין
+  // חישוב עדכוני פרופיל ממתינים
   const pendingUserUpdates = useMemo(() => {
     return users.filter(u => u.pendingUpdate).length;
   }, [users]);
 
-  // --- Combined Messages (Frontend Sorting) ---
-  // הפתרון להיעלמות ההודעות: אנחנו שולפים בלי מיון מהשרת וממיינים כאן.
+  // מיון הודעות ב-Frontend למניעת צורך באינדקסים מורכבים
   const messages = useMemo(() => {
     if (!authUid) return [];
     const combined = [...sentMessages, ...receivedMessages];
@@ -83,6 +83,7 @@ export const App: React.FC = () => {
           setSentMessages([]);
           setReceivedMessages([]);
           setUsers([]);
+          setIsAuthLoading(false);
       }
     });
     return () => unsubscribeAuth();
@@ -91,16 +92,21 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
-        if (docSnap.exists) setCurrentUser(docSnap.data() as UserProfile);
+        if (docSnap.exists) {
+            setCurrentUser(docSnap.data() as UserProfile);
+        }
+        setIsAuthLoading(false);
     }, (err) => {
-        console.error("User doc fetch error (expected if new user):", err);
+        console.warn("User doc listener error:", err);
+        setIsAuthLoading(false);
     });
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // האזנה לכלל המשתמשים (רק עבור אדמין)
+  // האזנה לכלל המשתמשים (רק לאדמין)
   useEffect(() => {
-      if (currentUser?.role !== 'admin') {
+      // חשוב: לא לנסות להאזין אם לא בטוחים ב-100% שהמשתמש אדמין
+      if (!currentUser || currentUser.role !== 'admin') {
           setUsers([]);
           return;
       }
@@ -108,7 +114,9 @@ export const App: React.FC = () => {
           const uList: UserProfile[] = [];
           snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
           setUsers(uList);
-      }, (err) => console.error("Admin users listener error:", err));
+      }, (err) => {
+          console.error("Admin Users Listener Permission Error:", err);
+      });
       return () => unsubUsers();
   }, [currentUser?.role]);
 
@@ -117,15 +125,15 @@ export const App: React.FC = () => {
     let unsubSent = () => {};
     let unsubReceived = () => {};
 
-    if (authUid) {
-        // שליפה ללא orderBy כדי למנוע את בעיית האינדקסים ב-Firebase
+    // Safety: Don't start message listeners until we know WHO is logged in
+    if (authUid && !isAuthLoading) {
         unsubSent = db.collection("messages")
             .where("senderId", "==", authUid)
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setSentMessages(msgs);
-            }, (err) => console.error("Sent messages error:", err));
+            }, (err) => console.warn("Sent messages access denied (possibly no messages yet)"));
 
         unsubReceived = db.collection("messages")
             .where("receiverId", "==", authUid)
@@ -133,7 +141,7 @@ export const App: React.FC = () => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setReceivedMessages(msgs);
-            }, (err) => console.error("Received messages error:", err));
+            }, (err) => console.warn("Received messages access denied"));
     }
 
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
@@ -141,30 +149,27 @@ export const App: React.FC = () => {
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setOffers(fetched);
       setIsLoading(false); 
-    }, (err) => console.error("Offers listener error:", err));
+    }, (err) => console.error("Offers fetch error:", err));
 
     const unsubAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetched: SystemAd[] = [];
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setSystemAds(fetched);
-    }, (err) => console.error("Ads listener error:", err));
+    });
 
     const unsubTaxonomy = db.collection("system").doc("taxonomy").onSnapshot((doc) => {
         if (doc.exists) setTaxonomy(prev => ({ ...prev, ...doc.data() }));
-    }, (err) => console.warn("Taxonomy doc not found or restricted. Using defaults."));
+    }, (err) => console.log("Taxonomy fetch skipped (defaulting)"));
 
     return () => {
       unsubSent(); unsubReceived(); unsubOffers(); unsubAds(); unsubTaxonomy();
     };
-  }, [authUid]);
+  }, [authUid, isAuthLoading]);
 
   // --- Handlers ---
   const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
     const user = auth.currentUser;
-    if (!user) {
-        alert("עליך להתחבר שוב.");
-        return;
-    }
+    if (!user) { alert("עליך להתחבר שוב."); return; }
 
     const newMessage = {
       senderId: user.uid,
@@ -180,6 +185,7 @@ export const App: React.FC = () => {
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
+        console.error("Critical Send Message Error:", e);
         alert(`שגיאה בשליחה: ${e.message}`);
     }
   };
@@ -194,9 +200,9 @@ export const App: React.FC = () => {
   const handleLogout = async () => { 
     setSentMessages([]);
     setReceivedMessages([]);
+    setUsers([]);
     setCurrentUser(null);
     setAuthUid(null);
-    setUsers([]);
     await auth.signOut(); 
   };
 
