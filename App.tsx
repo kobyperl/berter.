@@ -54,7 +54,7 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // --- Email Trigger Helper ---
+  // --- Email Helper ---
   const triggerEmailNotification = async (type: 'welcome' | 'chat_alert' | 'smart_match', to: string, data: any) => {
       if (!to) return;
       try {
@@ -72,17 +72,152 @@ export const App: React.FC = () => {
   const messages = useMemo(() => {
     if (!authUid) return [];
     
-    // מיזוג ההודעות והסרת כפילויות לפי ID
+    // מיזוג הודעות ששלחתי והודעות שקיבלתי
     const combined = [...sentMessages, ...receivedMessages];
-    const uniqueMap = new Map();
+    const uniqueMap = new Map<string, Message>();
+    
     combined.forEach(m => {
+        // וודא שיש ID למסמך כדי למנוע דריסה
         if (m.id) uniqueMap.set(m.id, m);
     });
     
-    return Array.from(uniqueMap.values()).sort((a: any, b: any) => 
+    return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [sentMessages, receivedMessages, authUid]);
+
+  // --- Auth Listeners ---
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
+      if (firebaseUser) {
+          setAuthUid(firebaseUser.uid);
+      } else {
+          setAuthUid(null);
+          setCurrentUser(null);
+          setSentMessages([]);
+          setReceivedMessages([]);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!authUid) return;
+    const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
+        if (docSnap.exists) setCurrentUser(docSnap.data() as UserProfile);
+    }, (err) => console.error("User doc error:", err));
+    return () => unsubscribeUserDoc();
+  }, [authUid]);
+
+  useEffect(() => {
+    let unsubscribeUsers = () => {};
+    if (currentUser?.role === 'admin') {
+        unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
+          const fetched: UserProfile[] = [];
+          snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
+          setUsers(fetched);
+        });
+    }
+
+    const unsubscribeOffers = db.collection("offers").onSnapshot((snapshot) => {
+      const fetched: BarterOffer[] = [];
+      snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
+      setOffers(fetched);
+      setIsLoading(false); 
+    });
+
+    const unsubscribeAds = db.collection("systemAds").onSnapshot((snapshot) => {
+      const fetched: SystemAd[] = [];
+      snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
+      setSystemAds(fetched);
+    });
+
+    // PRIVACY: האזנה מסוננת שתואמת את ה-Security Rules
+    let unsubscribeSent = () => {};
+    let unsubscribeReceived = () => {};
+
+    if (authUid) {
+        // האזנה רק להודעות ששלחתי (מותר לפי Rules)
+        unsubscribeSent = db.collection("messages")
+            .where("senderId", "==", authUid)
+            .onSnapshot((snap) => {
+                const msgs: Message[] = [];
+                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+                setSentMessages(msgs);
+            }, (err) => console.error("Sent messages query blocked by rules or missing index:", err));
+
+        // האזנה רק להודעות שקיבלתי (מותר לפי Rules)
+        unsubscribeReceived = db.collection("messages")
+            .where("receiverId", "==", authUid)
+            .onSnapshot((snap) => {
+                const msgs: Message[] = [];
+                snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
+                setReceivedMessages(msgs);
+            }, (err) => console.error("Received messages query blocked by rules:", err));
+    }
+
+    return () => {
+      unsubscribeUsers(); unsubscribeOffers(); unsubscribeAds();
+      unsubscribeSent(); unsubscribeReceived();
+    };
+  }, [currentUser?.role, authUid]);
+
+  // --- Messaging Logic ---
+  const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
+    const authenticatedUid = auth.currentUser?.uid;
+    if (!authenticatedUid) {
+        alert("עליך להתחבר כדי לשלוח הודעה.");
+        return;
+    }
+    
+    // יצירת מזהה מסמך חדש מראש
+    const messageDoc = db.collection("messages").doc();
+    const newMessage: Message = {
+      id: messageDoc.id, 
+      senderId: authenticatedUid, 
+      receiverId, 
+      senderName: currentUser?.name || 'משתמש', 
+      receiverName, 
+      subject, 
+      content, 
+      timestamp: new Date().toISOString(), 
+      isRead: false
+    };
+
+    try { 
+        // שמירה ל-Firestore. החוק יאשר רק אם senderId == ה-UID המחובר
+        await messageDoc.set(newMessage);
+        
+        // התראה במייל לנמען
+        const recipientSnap = await db.collection("users").doc(receiverId).get();
+        if (recipientSnap.exists) {
+            const recipient = recipientSnap.data() as UserProfile;
+            if (recipient.email) {
+                triggerEmailNotification('chat_alert', recipient.email, {
+                    userName: recipient.name,
+                    senderName: currentUser?.name || 'משתמש מהאתר'
+                });
+            }
+        }
+    } catch (e: any) { 
+        console.error("Firestore Message Send Failed:", e);
+        if (e.code === 'permission-denied') {
+            alert("שגיאת אבטחה: השרת דחה את שליחת ההודעה. נסה להתחבר מחדש.");
+        } else {
+            alert("חלה שגיאה בשליחת ההודעה.");
+        }
+    }
+  };
+
+  const handleMarkAsRead = async (id: string) => {
+      if (!authUid) return;
+      try {
+          // חוק ה-Update מאפשר רק למקבל ההודעה לעדכן
+          await db.collection("messages").doc(id).update({ isRead: true });
+      } catch (e) {
+          console.error("Mark as read failed (possibly not authorized):", e);
+      }
+  };
 
   // --- Auth Handlers ---
   const handleLogout = async () => { 
@@ -115,10 +250,7 @@ export const App: React.FC = () => {
         await db.collection("users").doc(uid).set(userProfile);
         setCurrentUser(userProfile);
         setIsAuthModalOpen(false);
-
-        if (userProfile.email) {
-            triggerEmailNotification('welcome', userProfile.email, { userName: userProfile.name });
-        }
+        triggerEmailNotification('welcome', userProfile.email!, { userName: userProfile.name });
         setTimeout(() => setIsPostRegisterPromptOpen(true), 1000);
     } catch (error: any) { alert(error.message); }
   };
@@ -130,149 +262,6 @@ export const App: React.FC = () => {
         await auth.signInWithEmailAndPassword(email, pass); 
         setIsAuthModalOpen(false); 
     } catch (error: any) { alert(error.message); }
-  };
-
-  // --- Auth & Data Listeners ---
-  useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
-      if (firebaseUser) {
-          setAuthUid(firebaseUser.uid);
-      } else {
-          setAuthUid(null);
-          setCurrentUser(null);
-          setSentMessages([]);
-          setReceivedMessages([]);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
-
-  useEffect(() => {
-    if (!authUid) return;
-    const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
-        if (docSnap.exists) setCurrentUser(docSnap.data() as UserProfile);
-    }, (err) => console.error("User doc error:", err));
-    return () => unsubscribeUserDoc();
-  }, [authUid]);
-
-  useEffect(() => {
-    let unsubscribeUsers = () => {};
-    if (currentUser?.role === 'admin') {
-        unsubscribeUsers = db.collection("users").onSnapshot((snapshot) => {
-          const fetched: UserProfile[] = [];
-          snapshot.forEach((doc) => fetched.push(doc.data() as UserProfile));
-          setUsers(fetched);
-        });
-    }
-
-    const unsubscribeOffers = db.collection("offers").onSnapshot((snapshot) => {
-      const fetched: BarterOffer[] = [];
-      snapshot.forEach((doc) => fetched.push(doc.data() as BarterOffer));
-      setOffers(fetched);
-      setIsLoading(false); 
-    });
-
-    const unsubscribeAds = db.collection("systemAds").onSnapshot((snapshot) => {
-      const fetched: SystemAd[] = [];
-      snapshot.forEach((doc) => fetched.push(doc.data() as SystemAd));
-      setSystemAds(fetched);
-    });
-
-    // PRIVACY: שליפת הודעות רק עבור המשתמש המחובר, תואם ל-Security Rules
-    let unsubscribeSent = () => {};
-    let unsubscribeReceived = () => {};
-
-    if (authUid) {
-        // הודעות ששלחתי
-        unsubscribeSent = db.collection("messages")
-            .where("senderId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => {
-                    // קריטי: מיזוג ה-ID של המסמך לתוך האובייקט
-                    msgs.push({ ...(doc.data() as any), id: doc.id });
-                });
-                setSentMessages(msgs);
-            }, (err) => {
-                console.error("Sent messages query failed:", err);
-            });
-
-        // הודעות שקיבלתי
-        unsubscribeReceived = db.collection("messages")
-            .where("receiverId", "==", authUid)
-            .onSnapshot((snap) => {
-                const msgs: Message[] = [];
-                snap.forEach(doc => {
-                    // קריטי: מיזוג ה-ID של המסמך לתוך האובייקט
-                    msgs.push({ ...(doc.data() as any), id: doc.id });
-                });
-                setReceivedMessages(msgs);
-            }, (err) => {
-                console.error("Received messages query failed:", err);
-            });
-    }
-
-    return () => {
-      unsubscribeUsers(); unsubscribeOffers(); unsubscribeAds();
-      unsubscribeSent(); unsubscribeReceived();
-    };
-  }, [currentUser?.role, authUid]);
-
-  // --- Messaging Logic ---
-  const handleSendMessage = async (receiverId: string, receiverName: string, subject: string, content: string) => {
-    const authenticatedUid = auth.currentUser?.uid;
-    if (!authenticatedUid) {
-        alert("עליך להתחבר כדי לשלוח הודעות");
-        return;
-    }
-    
-    // יצירת מסמך חדש
-    const messageDoc = db.collection("messages").doc();
-    const newMessage: Message = {
-      id: messageDoc.id, 
-      senderId: authenticatedUid, 
-      receiverId, 
-      senderName: currentUser?.name || 'משתמש', 
-      receiverName, 
-      subject, 
-      content, 
-      timestamp: new Date().toISOString(), 
-      isRead: false
-    };
-
-    try { 
-        // שמירה ל-Firestore. חוק ה-Create יאשר רק אם senderId == ה-UID המחובר
-        await messageDoc.set(newMessage);
-        
-        // שליחת מייל התראה לנמען
-        const recipientSnap = await db.collection("users").doc(receiverId).get();
-        if (recipientSnap.exists) {
-            const recipient = recipientSnap.data() as UserProfile;
-            if (recipient.email) {
-                triggerEmailNotification('chat_alert', recipient.email, {
-                    userName: recipient.name,
-                    senderName: currentUser?.name || 'משתמש מהאתר'
-                });
-            }
-        }
-    } catch (e: any) { 
-        console.error("Message send failed:", e);
-        if (e.code === 'permission-denied') {
-            alert("שגיאת אבטחה: השרת דחה את השליחה. וודא שאתה מחובר ופרטי השולח נכונים.");
-        } else {
-            alert("שגיאה טכנית בשליחת ההודעה.");
-        }
-    }
-  };
-
-  const handleMarkAsRead = async (id: string) => {
-      if (!authUid) return;
-      try {
-          // חוק ה-Update מאפשר רק ל-receiverId לעדכן
-          await db.collection("messages").doc(id).update({ isRead: true });
-      } catch (e) {
-          console.error("Failed to mark as read:", e);
-      }
   };
 
   // --- UI State ---
