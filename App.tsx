@@ -55,17 +55,23 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // חישוב עדכוני פרופיל ממתינים
-  const pendingUserUpdates = useMemo(() => {
-    return users.filter(u => u.pendingUpdate).length;
-  }, [users]);
+  const pendingUserUpdates = useMemo(() => users.filter(u => u.pendingUpdate).length, [users]);
 
-  // מיון הודעות ב-Frontend למניעת צורך באינדקסים מורכבים
+  // --- CRITICAL FIX: HARD FILTERING MESSAGES ---
+  // אנחנו מוודאים שגם אם ה-Database מחזיר הודעות אחרות (למשל לאדמין), ה-UI מציג אך ורק הודעות שהמשתמש הוא חלק מהן.
   const messages = useMemo(() => {
     if (!authUid) return [];
+    
+    // איחוד ומניעת כפילויות
     const combined = [...sentMessages, ...receivedMessages];
     const uniqueMap = new Map<string, Message>();
-    combined.forEach(m => { if (m.id) uniqueMap.set(m.id, m); });
+    
+    combined.forEach(m => { 
+        // אבטחה ב-Frontend: רק הודעות שהמשתמש הנוכחי הוא השולח או המקבל
+        if (m.id && (m.senderId === authUid || m.receiverId === authUid)) {
+            uniqueMap.set(m.id, m); 
+        }
+    });
     
     return Array.from(uniqueMap.values()).sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -92,9 +98,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot((docSnap) => {
-        if (docSnap.exists) {
-            setCurrentUser(docSnap.data() as UserProfile);
-        }
+        if (docSnap.exists) setCurrentUser(docSnap.data() as UserProfile);
         setIsAuthLoading(false);
     }, (err) => {
         console.warn("User doc listener error:", err);
@@ -103,9 +107,7 @@ export const App: React.FC = () => {
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // האזנה לכלל המשתמשים (רק לאדמין)
   useEffect(() => {
-      // חשוב: לא לנסות להאזין אם לא בטוחים ב-100% שהמשתמש אדמין
       if (!currentUser || currentUser.role !== 'admin') {
           setUsers([]);
           return;
@@ -114,9 +116,7 @@ export const App: React.FC = () => {
           const uList: UserProfile[] = [];
           snap.forEach(doc => uList.push({ ...(doc.data() as UserProfile), id: doc.id }));
           setUsers(uList);
-      }, (err) => {
-          console.error("Admin Users Listener Permission Error:", err);
-      });
+      }, (err) => console.error("Admin Users error:", err));
       return () => unsubUsers();
   }, [currentUser?.role]);
 
@@ -125,15 +125,15 @@ export const App: React.FC = () => {
     let unsubSent = () => {};
     let unsubReceived = () => {};
 
-    // Safety: Don't start message listeners until we know WHO is logged in
     if (authUid && !isAuthLoading) {
+        // סינון הדוק בשאילתה
         unsubSent = db.collection("messages")
             .where("senderId", "==", authUid)
             .onSnapshot((snap) => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setSentMessages(msgs);
-            }, (err) => console.warn("Sent messages access denied (possibly no messages yet)"));
+            }, (err) => console.warn("Sent access denied"));
 
         unsubReceived = db.collection("messages")
             .where("receiverId", "==", authUid)
@@ -141,7 +141,7 @@ export const App: React.FC = () => {
                 const msgs: Message[] = [];
                 snap.forEach(doc => msgs.push({ ...(doc.data() as any), id: doc.id }));
                 setReceivedMessages(msgs);
-            }, (err) => console.warn("Received messages access denied"));
+            }, (err) => console.warn("Received access denied"));
     }
 
     const unsubOffers = db.collection("offers").onSnapshot((snapshot) => {
@@ -149,7 +149,7 @@ export const App: React.FC = () => {
       snapshot.forEach((doc) => fetched.push({ ...(doc.data() as any), id: doc.id }));
       setOffers(fetched);
       setIsLoading(false); 
-    }, (err) => console.error("Offers fetch error:", err));
+    });
 
     const unsubAds = db.collection("systemAds").onSnapshot((snapshot) => {
       const fetched: SystemAd[] = [];
@@ -159,7 +159,7 @@ export const App: React.FC = () => {
 
     const unsubTaxonomy = db.collection("system").doc("taxonomy").onSnapshot((doc) => {
         if (doc.exists) setTaxonomy(prev => ({ ...prev, ...doc.data() }));
-    }, (err) => console.log("Taxonomy fetch skipped (defaulting)"));
+    });
 
     return () => {
       unsubSent(); unsubReceived(); unsubOffers(); unsubAds(); unsubTaxonomy();
@@ -185,7 +185,6 @@ export const App: React.FC = () => {
     try {
         await db.collection("messages").add(newMessage);
     } catch (e: any) {
-        console.error("Critical Send Message Error:", e);
         alert(`שגיאה בשליחה: ${e.message}`);
     }
   };
