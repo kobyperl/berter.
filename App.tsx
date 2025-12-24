@@ -20,8 +20,6 @@ import { AccessibilityModal } from './components/AccessibilityModal';
 import { CookieConsentModal } from './components/CookieConsentModal';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { AccessibilityToolbar } from './components/AccessibilityToolbar';
-import { PostRegisterPrompt } from './components/PostRegisterPrompt';
-import { ProfessionalismPrompt } from './components/ProfessionalismPrompt'; 
 import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { EmailCenterModal } from './components/EmailCenterModal';
 
@@ -94,7 +92,7 @@ export const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  // Fetch current user document once UID is known
+  // Fetch current user doc
   useEffect(() => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot(
@@ -105,54 +103,49 @@ export const App: React.FC = () => {
         setIsAuthChecking(false); 
       },
       (error) => {
-        console.warn("User profile read restricted:", error.message);
+        console.warn("User profile sync delay:", error.message);
         setIsAuthChecking(false);
       }
     );
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Public Data & Taxonomy ---
+  // --- Public Data ---
   useEffect(() => {
-    // Offers (Public)
-    const unsubscribeOffers = db.collection("offers")
-      .onSnapshot(
-        (snapshot) => {
-          const fetched: BarterOffer[] = [];
-          snapshot.forEach((doc) => fetched.push({ ...doc.data() as BarterOffer, id: doc.id }));
-          // Sort in memory to avoid missing index errors during permissions debugging
-          fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          setOffers(fetched);
-          setIsOffersLoading(false);
-        },
-        (error) => {
-          console.warn("Offers access restricted:", error.message);
-          setIsOffersLoading(false);
-        }
-      );
+    const unsubscribeOffers = db.collection("offers").onSnapshot(
+      (snapshot) => {
+        const fetched: BarterOffer[] = [];
+        snapshot.forEach((doc) => fetched.push({ ...doc.data() as BarterOffer, id: doc.id }));
+        fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setOffers(fetched);
+        setIsOffersLoading(false);
+      },
+      (error) => {
+        console.warn("Offers sync delay:", error.message);
+        setIsOffersLoading(false);
+      }
+    );
 
-    // Ads (Public)
     const unsubscribeAds = db.collection("systemAds").onSnapshot(
       (snapshot) => {
         const fetched: SystemAd[] = [];
         snapshot.forEach((doc) => fetched.push({ ...doc.data() as SystemAd, id: doc.id }));
         setSystemAds(fetched);
       },
-      (error) => console.warn("Ads access restricted:", error.message)
+      (error) => console.warn("Ads sync delay")
     );
 
-    // Taxonomy (Public)
     const unsubscribeTaxonomy = db.collection("system").doc("taxonomy").onSnapshot(
       (docSnap) => {
         if (docSnap.exists) setTaxonomy(docSnap.data() as SystemTaxonomy);
       },
-      (error) => console.warn("Taxonomy access restricted:", error.message)
+      (error) => console.warn("Taxonomy sync delay")
     );
 
     return () => { unsubscribeOffers(); unsubscribeAds(); unsubscribeTaxonomy(); };
   }, []);
 
-  // --- User Private Messages (SECURE SYNC) ---
+  // --- PRIVATE MESSAGES SYNC (Vercel Fix) ---
   useEffect(() => {
     if (!authUid) { setMessagesMap({}); return; }
 
@@ -167,11 +160,11 @@ export const App: React.FC = () => {
     };
 
     const handleError = (err: any) => {
-        // Only log if it's not a standard cancellation on sign-out
-        if (authUid) console.warn("Messages sync restricted:", err.message);
+        // If you see this in console, you need to click the link provided by Firebase to create an index
+        console.error("Firestore Query Error:", err.message);
     };
 
-    // Listen only to my messages (Security Rules Compliant)
+    // We split into two listeners to ensure we catch everything without needing complex composite indexes initially
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
         .onSnapshot(handleMessageUpdate, handleError);
@@ -183,21 +176,16 @@ export const App: React.FC = () => {
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
 
-  // --- Admin Data (Gaurded) ---
+  // --- Admin Logic ---
   useEffect(() => {
-    // Only attempt to read users collection if user doc explicitly states 'admin'
-    if (!currentUser || currentUser.role !== 'admin') { 
-        setUsers([]); 
-        return; 
-    }
-
+    if (!currentUser || currentUser.role !== 'admin') { setUsers([]); return; }
     const unsubscribeUsers = db.collection("users").onSnapshot(
       (snapshot) => {
         const fetched: UserProfile[] = [];
         snapshot.forEach((doc) => fetched.push({ ...doc.data() as UserProfile, id: doc.id }));
         setUsers(fetched);
       },
-      (error) => console.warn("Admin users sync restricted:", error.message)
+      (error) => console.warn("Admin users sync restricted")
     );
     return () => unsubscribeUsers();
   }, [currentUser?.role, authUid]); 
@@ -242,7 +230,7 @@ export const App: React.FC = () => {
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'deadline'>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
 
-  // --- Handlers with Permission Safety ---
+  // --- Handlers ---
 
   const handleRegister = async (newUser: Partial<UserProfile>, pass: string) => {
     try {
@@ -259,18 +247,14 @@ export const App: React.FC = () => {
       try { 
           await auth.signInWithEmailAndPassword(email, pass); 
           setIsAuthModalOpen(false); 
-      } catch (error: any) { 
-          alert(translateAuthError(error.code)); 
-          throw error; 
-      } 
+      } catch (error: any) { alert(translateAuthError(error.code)); throw error; } 
   };
   
   const handleLogout = async () => { await auth.signOut(); };
   
   const handleAddOffer = async (newOffer: BarterOffer) => { 
-    if (!authUid) { alert("יש להתחבר כדי לפרסם הצעה"); return; }
-    db.collection("offers").doc(newOffer.id).set(newOffer)
-      .catch(err => { console.error("Permission error on publish:", err); alert("אין הרשאה לפרסם. וודא שאתה מחובר."); });
+    if (!authUid) return;
+    db.collection("offers").doc(newOffer.id).set(newOffer).catch(e => alert("שגיאה בפרסום: " + e.message));
   };
 
   const filteredOffers = useMemo(() => {
@@ -336,7 +320,7 @@ export const App: React.FC = () => {
                             onContact={p => { setSelectedProfile(p); setInitialMessageSubject(offer.title); setIsMessagingModalOpen(true); }} 
                             onUserClick={p => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
                             currentUserId={authUid || undefined} viewMode={viewMode}
-                            onDelete={id => db.collection("offers").doc(id).delete().catch(e => console.error("Delete restricted:", e.message))}
+                            onDelete={id => db.collection("offers").doc(id).delete().catch(e => console.error("Delete restricted"))}
                             onEdit={o => { setEditingOffer(o); setIsCreateModalOpen(true); }}
                         />
                     ))}
@@ -355,44 +339,41 @@ export const App: React.FC = () => {
           <AdminDashboardModal 
             isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)}
             users={users} currentUser={currentUser} 
-            onDeleteUser={id => db.collection("users").doc(id).delete().catch(e => console.error(e))}
+            onDeleteUser={id => db.collection("users").doc(id).delete()}
             onApproveUpdate={id => {
                 const u = users.find(x => x.id === id);
-                if (u?.pendingUpdate) db.collection("users").doc(id).update({ ...u.pendingUpdate, pendingUpdate: firebase.firestore.FieldValue.delete() }).catch(e => console.error(e));
+                if (u?.pendingUpdate) db.collection("users").doc(id).update({ ...u.pendingUpdate, pendingUpdate: firebase.firestore.FieldValue.delete() });
             }} 
-            onRejectUpdate={id => db.collection("users").doc(id).update({ pendingUpdate: firebase.firestore.FieldValue.delete() }).catch(e => console.error(e))}
-            offers={offers} onDeleteOffer={id => db.collection("offers").doc(id).delete().catch(e => console.error(e))}
+            onRejectUpdate={id => db.collection("users").doc(id).update({ pendingUpdate: firebase.firestore.FieldValue.delete() })}
+            offers={offers} onDeleteOffer={id => db.collection("offers").doc(id).delete()}
             onBulkDelete={date => {
-                offers.filter(o => new Date(o.createdAt) < new Date(date)).forEach(o => db.collection("offers").doc(o.id).delete().catch(e => console.error(e)));
+                offers.filter(o => new Date(o.createdAt) < new Date(date)).forEach(o => db.collection("offers").doc(o.id).delete());
             }} 
-            onApproveOffer={id => db.collection("offers").doc(id).update({status:'active'}).catch(e => console.error(e))}
+            onApproveOffer={id => db.collection("offers").doc(id).update({status:'active'})}
             onEditOffer={o => { setEditingOffer(o); setIsCreateModalOpen(true); }}
             availableCategories={availableCategories} availableInterests={availableInterests}
             pendingCategories={taxonomy.pendingCategories || []} pendingInterests={taxonomy.pendingInterests || []}
             categoryHierarchy={taxonomy.categoryHierarchy}
-            onAddCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat) }).catch(e => console.error(e))} 
-            onAddInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int) }).catch(e => console.error(e))} 
-            onDeleteCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(cat) }).catch(e => console.error(e))} 
-            onDeleteInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(int) }).catch(e => console.error(e))}
-            onApproveCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat), pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) }).catch(e => console.error(e))}
-            onRejectCategory={cat => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) }).catch(e => console.error(e))}
-            onReassignCategory={(oldC, newC) => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldC), approvedCategories: firebase.firestore.FieldValue.arrayUnion(newC) }).catch(e => console.error(e))}
-            onApproveInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int), pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) }).catch(e => console.error(e))}
-            onRejectInterest={int => db.collection("system").doc("taxonomy").update({ pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) }).catch(e => console.error(e))}
+            onAddCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat) })} 
+            onAddInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int) })} 
+            onDeleteCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(cat) })} 
+            onDeleteInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
+            onApproveCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat), pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
+            onRejectCategory={cat => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
+            onReassignCategory={(oldC, newC) => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldC), approvedCategories: firebase.firestore.FieldValue.arrayUnion(newC) })}
+            onApproveInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int), pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
+            onRejectInterest={int => db.collection("system").doc("taxonomy").update({ pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
             onEditCategory={(oldN, newN, parent) => {
-                db.collection("system").doc("taxonomy").update({ 
-                    approvedCategories: firebase.firestore.FieldValue.arrayRemove(oldN),
-                    [`categoryHierarchy.${newN}`]: parent || firebase.firestore.FieldValue.delete()
-                }).catch(e => console.error(e));
-                db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(newN) }).catch(e => console.error(e));
+                db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(oldN), [`categoryHierarchy.${newN}`]: parent || firebase.firestore.FieldValue.delete() });
+                db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(newN) });
             }}
             onEditInterest={(oldN, newN) => { 
-                db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(oldN) }).catch(e => console.error(e)); 
-                db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(newN) }).catch(e => console.error(e)); 
+                db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(oldN) }); 
+                db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(newN) }); 
             }}
-            ads={systemAds} onAddAd={ad => db.collection("systemAds").doc(ad.id).set(ad).catch(e => console.error(e))}
-            onEditAd={ad => db.collection("systemAds").doc(ad.id).set(ad).catch(e => console.error(e))}
-            onDeleteAd={id => db.collection("systemAds").doc(id).delete().catch(e => console.error(e))}
+            ads={systemAds} onAddAd={ad => db.collection("systemAds").doc(ad.id).set(ad)}
+            onEditAd={ad => db.collection("systemAds").doc(ad.id).set(ad)}
+            onDeleteAd={id => db.collection("systemAds").doc(id).delete()}
             onViewProfile={u => { setSelectedProfile(u); setIsProfileModalOpen(true); }}
           />
       )}
@@ -407,30 +388,20 @@ export const App: React.FC = () => {
         onSendMessage={(rid, rn, s, c) => {
             if (!authUid) return;
             db.collection("messages").add({ 
-                senderId: authUid, 
-                receiverId: rid, 
-                senderName: currentUser?.name, 
-                receiverName: rn, 
-                subject: s, 
-                content: c, 
-                timestamp: new Date().toISOString(), 
-                isRead: false 
-            }).catch(e => console.error("Message send failed:", e.message));
+                senderId: authUid, receiverId: rid, senderName: currentUser?.name, receiverName: rn, subject: s, content: c, timestamp: new Date().toISOString(), isRead: false 
+            }).catch(e => alert("שגיאה בשליחה: " + e.message));
         }} 
         onMarkAsRead={id => {
             if (!authUid) return;
-            db.collection("messages").doc(id).update({ isRead: true }).catch(e => {
-                // Silently handle if update fails (e.g. race condition on sign-out)
-                if (authUid) console.warn("Mark as read failed:", e.message);
-            });
+            db.collection("messages").doc(id).update({ isRead: true }).catch(e => console.warn("Read sync delay"));
         }} 
         recipientProfile={selectedProfile} 
         initialSubject={initialMessageSubject} 
       />
 
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={id => db.collection("offers").doc(id).delete().catch(e => console.error(e))} onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true}).catch(e => console.error(e))} onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={p => { setSelectedProfile(p); setIsCreateModalOpen(true); }} />
+      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={id => db.collection("offers").doc(id).delete()} onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true})} onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={p => { setSelectedProfile(p); setIsCreateModalOpen(true); }} />
       
-      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={handleAddOffer} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(o).catch(e => console.error(e))} />
+      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={handleAddOffer} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(o)} />
       
       <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
