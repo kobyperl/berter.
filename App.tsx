@@ -22,10 +22,12 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { AccessibilityToolbar } from './components/AccessibilityToolbar';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { EmailCenterModal } from './components/EmailCenterModal';
+import { PostRegisterPrompt } from './components/PostRegisterPrompt';
+import { ProfessionalismPrompt } from './components/ProfessionalismPrompt';
 
 // Data & Types
 import { CATEGORIES, COMMON_INTERESTS, ADMIN_EMAIL } from './constants';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, ChevronDown } from 'lucide-react';
 import { Message, UserProfile, BarterOffer, ExpertiseLevel, SystemAd, SystemTaxonomy } from './types';
 
 // Firebase
@@ -111,52 +113,43 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-// 4. Messaging Listener - SPLIT QUERY STRATEGY (עם דיבוג)
-  useEffect(() => {
-    if (!authUid) {
-        setSentMessagesMap({});
-        setReceivedMessagesMap({});
-        return;
-    }
+  // 4. Messaging Listener
+  useEffect(() => {
+    if (!authUid) {
+        setSentMessagesMap({});
+        setReceivedMessagesMap({});
+        return;
+    }
 
-    console.log("🟢 מתחיל להאזין להודעות עבור משתמש:", authUid);
+    const q1 = db.collection("messages").where("senderId", "==", authUid);
+    const unsubSent = q1.onSnapshot(
+        snapshot => {
+            const msgs: Record<string, Message> = {};
+            snapshot.forEach(doc => {
+                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
+            });
+            setSentMessagesMap(msgs);
+        }, 
+        error => console.error("Error reading sent messages (q1):", error)
+    );
 
-    // Query 1: הודעות שאני שלחתי
-    const q1 = db.collection("messages").where("senderId", "==", authUid);
-    const unsubSent = q1.onSnapshot(
-        snapshot => {
-            console.log(`📨 נשלחו: מצאתי ${snapshot.size} הודעות שאני שלחתי`);
-            const msgs: Record<string, Message> = {};
-            snapshot.forEach(doc => {
-                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
-            });
-            setSentMessagesMap(msgs);
-        }, 
-        error => console.error("❌ שגיאה בטעינת הודעות שנשלחו:", error)
-    );
+    const q2 = db.collection("messages").where("receiverId", "==", authUid);
+    const unsubReceived = q2.onSnapshot(
+        snapshot => {
+            const msgs: Record<string, Message> = {};
+            snapshot.forEach(doc => {
+                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
+            });
+            setReceivedMessagesMap(msgs);
+        }, 
+        error => console.error("Error reading received messages (q2):", error)
+    );
 
-    // Query 2: הודעות שאני קיבלתי
-    const q2 = db.collection("messages").where("receiverId", "==", authUid);
-    const unsubReceived = q2.onSnapshot(
-        snapshot => {
-            console.log(`📥 התקבלו: מצאתי ${snapshot.size} הודעות שאני קיבלתי`);
-            // בדיקה האם יש הודעות ב-Snapshot
-            snapshot.forEach(doc => console.log("תוכן הודעה שהתקבלה:", doc.data()));
-
-            const msgs: Record<string, Message> = {};
-            snapshot.forEach(doc => {
-                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
-            });
-            setReceivedMessagesMap(msgs);
-        }, 
-        error => console.error("❌ שגיאה בטעינת הודעות שהתקבלו:", error)
-    );
-
-    return () => {
-        unsubSent();
-        unsubReceived();
-    };
-  }, [authUid]);
+    return () => {
+        unsubSent();
+        unsubReceived();
+    };
+  }, [authUid]);
 
   // 5. Admin Data Fetch
   useEffect(() => {
@@ -168,15 +161,12 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
-  // Merge the two maps into one list and sort by time
   const messages = useMemo(() => {
-    // Combine maps. If a message appears in both (e.g., self-message), key dedupes it.
     const combinedMap = { ...sentMessagesMap, ...receivedMessagesMap };
-    
     return Object.values(combinedMap).sort((a: Message, b: Message) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return timeB - timeA; // Newest first
+        return timeB - timeA; 
     });
   }, [sentMessagesMap, receivedMessagesMap]);
 
@@ -197,6 +187,9 @@ export const App: React.FC = () => {
   const [isSearchTipsOpen, setIsSearchTipsOpen] = useState(false);
   const [isAccessibilityOpen, setIsAccessibilityOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false); 
+  const [isPostRegisterPromptOpen, setIsPostRegisterPromptOpen] = useState(false);
+  const [isProfessionalismPromptOpen, setIsProfessionalismPromptOpen] = useState(false);
+  const [profileModalStartEdit, setProfileModalStartEdit] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [initialMessageSubject, setInitialMessageSubject] = useState<string>('');
@@ -205,22 +198,35 @@ export const App: React.FC = () => {
   const [durationFilter, setDurationFilter] = useState<'all' | 'one-time' | 'ongoing'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'deadline'>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
+  const [visibleCount, setVisibleCount] = useState(12); // Performance: Render 12 cards initially for grid alignment (3x4 or 2x6)
 
   // --- Handlers ---
   const handleRegister = async (u: Partial<UserProfile>, p: string) => {
     try {
         const cred = await auth.createUserWithEmailAndPassword(u.email!, p);
         const uid = cred.user!.uid;
-        await db.collection("users").doc(uid).set({ ...u, id: uid, role: u.email === ADMIN_EMAIL ? 'admin' : 'user', joinedAt: new Date().toISOString() });
+        const profileData = { ...u, id: uid, role: u.email === ADMIN_EMAIL ? 'admin' : 'user', joinedAt: new Date().toISOString() };
+        await db.collection("users").doc(uid).set(profileData);
         setIsAuthModalOpen(false);
+        // Show the post-registration onboarding popup
+        setIsPostRegisterPromptOpen(true);
     } catch (e: any) { alert(translateAuthError(e.code)); }
   };
+
   const handleLogin = async (e: string, p: string) => { try { await auth.signInWithEmailAndPassword(e, p); setIsAuthModalOpen(false); } catch (e: any) { alert(translateAuthError(e.code)); } };
   const handleLogout = async () => { await auth.signOut(); };
   
   const handleAddOffer = async (o: BarterOffer) => { 
       if (!authUid) return; 
-      db.collection("offers").doc(o.id).set(o).catch(e => console.error("Error adding offer:", e)); 
+      try {
+          await db.collection("offers").doc(o.id).set(o);
+          // Only show professionalism prompt if it's not a bulk admin update or similar
+          if (o.profileId === authUid) {
+              setIsProfessionalismPromptOpen(true);
+          }
+      } catch (e) {
+          console.error("Error adding offer:", e);
+      }
   };
 
   const filteredOffers = useMemo(() => {
@@ -236,8 +242,30 @@ export const App: React.FC = () => {
           if (!matches) return false;
       }
       return true;
+    }).sort((a, b) => {
+        if (sortBy === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (sortBy === 'rating') return (b.averageRating || 0) - (a.averageRating || 0);
+        if (sortBy === 'deadline') {
+            if (!a.expirationDate) return 1;
+            if (!b.expirationDate) return -1;
+            return new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime();
+        }
+        return 0;
     });
-  }, [offers, authUid, currentUser?.role, searchQuery, durationFilter, selectedCategories]);
+  }, [offers, authUid, currentUser?.role, searchQuery, durationFilter, selectedCategories, sortBy]);
+
+  // Reset visible count when filters change to maintain fast perceived performance
+  useEffect(() => {
+      setVisibleCount(12);
+  }, [searchQuery, durationFilter, selectedCategories, sortBy, viewFilter]);
+
+  const visibleOffers = useMemo(() => {
+      return filteredOffers.slice(0, visibleCount);
+  }, [filteredOffers, visibleCount]);
+
+  const handleLoadMore = () => {
+      setVisibleCount(prev => prev + 12);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -247,7 +275,7 @@ export const App: React.FC = () => {
         onOpenCreateModal={() => { if(!authUid){ setAuthStartOnRegister(true); setIsAuthModalOpen(true); return; } setEditingOffer(null); setIsCreateModalOpen(true); }}
         onOpenMessages={() => { if(!authUid){ setIsAuthModalOpen(true); return; } setIsMessagingModalOpen(true); }}
         onOpenAuth={() => { setAuthStartOnRegister(false); setIsAuthModalOpen(true); }}
-        onOpenProfile={() => { setSelectedProfile(currentUser); setIsProfileModalOpen(true); }}
+        onOpenProfile={() => { setSelectedProfile(currentUser); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenEmailCenter={() => setIsEmailCenterOpen(true)}
         adminPendingCount={offers.filter(o => o.status === 'pending').length + users.filter(u => u.pendingUpdate).length}
@@ -278,23 +306,39 @@ export const App: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {isOffersLoading ? [1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-white rounded-xl skeleton"></div>) : (
                 <>
-                    {filteredOffers.map((o) => (
+                    {visibleOffers.map((o) => (
                         <OfferCard 
                             key={o.id} offer={o} 
                             onContact={p => { setSelectedProfile(p); setInitialMessageSubject(o.title); setIsMessagingModalOpen(true); }} 
-                            onUserClick={p => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
+                            onUserClick={p => { setSelectedProfile(p); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }} 
                             currentUserId={authUid || undefined} viewMode={viewMode}
                             onDelete={id => db.collection("offers").doc(id).delete()}
                             onEdit={offer => { setEditingOffer(offer); setIsCreateModalOpen(true); }}
                         />
                     ))}
-                    <div onClick={() => setIsCreateModalOpen(true)} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group">
-                        <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
-                        <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
-                    </div>
+                    {visibleCount >= filteredOffers.length && (
+                        <div onClick={() => setIsCreateModalOpen(true)} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group">
+                            <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
+                            <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
+                        </div>
+                    )}
                 </>
             )}
         </div>
+
+        {/* Load More Button */}
+        {!isOffersLoading && visibleCount < filteredOffers.length && (
+            <div className="mt-12 flex justify-center">
+                <button 
+                    onClick={handleLoadMore}
+                    className="bg-white border border-slate-200 text-slate-700 px-8 py-3 rounded-full font-bold shadow-sm hover:shadow-md hover:bg-slate-50 transition-all flex items-center gap-2"
+                >
+                    <ChevronDown className="w-5 h-5 text-brand-600" />
+                    טען עוד הצעות
+                    <span className="text-xs text-slate-400 font-normal mr-1">({filteredOffers.length - visibleCount} נותרו)</span>
+                </button>
+            </div>
+        )}
       </main>
 
       <Footer onOpenAccessibility={() => setIsAccessibilityOpen(true)} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
@@ -338,7 +382,7 @@ export const App: React.FC = () => {
             ads={systemAds} onAddAd={ad => db.collection("systemAds").doc(ad.id).set(ad)}
             onEditAd={ad => db.collection("systemAds").doc(ad.id).set(ad)}
             onDeleteAd={id => db.collection("systemAds").doc(id).delete()}
-            onViewProfile={u => { setSelectedProfile(u); setIsProfileModalOpen(true); }}
+            onViewProfile={u => { setSelectedProfile(u); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }}
           />
       )}
 
@@ -347,36 +391,32 @@ export const App: React.FC = () => {
       <MessagingModal 
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
         onSendMessage={(rid, rn, s, c) => {
-            if (!authUid || !rid) {
-                console.error("Missing Auth or Recipient ID", {authUid, rid});
-                return; 
-            }
-            
-            // Using 'messages' collection, simple sender/receiver logic
-            const msgData = { 
-              senderId: authUid, 
-              receiverId: rid, 
-              senderName: currentUser?.name || 'משתמש', 
-              receiverName: rn, 
-              subject: s, 
-              content: c, 
-              timestamp: new Date().toISOString(), 
-              isRead: false 
-            };
-            
-            db.collection("messages").add(msgData).catch(e => {
-                console.error("Detailed Send Error:", e);
-                alert(`שגיאה בשליחת הודעה: ${e.message}`);
-            });
+            if (!authUid || !rid) return; 
+            const msgData = { senderId: authUid, receiverId: rid, participantIds: [authUid, rid], senderName: currentUser?.name || 'משתמש', receiverName: rn, subject: s, content: c, timestamp: new Date().toISOString(), isRead: false };
+            db.collection("messages").add(msgData);
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
       />
 
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={id => db.collection("offers").doc(id).delete()} onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true})} onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={p => { setSelectedProfile(p); setIsCreateModalOpen(true); }} />
+      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={id => db.collection("offers").doc(id).delete()} onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true})} onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={p => { setSelectedProfile(p); setIsCreateModalOpen(true); }} startInEditMode={profileModalStartEdit} />
       
       <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={handleAddOffer} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(o)} />
       
+      <PostRegisterPrompt 
+        isOpen={isPostRegisterPromptOpen} 
+        onClose={() => setIsPostRegisterPromptOpen(false)} 
+        onStartOffer={() => { setIsPostRegisterPromptOpen(false); setIsCreateModalOpen(true); }} 
+        userName={currentUser?.name || ''} 
+      />
+
+      <ProfessionalismPrompt 
+        isOpen={isProfessionalismPromptOpen}
+        onClose={() => setIsProfessionalismPromptOpen(false)}
+        onEditProfile={() => { setIsProfessionalismPromptOpen(false); setSelectedProfile(currentUser); setProfileModalStartEdit(true); setIsProfileModalOpen(true); }}
+        userName={currentUser?.name || ''}
+      />
+
       <EmailCenterModal isOpen={isEmailCenterOpen} onClose={() => setIsEmailCenterOpen(false)} />
       <HowItWorksModal isOpen={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} />
       <WhoIsItForModal isOpen={isWhoIsItForOpen} onClose={() => setIsWhoIsItForOpen(false)} onOpenAuth={() => setIsAuthModalOpen(true)} />
