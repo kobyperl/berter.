@@ -77,8 +77,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   }, [messages, currentUser, activeConversationId]);
 
   const conversations = useMemo(() => {
+    // Explicitly casting the sort callback parameters to 'Conversation' to avoid 'unknown' type errors
     return Array.from(conversationsMap.values())
-      .sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
+      .sort((a: Conversation, b: Conversation) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
 
   const filteredConversations = useMemo(() => {
