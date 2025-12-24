@@ -30,9 +30,9 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
               </div>
 
               <h1 className="text-4xl tracking-tight font-[700] text-slate-900 sm:text-5xl md:text-6xl leading-tight">
-                <span className="block" style={{ WebkitTextStroke: '2px #0f172a', paintOrder: 'stroke fill' }}>הכסף החדש של</span>{' '}
+                <span className="block" style={{ WebkitTextStroke: '1px #0f172a', paintOrder: 'stroke fill' }}>הכסף החדש של</span>{' '}
                 <span className="relative inline-block mt-1">
-                    <span className="relative z-10 text-brand-600" style={{ WebkitTextStroke: '2px #0d9488', paintOrder: 'stroke fill' }}>העצמאים בישראל</span>
+                    <span className="relative z-10 text-brand-600" style={{ WebkitTextStroke: '1px #0d9488', paintOrder: 'stroke fill' }}>העצמאים בישראל</span>
                     <span className="absolute bottom-1 right-0 w-full h-3 bg-brand-100 -z-10 opacity-70 skew-x-[-10deg]"></span>
                 </span>
               </h1>
