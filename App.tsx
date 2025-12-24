@@ -106,15 +106,15 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - מאובטח ומטפל במקרים של מסד נתונים ישן
+  // 4. Messaging Listener - USING NEW COLLECTION 'conversations'
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // הקפדנו לעדכן את ה-Rules כך שיעבדו עם השאילתה הזו בדיוק
-    const unsubMessages = db.collection("messages")
+    // השימוש ב-conversations במקום messages מבטיח שאין נתונים ישנים ששוברים את השאילתה
+    const unsubMessages = db.collection("conversations")
         .where("participantIds", "array-contains", authUid)
         .onSnapshot(s => {
             setMessagesMap(prev => {
@@ -130,8 +130,7 @@ export const App: React.FC = () => {
                 return next;
             });
         }, e => {
-            console.error("Chat Listener Error:", e);
-            // אם השגיאה ממשיכה, כנראה שיש בעיה באינדקסים או ב-Rules
+            console.error("Chat Listener Error (conversations):", e);
         });
 
     return () => unsubMessages();
@@ -340,14 +339,13 @@ export const App: React.FC = () => {
               isRead: false 
             };
             
-            console.log("Sending Message Payload:", msg); // דיבוג
-
-            db.collection("messages").add(msg).catch(e => {
+            // שימוש ב-conversations במקום messages
+            db.collection("conversations").add(msg).catch(e => {
                 console.error("Detailed Send Error:", e);
-                alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שחוקי האבטחה מעודכנים בקונסול.`);
+                alert(`שגיאה בשליחת הודעה: ${e.message}`);
             });
         }} 
-        onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
+        onMarkAsRead={id => { if (!authUid) return; db.collection("conversations").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
       />
 
