@@ -123,7 +123,8 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - ALIGNED WITH INDEXES
+  // 4. Messaging Listener - ROBUST & SIMPLIFIED
+  // Removed server-side sorting (orderBy) to prevent index/permission issues.
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
@@ -131,6 +132,7 @@ export const App: React.FC = () => {
     }
 
     const handleSnap = (s: firebase.firestore.QuerySnapshot) => {
+        console.log(`Fetched ${s.size} messages`); // Debug log
         setMessagesMap(prev => {
             const next = { ...prev };
             s.docChanges().forEach(change => {
@@ -146,27 +148,17 @@ export const App: React.FC = () => {
         });
     };
 
-    console.log("Setting up chat listeners for User:", authUid);
+    console.log("Starting Chat Listeners for:", authUid);
 
-    // Query 1: Messages I sent
-    // Must match index: senderId Ascending, timestamp Descending
+    // Query 1: Messages I sent (Standard single-field index)
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .orderBy("timestamp", "desc")
-        .onSnapshot(
-            handleSnap, 
-            e => console.error("Chat Error (Sent):", e.code, e.message)
-        );
+        .onSnapshot(handleSnap, e => console.error("Chat Error (Sent):", e));
 
-    // Query 2: Messages I received
-    // Must match index: receiverId Ascending, timestamp Descending
+    // Query 2: Messages I received (Standard single-field index)
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .orderBy("timestamp", "desc")
-        .onSnapshot(
-            handleSnap, 
-            e => console.error("Chat Error (Received):", e.code, e.message)
-        );
+        .onSnapshot(handleSnap, e => console.error("Chat Error (Received):", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -181,6 +173,7 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
+  // Sort messages client-side to ensure correct order despite missing server sort
   const messages = useMemo(() => {
     return Object.values(messagesMap).sort((a, b) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
