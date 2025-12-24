@@ -50,8 +50,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="bg-brand-600 p-1.5 rounded-lg">
                 <ArrowRightLeft className="h-6 w-6 text-white" />
               </div>
-              <span className="font-extrabold text-xl text-slate-800 tracking-tight hidden md:block">Barter.org.il</span>
-              <span className="font-extrabold text-xl text-slate-800 tracking-tight md:hidden">Barter</span>
+              <span className="font-extraLight text-xl text-slate-800 tracking-tight hidden md:block">Barter.org.il</span>
+              <span className="font-extraLight text-xl text-slate-800 tracking-tight md:hidden">Barter</span>
             </div>
             
             {/* Desktop Navigation Links */}
