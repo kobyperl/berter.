@@ -106,15 +106,13 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - SIMPLIFIED QUERY (No OrderBy/Limit to fix permissions)
+  // 4. Messaging Listener
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // הסרנו את orderBy ו-limit כדי למנוע התנגשות עם חוקי האבטחה והצורך באינדקסים מורכבים.
-    // המיון מתבצע בצד הלקוח ב-useMemo למטה.
     const unsubMessages = db.collection("chats")
         .where("participantIds", "array-contains", authUid)
         .onSnapshot(s => {
@@ -327,8 +325,8 @@ export const App: React.FC = () => {
                 return; 
             }
             
-            const msg: Message = { 
-              id: '', 
+            // שימוש באובייקט נקי ללא ID שנוצר אוטומטית ע"י פיירבייס
+            const msgData = { 
               senderId: authUid, 
               receiverId: rid, 
               participantIds: [authUid, rid], 
@@ -340,7 +338,7 @@ export const App: React.FC = () => {
               isRead: false 
             };
             
-            db.collection("chats").add(msg).catch(e => {
+            db.collection("chats").add(msgData).catch(e => {
                 console.error("Detailed Send Error:", e);
                 alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שהחוקים מעודכנים בקונסול.`);
             });
