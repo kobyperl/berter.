@@ -129,7 +129,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                     <h3 className="font-bold text-slate-900 text-lg mb-1 group-hover:text-emerald-700 transition-colors">חוסכים בהוצאות העסק</h3>
                     {/* Fixed height to ensure alignment,removed line-clamp to show full text */}
                     <p className="text-slate-500 text-sm font-normal leading-relaxed min-h-[3.5rem]">
-                        משתמשים בכישרון שלכם כמטבע עבור הסוחר. מקבלים שירותים שווים בלי להוציא שקל.
+                        משתמשים בכישרון שלכם כמטבע עובר לסוחר. מקבלים שירותים שווים בלי להוציא שקל.
                     </p>
                 </div>
             </div>
