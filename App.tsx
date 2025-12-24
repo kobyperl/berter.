@@ -106,14 +106,14 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - התיקון הקריטי
+  // 4. Messaging Listener - מאובטח ותואם ל-Rules
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // שאילתה מאוחדת ומאובטחת שמתאימה ל-Security Rule
+    // השאילתה חייבת לכלול את הסינון המדויק שה-Rules מצפים לו
     const unsubMessages = db.collection("messages")
         .where("participantIds", "array-contains", authUid)
         .onSnapshot(s => {
@@ -130,7 +130,7 @@ export const App: React.FC = () => {
                 return next;
             });
         }, e => {
-            console.error("Chat Listener Error (Permission Denied?):", e);
+            console.error("Chat Listener Error:", e);
         });
 
     return () => unsubMessages();
@@ -321,8 +321,8 @@ export const App: React.FC = () => {
       <MessagingModal 
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
         onSendMessage={(rid, rn, s, c) => {
-            if (!authUid) return;
-            // התיקון כאן: הוספת participantIds שתואם לשאילתה ולחוק האבטחה
+            if (!authUid || !rid) return; // הגנה נוספת מפני ID חסר
+            
             const msg = { 
               senderId: authUid, 
               receiverId: rid, 
@@ -334,9 +334,10 @@ export const App: React.FC = () => {
               timestamp: new Date().toISOString(), 
               isRead: false 
             };
+            
             db.collection("messages").add(msg).catch(e => {
-                console.error("Error sending message:", e);
-                alert("שגיאה בשליחת הודעה. וודא שחוקי האבטחה מעודכנים.");
+                console.error("Detailed Send Error:", e);
+                alert("שגיאה בשליחת הודעה. וודא שחוקי האבטחה ב-Firebase מעודכנים.");
             });
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
