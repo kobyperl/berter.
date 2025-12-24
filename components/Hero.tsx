@@ -29,10 +29,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                   <span>הצטרפו למהפכת הכלכלה השיתופית</span>
               </div>
 
-              <h1 className="text-4xl tracking-tight font-extrabold text-slate-800 sm:text-5xl md:text-6xl leading-tight">
+              <h1 className="text-4xl tracking-tight font-extrabold text-slate-700 sm:text-5xl md:text-6xl leading-tight">
                 <span className="block">הכסף החדש של</span>{' '}
                 <span className="relative inline-block mt-1">
-                    <span className="relative z-10 text-brand-800">העצמאים בישראל</span>
+                    <span className="relative z-10 text-brand-700">העצמאים בישראל</span>
                     <span className="absolute bottom-1 right-0 w-full h-3 bg-brand-100 -z-10 opacity-70 skew-x-[-10deg]"></span>
                 </span>
               </h1>
