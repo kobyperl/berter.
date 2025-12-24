@@ -42,24 +42,28 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const conversationsMap = useMemo(() => {
     const map = new Map<string, Conversation>();
     
-    // סינון קריטי: וודא שרק הודעות שקשורות למשתמש הנוכחי נכנסות לחישוב השיחות
-    // זה מבטיח שכל אחד (כולל אדמין) רואה רק את התיבה האישית שלו
+    // סינון הודעות ששייכות למשתמש הנוכחי בלבד
     const personalMessages = messages.filter(m => m && (m.senderId === currentUser || m.receiverId === currentUser));
 
     personalMessages.forEach(msg => {
       const isMeSender = msg.senderId === currentUser;
       const partnerId = isMeSender ? msg.receiverId : msg.senderId;
-      const partnerName = isMeSender ? msg.receiverName : msg.senderName;
+      
+      // הגנה מפני נתונים חסרים בהודעות ישנות
+      if (!partnerId) return;
 
+      const partnerName = isMeSender ? (msg.receiverName || 'משתמש') : (msg.senderName || 'משתמש');
       const existing = map.get(partnerId);
       
-      // בדיקה אם ההודעה לא נקראה (נחשב רק אם אני המקבל)
       const shouldCountAsUnread = !isMeSender && !msg.isRead && partnerId !== activeConversationId;
 
-      if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
+      const msgTime = new Date(msg.timestamp).getTime();
+      const existingTime = existing ? new Date(existing.lastMessage.timestamp).getTime() : 0;
+
+      if (!existing || msgTime > existingTime) {
         map.set(partnerId, {
           partnerId,
-          partnerName: partnerName || 'משתמש',
+          partnerName,
           lastMessage: msg,
           unreadCount: (existing?.unreadCount || 0) + (shouldCountAsUnread ? 1 : 0)
         });
@@ -86,14 +90,12 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return [];
-    // הצג רק הודעות בתוך השיחה האישית שנבחרה
     return messages.filter(m => m && (
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
     )).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // Jump to specific user conversation if provided (e.g. from offer card)
   useEffect(() => {
     if (isOpen) {
         if (recipientProfile) {
@@ -103,7 +105,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     }
   }, [isOpen, recipientProfile]);
 
-  // Mark as read logic
   useEffect(() => {
     if (isOpen && activeConversationId) {
         const unreadForActive = activeMessages.filter(m => 
@@ -125,22 +126,11 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       if (!isOpen) processingReadIds.current.clear();
   }, [isOpen]);
 
-  // Scroll to bottom
   useEffect(() => {
     if (isOpen && activeConversationId) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [activeMessages.length, isOpen, activeConversationId]);
-
-  const formatListDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '';
-    const now = new Date();
-    const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
-    return isToday 
-        ? date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
-        : date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
-  };
 
   const handleSend = () => {
     if (!newMessage.trim() || !activeConversationId) return;
@@ -150,11 +140,11 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     if (conv) receiverName = conv.partnerName;
     else if (recipientProfile && recipientProfile.id === activeConversationId) receiverName = recipientProfile.name;
 
-    let subject = "Chat";
+    let subject = "צ'אט";
     if (activeMessages.length === 0 && initialSubject) {
         subject = initialSubject;
     } else if (activeMessages.length > 0) {
-        subject = activeMessages[activeMessages.length - 1].subject; 
+        subject = activeMessages[activeMessages.length - 1].subject || "המשך שיחה"; 
     }
 
     onSendMessage(activeConversationId, receiverName || 'משתמש', subject, newMessage);
@@ -163,13 +153,13 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   if (!isOpen) return null;
 
-  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || 'Chat';
+  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || 'צ\'אט';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
-      <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50">
+      <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 text-right" dir="rtl">
             <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
                     <h2 className="font-bold text-slate-800 text-lg">תיבת הודעות</h2>
@@ -210,7 +200,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-baseline mb-1">
                                         <h3 className="font-semibold text-slate-900 truncate text-sm">{conv.partnerName}</h3>
-                                        <span className="text-[10px] text-slate-400 whitespace-nowrap ml-1">{formatListDate(conv.lastMessage.timestamp)}</span>
                                     </div>
                                     <p className={`text-xs truncate ${conv.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
                                         {conv.lastMessage.content}
@@ -229,7 +218,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             <div className="flex items-center gap-3">
                                 <button onClick={() => setActiveConversationId(null)} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
                                 <div className="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center text-white font-bold">{activePartnerName[0]}</div>
-                                <div><h3 className="font-bold text-slate-900 text-sm">{activePartnerName}</h3><span className="text-[10px] text-green-600 font-medium">מחובר</span></div>
+                                <div><h3 className="font-bold text-slate-900 text-sm">{activePartnerName}</h3></div>
                             </div>
                             <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
                         </div>
@@ -239,9 +228,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 const isMe = msg.senderId === currentUser;
                                 return (
                                     <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                        <div className={`max-w-[85%] rounded-2xl px-4 py-2 shadow-sm text-sm ${isMe ? 'bg-brand-500 text-white rounded-tl-none' : 'bg-white text-slate-900 rounded-tr-none'}`}>
+                                        <div className={`max-w-[85%] rounded-2xl px-4 py-2 shadow-sm text-sm ${isMe ? 'bg-brand-500 text-white rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'}`}>
                                             <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                                            <div className={`text-[9px] mt-1 ${isMe ? 'text-brand-100 text-left' : 'text-slate-400 text-right'}`}>
+                                            <div className={`text-[9px] mt-1 ${isMe ? 'text-brand-100 text-right' : 'text-slate-400 text-left'}`}>
                                                 {new Date(msg.timestamp).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}
                                             </div>
                                         </div>
@@ -260,7 +249,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                             />
-                            <button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full shadow-sm disabled:opacity-50 transition-all active:scale-95"><Send className="w-5 h-5" /></button>
+                            <button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full shadow-sm disabled:opacity-50 transition-all active:scale-95"><Send className="w-5 h-5 mirror-rtl" /></button>
                         </div>
                     </>
                 ) : (
