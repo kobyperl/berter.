@@ -117,7 +117,7 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, []);
 
-  // 4. Personal Messaging - Correct Listeners
+  // 4. Messaging Listeners
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
@@ -128,21 +128,24 @@ export const App: React.FC = () => {
       setMessagesMap(prev => {
         const next = { ...prev };
         s.forEach(d => {
-          next[d.id] = { ...d.data() as Message, id: d.id };
+          const data = d.data() as Message;
+          // הודעות חייבות להכיל מזהים כדי להיות מוצגות
+          if (data.senderId && data.receiverId) {
+             next[d.id] = { ...data, id: d.id };
+          }
         });
         return next;
       });
     };
 
-    // חשוב: השאילתות מופרדות כדי לעקוף את הצורך באינדקס מורכב ב-Firebase
-    // המנהל יראה רק הודעות שבהן הוא משתתף כי חוקי האבטחה עכשיו אוכפים זאת
+    // הפרדת שאילתות כדי לעקוף צורך באינדקסים
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.error("Sent messages listener error:", e));
+        .onSnapshot(handleUpdate, e => console.error("Sent messages error:", e));
 
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.error("Received messages listener error:", e));
+        .onSnapshot(handleUpdate, e => console.error("Received messages error:", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
