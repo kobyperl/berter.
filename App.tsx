@@ -210,7 +210,16 @@ export const App: React.FC = () => {
         setIsAuthModalOpen(false);
         // Show the post-registration onboarding popup
         setIsPostRegisterPromptOpen(true);
-    } catch (e: any) { alert(translateAuthError(e.code)); }
+    } catch (e: any) { 
+        console.error("Registration Error:", e);
+        if (e.code && e.code.startsWith('auth/')) {
+            alert(translateAuthError(e.code));
+        } else if (e.toString().includes("maximum allowed size") || e.code === 'invalid-argument') {
+            alert("שגיאה ביצירת הפרופיל: התמונות שבחרת גדולות מדי. אנא נסה להירשם עם תמונה קלה יותר או פחות תמונות בגלריה.");
+        } else {
+            alert("אירעה שגיאה כללית בתהליך ההרשמה. אנא נסה שוב.");
+        }
+    }
   };
 
   const handleLogin = async (e: string, p: string) => { try { await auth.signInWithEmailAndPassword(e, p); setIsAuthModalOpen(false); } catch (e: any) { alert(translateAuthError(e.code)); } };
@@ -226,6 +235,38 @@ export const App: React.FC = () => {
           }
       } catch (e) {
           console.error("Error adding offer:", e);
+      }
+  };
+
+  const handleRate = async (offerId: string, rating: number) => {
+      if (!authUid) return;
+      const offerRef = db.collection("offers").doc(offerId);
+      try {
+          await db.runTransaction(async (transaction) => {
+              const doc = await transaction.get(offerRef);
+              if (!doc.exists) return;
+              
+              const data = doc.data() as BarterOffer;
+              const ratings = data.ratings || [];
+              const existingIndex = ratings.findIndex(r => r.userId === authUid);
+              
+              let newRatings = [...ratings];
+              if (existingIndex > -1) {
+                  newRatings[existingIndex] = { userId: authUid, score: rating };
+              } else {
+                  newRatings.push({ userId: authUid, score: rating });
+              }
+              
+              const averageRating = newRatings.reduce((acc, curr) => acc + curr.score, 0) / newRatings.length;
+              
+              transaction.update(offerRef, {
+                  ratings: newRatings,
+                  averageRating: averageRating
+              });
+          });
+      } catch (e) {
+          console.error("Error rating offer:", e);
+          alert("אירעה שגיאה בשמירת הדירוג.");
       }
   };
 
@@ -312,8 +353,9 @@ export const App: React.FC = () => {
                             onContact={p => { setSelectedProfile(p); setInitialMessageSubject(o.title); setIsMessagingModalOpen(true); }} 
                             onUserClick={p => { setSelectedProfile(p); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }} 
                             currentUserId={authUid || undefined} viewMode={viewMode}
-                            onDelete={id => db.collection("offers").doc(id).delete()}
-                            onEdit={offer => { setEditingOffer(offer); setIsCreateModalOpen(true); }}
+                            onRate={handleRate}
+                            onDelete={(authUid === o.profileId || currentUser?.role === 'admin') ? id => db.collection("offers").doc(id).delete() : undefined}
+                            onEdit={(authUid === o.profileId || currentUser?.role === 'admin') ? offer => { setEditingOffer(offer); setIsCreateModalOpen(true); } : undefined}
                         />
                     ))}
                     {visibleCount >= filteredOffers.length && (
@@ -399,7 +441,21 @@ export const App: React.FC = () => {
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
       />
 
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} profile={selectedProfile} currentUser={currentUser} userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} onDeleteOffer={id => db.collection("offers").doc(id).delete()} onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true})} onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} availableCategories={availableCategories} availableInterests={availableInterests} onOpenCreateOffer={p => { setSelectedProfile(p); setIsCreateModalOpen(true); }} startInEditMode={profileModalStartEdit} />
+      <ProfileModal 
+        isOpen={isProfileModalOpen} 
+        onClose={() => setIsProfileModalOpen(false)} 
+        profile={selectedProfile} 
+        currentUser={currentUser} 
+        userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
+        onDeleteOffer={id => db.collection("offers").doc(id).delete()} 
+        onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true})} 
+        onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} 
+        onRate={handleRate}
+        availableCategories={availableCategories} 
+        availableInterests={availableInterests} 
+        onOpenCreateOffer={p => { setSelectedProfile(p); setIsCreateModalOpen(true); }} 
+        startInEditMode={profileModalStartEdit} 
+      />
       
       <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={handleAddOffer} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(o)} />
       
