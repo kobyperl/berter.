@@ -95,106 +95,72 @@ export const App: React.FC = () => {
         }
         setIsAuthChecking(false);
       },
-      err => { console.error("Profile sync error:", err); setIsAuthChecking(false); }
+      err => { setIsAuthChecking(false); }
     );
     return () => unsub();
   }, [authUid]);
 
-  // 3. Public Data & Filtered Offers
+  // 3. Main Data Fetch
   useEffect(() => {
-    const isAdmin = currentUser?.role === 'admin';
-    let offersQuery = db.collection("offers");
-    
-    if (!isAdmin) {
-        offersQuery = offersQuery.where("status", "==", "active") as any;
-    }
-
-    const unsubOffers = offersQuery.onSnapshot(
+    const unsubOffers = db.collection("offers").onSnapshot(
         s => { 
             let f: any[] = []; 
             s.forEach(d => f.push({...d.data(), id: d.id})); 
             setOffers(f); 
             setIsOffersLoading(false); 
         },
-        e => { 
-            if (e.code !== 'permission-denied') console.error("Offers fetch error:", e);
-            setIsOffersLoading(false); 
-        }
+        e => { setIsOffersLoading(false); }
     );
 
-    const unsubAds = db.collection("systemAds").where("isActive", "==", true).onSnapshot(
-        s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setSystemAds(f); },
-        e => {}
+    const unsubAds = db.collection("systemAds").onSnapshot(
+        s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setSystemAds(f); }
     );
 
     const unsubTax = db.collection("system").doc("taxonomy").onSnapshot(
-        d => d.exists && setTaxonomy(d.data() as SystemTaxonomy),
-        e => {}
+        d => d.exists && setTaxonomy(d.data() as SystemTaxonomy)
     );
 
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
-  }, [currentUser?.role, authUid]);
+  }, [authUid]);
 
-  // 4. Messaging Listeners - Participant Privacy (Even for Admins)
+  // 4. Messaging Listener - The fix for vanishing messages
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // Reset messages when starting a new listener
-    setMessagesMap({});
-
-    const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
-      setMessagesMap(prev => {
-        const next = { ...prev };
-        s.forEach(d => {
-          const data = d.data() as Message;
-          // Security filter double-check on client side
-          if (data.senderId === authUid || data.receiverId === authUid) {
-             next[d.id] = { ...data, id: d.id };
-          }
+    // We use one listener and sort locally to be rule-compliant
+    const handleSnap = (s: firebase.firestore.QuerySnapshot) => {
+        setMessagesMap(prev => {
+            const next = { ...prev };
+            s.forEach(d => {
+                next[d.id] = { ...d.data() as Message, id: d.id };
+            });
+            return next;
         });
-        return next;
-      });
     };
 
-    // We only listen to messages where WE are a participant. 
-    // This query matches the Security Rules exactly.
+    // Query 1: Messages I sent
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleUpdate, e => {
-            if (e.code === 'permission-denied') console.warn("Messages Restricted (Sent Branch)");
-        });
+        .onSnapshot(handleSnap, e => console.error("Messaging error (sent):", e.message));
 
+    // Query 2: Messages I received
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleUpdate, e => {
-            if (e.code === 'permission-denied') console.warn("Messages Restricted (Received Branch)");
-        });
+        .onSnapshot(handleSnap, e => console.error("Messaging error (received):", e.message));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
 
-  // 5. Admin Only Data (Excluding global messages for privacy)
+  // 5. Admin Data Fetch
   useEffect(() => {
     if (!authUid || !currentUser || currentUser.role !== 'admin') return;
     const unsubUsers = db.collection("users").onSnapshot(
-      s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setUsers(f); },
-      e => {}
+      s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setUsers(f); }
     );
-    const unsubPendingOffers = db.collection("offers").where("status", "==", "pending").onSnapshot(
-        s => {
-            setOffers(prev => {
-                const next = [...prev];
-                s.forEach(d => {
-                    if (!next.find(o => o.id === d.id)) next.push({...d.data(), id: d.id} as BarterOffer);
-                });
-                return next;
-            });
-        }
-    );
-    return () => { unsubUsers(); unsubPendingOffers(); };
+    return () => { unsubUsers(); };
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
@@ -375,7 +341,7 @@ export const App: React.FC = () => {
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
         onSendMessage={(rid, rn, s, c) => {
             if (!authUid) return;
-            db.collection("messages").add({ 
+            const msg = { 
               senderId: authUid, 
               receiverId: rid, 
               senderName: currentUser?.name || 'משתמש', 
@@ -384,7 +350,11 @@ export const App: React.FC = () => {
               content: c, 
               timestamp: new Date().toISOString(), 
               isRead: false 
-            }).catch(e => console.error("Error sending message:", e));
+            };
+            db.collection("messages").add(msg).catch(e => {
+                alert("שגיאה בשליחת הודעה. וודא שחוקי האבטחה עודכנו.");
+                console.error("Error sending message:", e);
+            });
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
