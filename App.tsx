@@ -106,15 +106,14 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - THE CLEAN VERSION
+  // 4. Messaging Listener - התיקון הקריטי
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // שאילתה אחת שבודקת אם המשתמש הוא חלק ממערך המשתתפים
-    // משתמש במיון צד לקוח כדי להימנע מבעיות אינדקסים מורכבים בשרת
+    // שאילתה מאוחדת ומאובטחת שמתאימה ל-Security Rule
     const unsubMessages = db.collection("messages")
         .where("participantIds", "array-contains", authUid)
         .onSnapshot(s => {
@@ -131,7 +130,7 @@ export const App: React.FC = () => {
                 return next;
             });
         }, e => {
-            console.error("Chat Listener Error:", e);
+            console.error("Chat Listener Error (Permission Denied?):", e);
         });
 
     return () => unsubMessages();
@@ -148,11 +147,10 @@ export const App: React.FC = () => {
 
   // --- Computed ---
   const messages = useMemo(() => {
-    // Explicitly casting Object.values results and sort parameters to avoid 'unknown' type errors
     return (Object.values(messagesMap) as Message[]).sort((a: Message, b: Message) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return timeB - timeA; // החדשים ביותר למעלה
+        return timeB - timeA; 
     });
   }, [messagesMap]);
 
@@ -324,11 +322,11 @@ export const App: React.FC = () => {
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
         onSendMessage={(rid, rn, s, c) => {
             if (!authUid) return;
-            // הוספת participantIds למסמך החדש לשאילתות עתידיות
+            // התיקון כאן: הוספת participantIds שתואם לשאילתה ולחוק האבטחה
             const msg = { 
               senderId: authUid, 
               receiverId: rid, 
-              participantIds: [authUid, rid], // קריטי לחיפוש מהיר ובטוח
+              participantIds: [authUid, rid], 
               senderName: currentUser?.name || 'משתמש', 
               receiverName: rn, 
               subject: s, 
@@ -337,8 +335,8 @@ export const App: React.FC = () => {
               isRead: false 
             };
             db.collection("messages").add(msg).catch(e => {
-                alert("שגיאה בשליחת הודעה.");
                 console.error("Error sending message:", e);
+                alert("שגיאה בשליחת הודעה. וודא שחוקי האבטחה מעודכנים.");
             });
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
