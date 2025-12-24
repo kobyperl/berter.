@@ -123,33 +123,41 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - The fix for vanishing messages
+  // 4. Messaging Listener - FIXED TO USE INDEXES
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // We use one listener and sort locally to be rule-compliant
+    // A helper to safely update the map
     const handleSnap = (s: firebase.firestore.QuerySnapshot) => {
         setMessagesMap(prev => {
             const next = { ...prev };
-            s.forEach(d => {
-                next[d.id] = { ...d.data() as Message, id: d.id };
+            s.docChanges().forEach(change => {
+                if (change.type === 'removed') {
+                    delete next[change.doc.id];
+                } else {
+                    next[change.doc.id] = { ...change.doc.data() as Message, id: change.doc.id };
+                }
             });
             return next;
         });
     };
 
-    // Query 1: Messages I sent
+    // Query 1: Messages I sent (Uses Index: senderId Asc, timestamp Desc)
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleSnap, e => console.error("Messaging error (sent):", e.message));
+        .orderBy("timestamp", "desc") 
+        .limit(100) // Optimization limit
+        .onSnapshot(handleSnap, e => console.error("Messaging Error (Sent):", e));
 
-    // Query 2: Messages I received
+    // Query 2: Messages I received (Uses Index: receiverId Asc, timestamp Desc)
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleSnap, e => console.error("Messaging error (received):", e.message));
+        .orderBy("timestamp", "desc")
+        .limit(100) // Optimization limit
+        .onSnapshot(handleSnap, e => console.error("Messaging Error (Received):", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
