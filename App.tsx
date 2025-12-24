@@ -117,7 +117,7 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, []);
 
-  // 4. Personal Messaging - Strict Filters
+  // 4. Personal Messaging - Correct Listeners
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
@@ -134,15 +134,15 @@ export const App: React.FC = () => {
       });
     };
 
-    // listener 1: הודעות ששלחתי
+    // חשוב: השאילתות מופרדות כדי לעקוף את הצורך באינדקס מורכב ב-Firebase
+    // המנהל יראה רק הודעות שבהן הוא משתתף כי חוקי האבטחה עכשיו אוכפים זאת
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.error("Error fetching sent messages:", e));
+        .onSnapshot(handleUpdate, e => console.error("Sent messages listener error:", e));
 
-    // listener 2: הודעות שקיבלתי
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.error("Error fetching received messages:", e));
+        .onSnapshot(handleUpdate, e => console.error("Received messages listener error:", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -330,7 +330,16 @@ export const App: React.FC = () => {
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
         onSendMessage={(rid, rn, s, c) => {
             if (!authUid) return;
-            db.collection("messages").add({ senderId: authUid, receiverId: rid, senderName: currentUser?.name, receiverName: rn, subject: s, content: c, timestamp: new Date().toISOString(), isRead: false });
+            db.collection("messages").add({ 
+              senderId: authUid, 
+              receiverId: rid, 
+              senderName: currentUser?.name || 'משתמש', 
+              receiverName: rn, 
+              subject: s, 
+              content: c, 
+              timestamp: new Date().toISOString(), 
+              isRead: false 
+            });
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
