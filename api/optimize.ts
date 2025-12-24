@@ -1,10 +1,7 @@
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GoogleGenAI, Type } from "@google/genai";
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req, res) {
   // CORS Headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
@@ -21,69 +18,120 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { rawInput } = req.body || {};
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (e) {
+      console.error("Failed to parse request body:", e);
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+  }
+
+  const { rawInput } = body || {};
 
   if (!rawInput) {
     return res.status(400).json({ error: 'Missing rawInput in request body' });
   }
 
-  if (!process.env.API_KEY) {
-    console.error("API_KEY is missing in environment variables");
-    return res.status(500).json({ error: 'Server configuration error' });
+  // Check multiple possible environment variable names
+  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    console.error("CRITICAL: No valid API Key found in environment variables.");
+    return res.status(500).json({ 
+        error: 'Server configuration error: API Key missing',
+        details: 'Checked: VITE_GEMINI_API_KEY, API_KEY, GOOGLE_API_KEY'
+    });
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const today = new Date().toISOString().split('T')[0];
-    
     const prompt = `
       Current Date: ${today}
       Analyze this barter offer request: "${rawInput}"
-      Extract structured data in Hebrew.
+      
+      Extract structrued data in Hebrew.
     `;
 
+    // Define JSON Schema for strict output
     const responseSchema = {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING, description: "A professional and catchy title (Hebrew)." },
-        description: { type: Type.STRING, description: "A persuasive and clear description (Hebrew)." },
-        offeredService: { type: Type.STRING, description: "Short summary of what is given (Hebrew)." },
-        requestedService: { type: Type.STRING, description: "Short summary of what is requested (Hebrew)." },
-        location: { type: Type.STRING, description: "The city or 'כל הארץ'." },
-        tags: { 
-          type: Type.ARRAY, 
-          items: { type: Type.STRING },
-          description: "Up to 5 relevant tags."
+        type: "OBJECT",
+        properties: {
+            title: { type: "STRING", description: "A professional and catchy title for the barter offer (Hebrew)." },
+            description: { type: "STRING", description: "A persuasive and clear description of the offer (Hebrew)." },
+            offeredService: { type: "STRING", description: "Short 2-4 words summarizing what is given (Hebrew)." },
+            requestedService: { type: "STRING", description: "Short 2-4 words summarizing what is requested (Hebrew)." },
+            location: { type: "STRING", description: "The city or area mentioned. If none mentioned, return 'כל הארץ'." },
+            tags: { 
+                type: "ARRAY", 
+                items: { type: "STRING" },
+                description: "Up to 10 relevant tags (professions, skills, or interests)."
+            },
+            durationType: { 
+                type: "STRING", 
+                enum: ["one-time", "ongoing"],
+                description: "ongoing for retainers/subscriptions/long-term, one-time for projects."
+            },
+            expirationDate: { type: "STRING", description: "YYYY-MM-DD format if a deadline is explicitly mentioned." }
         },
-        durationType: { 
-          type: Type.STRING, 
-          enum: ["one-time", "ongoing"],
-          description: "Duration of the barter."
-        },
-        expirationDate: { type: Type.STRING, description: "YYYY-MM-DD if mentioned." }
-      },
-      required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
+        required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
+    const model = 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const requestBody = {
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: responseSchema
+      }
+    };
+
+    // Use the incoming request referer or fallback to the main domain
+    const referer = req.headers.referer || 'https://www.barter.org.il';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Referer': referer, 
+        'Origin': referer
       },
+      body: JSON.stringify(requestBody)
     });
 
-    const jsonStr = response.text;
-    if (!jsonStr) {
-      throw new Error("Empty response from Gemini");
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini API Error (${response.status}):`, errorText);
+      return res.status(response.status).json({ 
+          error: 'Gemini API Error', 
+          details: errorText 
+      });
     }
 
-    const jsonResponse = JSON.parse(jsonStr.trim());
-    return res.status(200).json(jsonResponse);
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (generatedText) {
+      let jsonResponse;
+      try {
+        jsonResponse = JSON.parse(generatedText);
+      } catch (parseError) {
+        console.error("Failed to parse Gemini response as JSON:", generatedText);
+        return res.status(500).json({ error: 'AI returned invalid JSON', raw: generatedText });
+      }
+      return res.status(200).json(jsonResponse);
+    } else {
+      console.error("Gemini returned empty text.");
+      return res.status(500).json({ error: 'No content generated by AI' });
+    }
 
   } catch (error: any) {
-    console.error("Gemini optimization error:", error);
+    console.error("Server execution failed:", error);
     return res.status(500).json({ error: 'Failed to optimize offer', details: error.message });
   }
 }

@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Send, Search, User, Loader2, Mail, Info } from 'lucide-react';
+import { X, Send, Search, User } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 
 interface MessagingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: string; 
+  currentUser: string;
   messages: Message[];
   onSendMessage: (receiverId: string, receiverName: string, subject: string, content: string) => void;
   onMarkAsRead: (messageId: string) => void;
@@ -35,163 +35,247 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Track message IDs currently being updated to prevent flickering loops
+  const processingReadIds = useRef<Set<string>>(new Set());
 
-  // יצירת מפת שיחות ייחודית לפי מזהה שותף
+  // --- Group messages into conversations ---
   const conversationsMap = useMemo(() => {
-    const map: Record<string, Conversation> = {};
-    if (!currentUser || currentUser === 'guest') return map;
-
+    const map = new Map<string, Conversation>();
     messages.forEach(msg => {
-      const isSender = msg.senderId === currentUser;
-      const partnerId = String(isSender ? msg.receiverId : msg.senderId).trim();
-      
-      // סינון מזהים לא תקינים
-      if (!partnerId || partnerId === 'undefined' || partnerId === 'null' || partnerId === 'guest') return;
+      const isMeSender = msg.senderId === currentUser;
+      const partnerId = isMeSender ? msg.receiverId : msg.senderId;
+      const partnerName = isMeSender ? msg.receiverName : msg.senderName;
 
-      const partnerName = isSender ? msg.receiverName : msg.senderName;
-      const existing = map[partnerId];
+      const existing = map.get(partnerId);
+      
+      // Calculate unread: I am the receiver AND message is unread AND it's NOT the conversation I am looking at right now
+      const shouldCountAsUnread = !isMeSender && !msg.isRead && partnerId !== activeConversationId;
 
       if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
-          map[partnerId] = {
-              partnerId,
-              partnerName: partnerName || 'משתמש',
-              lastMessage: msg,
-              unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
-          };
-      } else if (!isSender && !msg.isRead) {
-          map[partnerId].unreadCount += 1;
+        map.set(partnerId, {
+          partnerId,
+          partnerName,
+          lastMessage: msg,
+          unreadCount: (existing?.unreadCount || 0) + (shouldCountAsUnread ? 1 : 0)
+        });
+      } else if (shouldCountAsUnread) {
+          if (existing) {
+              existing.unreadCount += 1;
+          }
       }
     });
     return map;
-  }, [messages, currentUser]);
+  }, [messages, currentUser, activeConversationId]);
 
-  const sortedConversations = useMemo<Conversation[]>(() => {
-    return (Object.values(conversationsMap) as Conversation[]).sort((a, b) => 
-        new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime()
-    );
+  const conversations = useMemo(() => {
+    return Array.from(conversationsMap.values())
+      .sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
 
   const filteredConversations = useMemo(() => {
-    return sortedConversations.filter(c => 
-      c.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      c.lastMessage.content.toLowerCase().includes(searchTerm.toLowerCase())
+    return conversations.filter(c => 
+      (c.partnerName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (c.lastMessage.content || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [sortedConversations, searchTerm]);
+  }, [conversations, searchTerm]);
 
-  // הודעות בשיחה הפעילה
   const activeMessages = useMemo(() => {
-    if (!activeConversationId || !currentUser) return [];
+    if (!activeConversationId) return [];
     return messages.filter(m => 
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // פתיחה אוטומטית של שיחה
+  // --- Effects ---
+
+  // 1. Initial Setup: If modal opens with a specific profile, jump to that conversation
   useEffect(() => {
-    if (isOpen && recipientProfile?.id) {
-        const safeId = String(recipientProfile.id).trim();
-        if (safeId !== 'guest' && safeId !== 'undefined' && safeId !== 'null') {
-            console.log("MessagingModal: Auto-setting active conversation to:", safeId);
-            setActiveConversationId(safeId);
-            setSearchTerm('');
+    if (isOpen) {
+        if (recipientProfile) {
+            setActiveConversationId(recipientProfile.id);
         }
+        setSearchTerm('');
     }
   }, [isOpen, recipientProfile]);
 
-  // סימון כנקרא
+  // 2. Mark as read when viewing a conversation - Optimized with ref to prevent sync loop flickering
   useEffect(() => {
-    if (isOpen && activeConversationId && activeMessages.length > 0) {
-        activeMessages.forEach(msg => {
-            if (msg.receiverId === currentUser && !msg.isRead) {
+    if (isOpen && activeConversationId) {
+        const unreadForActive = activeMessages.filter(m => 
+            m.receiverId === currentUser && 
+            !m.isRead && 
+            !processingReadIds.current.has(m.id)
+        );
+
+        if (unreadForActive.length > 0) {
+            unreadForActive.forEach(msg => {
+                processingReadIds.current.add(msg.id);
                 onMarkAsRead(msg.id);
-            }
-        });
+            });
+        }
     }
   }, [isOpen, activeConversationId, activeMessages, currentUser, onMarkAsRead]);
 
-  // גלילה
+  // Cleanup processing list on modal close
   useEffect(() => {
-    if (isOpen && activeMessages.length > 0) {
+      if (!isOpen) {
+          processingReadIds.current.clear();
+      }
+  }, [isOpen]);
+
+  // 3. Auto-scroll to bottom
+  useEffect(() => {
+    if (isOpen && activeConversationId) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [activeMessages, isOpen]);
+  }, [activeMessages.length, isOpen, activeConversationId]);
+
+  // --- Helpers ---
+  
+  const formatListDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    const now = new Date();
+    const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
+    return isToday 
+        ? date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+        : date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+  };
 
   const handleSend = () => {
     if (!newMessage.trim() || !activeConversationId) return;
 
-    let partnerName = 'משתמש';
-    const conv = conversationsMap[activeConversationId];
-    if (conv) partnerName = conv.partnerName;
-    else if (recipientProfile && String(recipientProfile.id).trim() === activeConversationId) partnerName = recipientProfile.name;
+    let receiverName = '';
+    const conv = conversationsMap.get(activeConversationId);
+    if (conv) receiverName = conv.partnerName;
+    else if (recipientProfile && recipientProfile.id === activeConversationId) receiverName = recipientProfile.name;
 
-    let subject = initialSubject || "צ'אט ברטר";
-    if (activeMessages.length > 0) subject = activeMessages[activeMessages.length - 1].subject;
+    // Determine subject: Use initial subject for new chats, or inherit from last message
+    let subject = "Chat";
+    if (activeMessages.length === 0 && initialSubject) {
+        subject = initialSubject;
+    } else if (activeMessages.length > 0) {
+        subject = activeMessages[activeMessages.length - 1].subject; 
+    }
 
-    onSendMessage(activeConversationId, partnerName, subject, newMessage);
+    onSendMessage(activeConversationId, receiverName, subject, newMessage);
     setNewMessage('');
   };
 
   if (!isOpen) return null;
 
-  const activePartnerName = conversationsMap[activeConversationId!]?.partnerName || recipientProfile?.name || 'שיחה';
+  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || 'Chat';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative bg-white w-full max-w-5xl h-[90vh] sm:h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 animate-in fade-in zoom-in-95 duration-200">
-            {/* Sidebar */}
-            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId && activeMessages.length > 0 ? 'hidden sm:flex' : 'flex'}`}>
-                <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center"><h2 className="font-bold text-slate-800 text-lg">הודעות</h2><button onClick={onClose} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X /></button></div>
-                <div className="p-3 border-b border-slate-100"><div className="relative"><Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-brand-500 shadow-inner" placeholder="חפש שיחה..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/></div></div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+
+      <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50">
+            {/* Sidebar: List of Conversations */}
+            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
+                    <h2 className="font-bold text-slate-800 text-lg">הודעות</h2>
+                    <button onClick={onClose} className="sm:hidden p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                </div>
+                
+                <div className="p-3 border-b border-slate-100 shrink-0">
+                    <div className="relative">
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                            type="text" 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pr-10 pl-4 text-sm focus:border-brand-500 focus:bg-white outline-none transition-all"
+                            placeholder="חפש שיחה..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                </div>
+
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredConversations.length === 0 && !recipientProfile ? (
-                        <div className="text-center p-12 text-slate-400 text-sm italic flex flex-col items-center gap-3"><Mail className="w-10 h-10 opacity-10" />אין הודעות עדיין</div>
+                        <div className="text-center p-8 text-slate-400 text-sm italic">אין שיחות פעילות</div>
                     ) : (
-                        <>
-                            {recipientProfile && recipientProfile.id && String(recipientProfile.id).trim() !== 'guest' && String(recipientProfile.id).trim() !== 'undefined' && !conversationsMap[String(recipientProfile.id).trim()] && (
-                                <div onClick={() => setActiveConversationId(String(recipientProfile.id).trim())} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-brand-100 bg-brand-50 transition-colors border-r-4 border-brand-500`}>
-                                    <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold shrink-0 shadow-sm">{recipientProfile.name[0]}</div>
-                                    <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-1"><h3 className="font-bold text-slate-900 truncate text-sm">{recipientProfile.name}</h3><span className="bg-brand-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">חדש</span></div><p className="text-xs text-brand-600 truncate font-medium">התחל שיחה עכשיו...</p></div>
+                        filteredConversations.map(conv => (
+                            <div 
+                                key={conv.partnerId}
+                                onClick={() => setActiveConversationId(conv.partnerId)}
+                                className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-r-brand-500' : ''}`}
+                            >
+                                <div className="relative shrink-0">
+                                    <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">{conv.partnerName[0]}</div>
+                                    {conv.unreadCount > 0 && (
+                                        <div className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white animate-pulse">
+                                            {conv.unreadCount}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                            {filteredConversations.map(conv => (
-                                <div key={conv.partnerId} onClick={() => setActiveConversationId(conv.partnerId)} className={`flex items-center gap-3 p-4 cursor-pointer border-b border-slate-50 transition-colors ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-brand-500 shadow-sm z-10' : 'hover:bg-slate-50'}`}>
-                                    <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold shrink-0 shadow-inner">{conv.partnerName[0]}</div>
-                                    <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-1"><h3 className="font-bold text-slate-900 truncate text-sm">{conv.partnerName}</h3>{conv.unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black animate-bounce">{conv.unreadCount}</span>}</div><p className="text-xs text-slate-500 truncate">{conv.lastMessage.content}</p></div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-baseline mb-1">
+                                        <h3 className="font-semibold text-slate-900 truncate text-sm">{conv.partnerName}</h3>
+                                        <span className="text-[10px] text-slate-400 whitespace-nowrap ml-1">{formatListDate(conv.lastMessage.timestamp)}</span>
+                                    </div>
+                                    <p className={`text-xs truncate ${conv.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
+                                        {conv.lastMessage.content}
+                                    </p>
                                 </div>
-                            ))}
-                        </>
+                            </div>
+                        ))
                     )}
                 </div>
             </div>
 
-            {/* Chat Body */}
-            <div className={`flex-1 flex flex-col bg-slate-100 ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+            {/* Main Chat Area */}
+            <div className={`flex-1 flex flex-col bg-slate-100 relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 {activeConversationId ? (
                     <>
-                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shrink-0 z-20 shadow-sm"><div className="flex items-center gap-3"><button onClick={() => setActiveConversationId(null)} className="sm:hidden text-slate-500 p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5" /></button><div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold shadow-inner">{activePartnerName[0]}</div><div><h3 className="font-bold text-slate-800 text-sm leading-tight">{activePartnerName}</h3><span className="text-[10px] text-green-600 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>מחובר/ת</span></div></div><button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600 p-2"><X className="w-5 h-5" /></button></div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-50 shadow-inner">
-                            {activeMessages.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4"><div className="bg-white p-6 rounded-full shadow-sm border border-slate-100"><Mail className="w-12 h-12 text-brand-200" /></div><div><p className="font-bold text-slate-700 text-lg">זוהי תחילת ההתכתבות</p><p className="text-sm text-slate-400 max-w-[200px] mx-auto">כתוב הודעה כדי להציע ברטר או לשאול שאלה.</p></div></div>
-                            ) : (
-                                activeMessages.map((msg) => (
-                                    <div key={msg.id} className={`flex flex-col ${msg.senderId === currentUser ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-1 duration-200`}>
-                                        <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${msg.senderId === currentUser ? 'bg-brand-600 text-white rounded-tl-none' : 'bg-white text-slate-800 rounded-tr-none border border-slate-200'}`}><p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p></div>
-                                        <span className="text-[9px] text-slate-400 mt-1 px-1">{new Date(msg.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}{msg.senderId === currentUser && (msg.isRead ? ' • נקרא' : ' • נשלח')}</span>
+                        {/* Chat Header */}
+                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setActiveConversationId(null)} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+                                <div className="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center text-white font-bold">{activePartnerName[0]}</div>
+                                <div><h3 className="font-bold text-slate-900 text-sm">{activePartnerName}</h3><span className="text-[10px] text-green-600 font-medium">מחובר</span></div>
+                            </div>
+                            <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        {/* Messages List */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                            {activeMessages.map((msg) => {
+                                const isMe = msg.senderId === currentUser;
+                                return (
+                                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className={`max-w-[85%] rounded-2xl px-4 py-2 shadow-sm text-sm ${isMe ? 'bg-brand-500 text-white rounded-tl-none' : 'bg-white text-slate-900 rounded-tr-none'}`}>
+                                            <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                            <div className={`text-[9px] mt-1 ${isMe ? 'text-brand-100 text-left' : 'text-slate-400 text-right'}`}>
+                                                {new Date(msg.timestamp).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}
+                                            </div>
+                                        </div>
                                     </div>
-                                ))
-                            )}
+                                );
+                            })}
                             <div ref={messagesEndRef} />
                         </div>
-                        <div className="bg-white p-3 border-t border-slate-200 flex items-center gap-2"><input type="text" className="flex-1 bg-slate-50 border border-slate-200 rounded-full py-2.5 px-5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-inner" placeholder="הקלד הודעה..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSend()}/><button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full transition-all active:scale-90 disabled:opacity-50 shadow-md flex items-center justify-center shrink-0"><Send className="w-5 h-5" /></button></div>
+
+                        {/* Input Area */}
+                        <div className="bg-white p-3 flex items-center gap-2 border-t border-slate-200 shrink-0">
+                            <input 
+                                type="text"
+                                className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 rounded-full py-2.5 px-5 outline-none focus:border-brand-500 focus:bg-white transition-all text-sm"
+                                placeholder="הקלד הודעה..."
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                            />
+                            <button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full shadow-sm disabled:opacity-50 transition-all active:scale-95"><Send className="w-5 h-5" /></button>
+                        </div>
                     </>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center bg-slate-50 shadow-inner">
-                        <div className="bg-white p-10 rounded-full mb-6 shadow-sm border border-slate-100"><User className="w-16 h-16 opacity-5" /></div>
-                        <h3 className="text-xl font-bold text-slate-700 mb-2">תיבת ההודעות שלך</h3>
-                        <p className="text-sm text-slate-400 max-w-xs mx-auto">בחר שיחה מהרשימה בצד כדי לצפות בהודעות או התחל שיחה חדשה ישירות מהצעות הברטר.</p>
-                        <div className="mt-8 p-4 bg-white border border-slate-100 rounded-2xl flex items-start gap-3 max-w-sm text-right"><Info className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" /><p className="text-xs text-slate-500 leading-relaxed">הודעות בצ'אט נשלחות בזמן אמת. כאשר שותף לברטר יענה לך, תופיע התראה בראש האתר.</p></div>
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50 p-6 text-center">
+                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4"><User className="w-10 h-10 text-slate-300" /></div>
+                        <h2 className="text-xl font-bold text-slate-600 mb-1">Barter.org.il</h2>
+                        <p className="text-sm">בחר שיחה מהרשימה כדי להתחיל להתכתב</p>
                     </div>
                 )}
             </div>
