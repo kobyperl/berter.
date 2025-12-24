@@ -42,14 +42,14 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const conversationsMap = useMemo(() => {
     const map = new Map<string, Conversation>();
     
-    // סינון הודעות ששייכות למשתמש הנוכחי בלבד
+    // סינון הודעות ששייכות למשתמש הנוכחי בלבד (גם אם הוא מנהל)
+    // זה מוודא שאף משתמש לא רואה רשימת שיחות של אחרים
     const personalMessages = messages.filter(m => m && (m.senderId === currentUser || m.receiverId === currentUser));
 
     personalMessages.forEach(msg => {
       const isMeSender = msg.senderId === currentUser;
       const partnerId = isMeSender ? msg.receiverId : msg.senderId;
       
-      // הגנה מפני נתונים חסרים בהודעות ישנות
       if (!partnerId) return;
 
       const partnerName = isMeSender ? (msg.receiverName || 'משתמש') : (msg.senderName || 'משתמש');
@@ -90,6 +90,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return [];
+    // וידוא שהודעות בתוך הצ'אט הפעיל הן אכן שלנו ושל השותף הנבחר
     return messages.filter(m => m && (
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
