@@ -74,8 +74,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
+          console.log("Logged in as UID:", firebaseUser.uid);
           setAuthUid(firebaseUser.uid);
       } else {
+          console.log("No user logged in.");
           setAuthUid(null);
           setCurrentUser(null);
           setMessagesMap({});
@@ -100,7 +102,7 @@ export const App: React.FC = () => {
     return () => unsub();
   }, [authUid]);
 
-  // 3. Public Data
+  // 3. Public Data (Offers, Ads, Taxonomy)
   useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot(
         s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setOffers(f); setIsOffersLoading(false); },
@@ -117,17 +119,14 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, []);
 
-  // 4. Private Messaging - Improved Logic
+  // 4. Private Messaging
   useEffect(() => {
-    if (!authUid) {
-        setMessagesMap({});
-        return;
-    }
+    if (!authUid) return;
 
-    console.log("Initializing Message Listeners for UID:", authUid);
+    console.log("Setting up messaging listeners for UID:", authUid);
 
     const handleUpdate = (s: firebase.firestore.QuerySnapshot, source: string) => {
-      console.log(`Received ${s.size} messages from ${source}`);
+      console.log(`Success: Found ${s.size} messages in ${source}`);
       setMessagesMap(prev => {
         const next = { ...prev };
         s.forEach(d => {
@@ -137,25 +136,29 @@ export const App: React.FC = () => {
       });
     };
 
-    // listener 1: Sent by me
+    // First attempt: with orderBy (requires index)
+    // If you see "Permission Denied" here, it means some docs in your DB 
+    // are missing 'senderId' or 'receiverId' fields.
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
         .orderBy("timestamp", "desc")
         .onSnapshot(
             s => handleUpdate(s, "SENT"),
             e => {
-                console.error("SENT Messages Query Failed:", e.message);
-                // If it fails because of missing index, Firebase provides a link in the console
+                console.error("SENT Query Failed:", e.message);
+                // Fallback: Try without orderBy to see if it's a field issue
+                db.collection("messages").where("senderId", "==", authUid).get()
+                    .then(s => console.log("Fallback check: found", s.size, "sent docs without order"))
+                    .catch(err => console.error("Total failure on SENT:", err.message));
             }
         );
 
-    // listener 2: Received by me
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
         .orderBy("timestamp", "desc")
         .onSnapshot(
             s => handleUpdate(s, "RECEIVED"),
-            e => console.error("RECEIVED Messages Query Failed:", e.message)
+            e => console.error("RECEIVED Query Failed:", e.message)
         );
 
     return () => { unsubSent(); unsubReceived(); };
@@ -173,9 +176,11 @@ export const App: React.FC = () => {
 
   // --- Computed ---
   const messages = useMemo(() => {
-    const list = Object.values(messagesMap);
-    console.log("Current merged messages count:", list.length);
-    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return Object.values(messagesMap).sort((a, b) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return timeB - timeA;
+    });
   }, [messagesMap]);
 
   const availableInterests = useMemo(() => Array.from(new Set([...COMMON_INTERESTS, ...(taxonomy.approvedInterests || [])])).sort(), [taxonomy.approvedInterests]);
