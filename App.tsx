@@ -42,20 +42,6 @@ const translateAuthError = (code: string) => {
   }
 };
 
-const OfferSkeleton = () => (
-    <div className="bg-white rounded-xl border border-slate-200 h-[420px] flex flex-col overflow-hidden shadow-sm">
-        <div className="p-4 flex-1 space-y-4">
-            <div className="flex gap-3 items-center">
-                <div className="w-10 h-10 rounded-full skeleton shrink-0" />
-                <div className="space-y-2 flex-1"><div className="h-3 w-2/3 skeleton rounded" /><div className="h-2 w-1/3 skeleton rounded" /></div>
-            </div>
-            <div className="h-6 w-full skeleton rounded-md" />
-            <div className="h-20 w-full skeleton rounded-lg" />
-        </div>
-        <div className="bg-slate-50 p-4 border-t border-slate-100 flex justify-between items-center"><div className="h-4 w-24 skeleton rounded" /><div className="h-9 w-24 skeleton rounded-lg" /></div>
-    </div>
-);
-
 export const App: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -111,56 +97,44 @@ export const App: React.FC = () => {
         },
         e => { setIsOffersLoading(false); }
     );
-
     const unsubAds = db.collection("systemAds").onSnapshot(
         s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setSystemAds(f); }
     );
-
     const unsubTax = db.collection("system").doc("taxonomy").onSnapshot(
         d => d.exists && setTaxonomy(d.data() as SystemTaxonomy)
     );
-
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - ROBUST & SIMPLIFIED
-  // Removed server-side sorting (orderBy) to prevent index/permission issues.
+  // 4. Messaging Listener - THE CLEAN VERSION
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    const handleSnap = (s: firebase.firestore.QuerySnapshot) => {
-        console.log(`Fetched ${s.size} messages`); // Debug log
-        setMessagesMap(prev => {
-            const next = { ...prev };
-            s.docChanges().forEach(change => {
-                if (change.type === 'removed') {
-                    delete next[change.doc.id];
-                } else {
-                    const data = change.doc.data() as Message;
-                    // Ensure ID is present
-                    next[change.doc.id] = { ...data, id: change.doc.id };
-                }
+    // שאילתה אחת שבודקת אם המשתמש הוא חלק ממערך המשתתפים
+    // משתמש במיון צד לקוח כדי להימנע מבעיות אינדקסים מורכבים בשרת
+    const unsubMessages = db.collection("messages")
+        .where("participantIds", "array-contains", authUid)
+        .onSnapshot(s => {
+            setMessagesMap(prev => {
+                const next = { ...prev };
+                s.docChanges().forEach(change => {
+                    if (change.type === 'removed') {
+                        delete next[change.doc.id];
+                    } else {
+                        const data = change.doc.data() as Message;
+                        next[change.doc.id] = { ...data, id: change.doc.id };
+                    }
+                });
+                return next;
             });
-            return next;
+        }, e => {
+            console.error("Chat Listener Error:", e);
         });
-    };
 
-    console.log("Starting Chat Listeners for:", authUid);
-
-    // Query 1: Messages I sent (Standard single-field index)
-    const unsubSent = db.collection("messages")
-        .where("senderId", "==", authUid)
-        .onSnapshot(handleSnap, e => console.error("Chat Error (Sent):", e));
-
-    // Query 2: Messages I received (Standard single-field index)
-    const unsubReceived = db.collection("messages")
-        .where("receiverId", "==", authUid)
-        .onSnapshot(handleSnap, e => console.error("Chat Error (Received):", e));
-
-    return () => { unsubSent(); unsubReceived(); };
+    return () => unsubMessages();
   }, [authUid]);
 
   // 5. Admin Data Fetch
@@ -173,12 +147,12 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
-  // Sort messages client-side to ensure correct order despite missing server sort
   const messages = useMemo(() => {
-    return Object.values(messagesMap).sort((a, b) => {
+    // Explicitly casting Object.values results and sort parameters to avoid 'unknown' type errors
+    return (Object.values(messagesMap) as Message[]).sort((a: Message, b: Message) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return timeB - timeA; 
+        return timeB - timeA; // החדשים ביותר למעלה
     });
   }, [messagesMap]);
 
@@ -230,7 +204,6 @@ export const App: React.FC = () => {
       const isMine = authUid && o.profileId === authUid;
       const isAdmin = currentUser?.role === 'admin';
       if (o.status !== 'active' && !isMine && !isAdmin) return false; 
-      
       const q = searchQuery.toLowerCase();
       if (searchQuery && !((o.title||'').toLowerCase().includes(q) || (o.description||'').toLowerCase().includes(q))) return false;
       if (durationFilter !== 'all' && o.durationType !== durationFilter) return false;
@@ -279,7 +252,7 @@ export const App: React.FC = () => {
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {isOffersLoading ? [1,2,3,4,5,6].map(i => <OfferSkeleton key={i} />) : (
+            {isOffersLoading ? [1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-white rounded-xl skeleton"></div>) : (
                 <>
                     {filteredOffers.map((o) => (
                         <OfferCard 
@@ -351,9 +324,11 @@ export const App: React.FC = () => {
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
         onSendMessage={(rid, rn, s, c) => {
             if (!authUid) return;
+            // הוספת participantIds למסמך החדש לשאילתות עתידיות
             const msg = { 
               senderId: authUid, 
               receiverId: rid, 
+              participantIds: [authUid, rid], // קריטי לחיפוש מהיר ובטוח
               senderName: currentUser?.name || 'משתמש', 
               receiverName: rn, 
               subject: s, 
@@ -362,7 +337,7 @@ export const App: React.FC = () => {
               isRead: false 
             };
             db.collection("messages").add(msg).catch(e => {
-                alert("שגיאה בשליחת הודעה. וודא שחוקי האבטחה עודכנו.");
+                alert("שגיאה בשליחת הודעה.");
                 console.error("Error sending message:", e);
             });
         }} 

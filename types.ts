@@ -57,6 +57,7 @@ export interface Message {
   id: string;
   senderId: string;
   receiverId: string;
+  participantIds?: string[]; // Added for new optimized query
   senderName: string;
   receiverName: string;
   subject: string;
