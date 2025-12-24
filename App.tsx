@@ -78,7 +78,7 @@ export const App: React.FC = () => {
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setMessagesMap({});
+          setMessagesMap({}); // Clear messages on logout
           setIsAuthChecking(false);
       }
     });
@@ -95,41 +95,65 @@ export const App: React.FC = () => {
         }
         setIsAuthChecking(false);
       },
-      err => { console.error("Profile sync error:", err); setIsAuthChecking(false); }
+      err => { 
+        console.error("Profile sync error:", err); 
+        setIsAuthChecking(false); 
+      }
     );
     return () => unsub();
   }, [authUid]);
 
-  // 3. Public Data
+  // 3. Public Data & Filtered Offers
   useEffect(() => {
-    const unsubOffers = db.collection("offers").onSnapshot(
-        s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setOffers(f); setIsOffersLoading(false); },
-        e => { console.error("Offers query error:", e); setIsOffersLoading(false); }
+    const isAdmin = currentUser?.role === 'admin';
+    let offersQuery = db.collection("offers");
+    
+    // Non-admins only query active to avoid Permission Denied
+    if (!isAdmin) {
+        offersQuery = offersQuery.where("status", "==", "active") as any;
+    }
+
+    const unsubOffers = offersQuery.onSnapshot(
+        s => { 
+            let f: any[] = []; 
+            s.forEach(d => f.push({...d.data(), id: d.id})); 
+            setOffers(f); 
+            setIsOffersLoading(false); 
+        },
+        e => { 
+            console.error("Offers fetch error:", e); 
+            setIsOffersLoading(false); 
+        }
     );
-    const unsubAds = db.collection("systemAds").onSnapshot(
+
+    const unsubAds = db.collection("systemAds").where("isActive", "==", true).onSnapshot(
         s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setSystemAds(f); },
-        e => console.error("Ads query error:", e)
+        e => console.error("Ads fetch error:", e)
     );
+
     const unsubTax = db.collection("system").doc("taxonomy").onSnapshot(
         d => d.exists && setTaxonomy(d.data() as SystemTaxonomy),
-        e => console.error("Taxonomy query error:", e)
+        e => console.error("Taxonomy fetch error:", e)
     );
-    return () => { unsubOffers(); unsubAds(); unsubTax(); };
-  }, []);
 
-  // 4. Messaging Listeners
+    return () => { unsubOffers(); unsubAds(); unsubTax(); };
+  }, [currentUser?.role]);
+
+  // 4. Messaging Listeners - Clear map on auth change and filter strictly
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
+    // Reset messages when starting a new listener for a new user
+    setMessagesMap({});
+
     const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
       setMessagesMap(prev => {
         const next = { ...prev };
         s.forEach(d => {
           const data = d.data() as Message;
-          // הודעות חייבות להכיל מזהים כדי להיות מוצגות
           if (data.senderId && data.receiverId) {
              next[d.id] = { ...data, id: d.id };
           }
@@ -138,14 +162,19 @@ export const App: React.FC = () => {
       });
     };
 
-    // הפרדת שאילתות כדי לעקוף צורך באינדקסים
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.error("Sent messages error:", e));
+        .onSnapshot(handleUpdate, e => {
+            if (e.code === 'permission-denied') console.warn("Messages access restricted by rules.");
+            else console.error("Sent messages listener error:", e);
+        });
 
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.error("Received messages error:", e));
+        .onSnapshot(handleUpdate, e => {
+            if (e.code === 'permission-denied') console.warn("Messages access restricted by rules.");
+            else console.error("Received messages listener error:", e);
+        });
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -153,11 +182,22 @@ export const App: React.FC = () => {
   // 5. Admin Only Data
   useEffect(() => {
     if (!authUid || !currentUser || currentUser.role !== 'admin') return;
-    const unsub = db.collection("users").onSnapshot(
+    const unsubUsers = db.collection("users").onSnapshot(
       s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setUsers(f); },
-      e => console.error("Admin Users query error:", e)
+      e => console.error("Admin users fetch error:", e)
     );
-    return () => unsub();
+    const unsubPendingOffers = db.collection("offers").where("status", "==", "pending").onSnapshot(
+        s => {
+            setOffers(prev => {
+                const next = [...prev];
+                s.forEach(d => {
+                    if (!next.find(o => o.id === d.id)) next.push({...d.data(), id: d.id} as BarterOffer);
+                });
+                return next;
+            });
+        }
+    );
+    return () => { unsubUsers(); unsubPendingOffers(); };
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
@@ -206,13 +246,18 @@ export const App: React.FC = () => {
   };
   const handleLogin = async (e: string, p: string) => { try { await auth.signInWithEmailAndPassword(e, p); setIsAuthModalOpen(false); } catch (e: any) { alert(translateAuthError(e.code)); } };
   const handleLogout = async () => { await auth.signOut(); };
-  const handleAddOffer = async (o: BarterOffer) => { if (!authUid) return; db.collection("offers").doc(o.id).set(o).catch(e => alert(e.message)); };
+  
+  const handleAddOffer = async (o: BarterOffer) => { 
+      if (!authUid) return; 
+      db.collection("offers").doc(o.id).set(o).catch(e => console.error("Error adding offer:", e)); 
+  };
 
   const filteredOffers = useMemo(() => {
     return offers.filter(o => {
       const isMine = authUid && o.profileId === authUid;
       const isAdmin = currentUser?.role === 'admin';
       if (o.status !== 'active' && !isMine && !isAdmin) return false; 
+      
       const q = searchQuery.toLowerCase();
       if (searchQuery && !((o.title||'').toLowerCase().includes(q) || (o.description||'').toLowerCase().includes(q))) return false;
       if (durationFilter !== 'all' && o.durationType !== durationFilter) return false;
@@ -342,7 +387,7 @@ export const App: React.FC = () => {
               content: c, 
               timestamp: new Date().toISOString(), 
               isRead: false 
-            });
+            }).catch(e => console.error("Error sending message:", e));
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
