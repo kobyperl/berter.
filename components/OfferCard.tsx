@@ -145,9 +145,6 @@ export const OfferCard: React.FC<OfferCardProps> = ({
     <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col h-full relative ${isLowRated ? 'opacity-80' : ''} ${isExpired ? 'opacity-75 bg-slate-50' : ''} ${isPending ? 'border-orange-300 ring-1 ring-orange-100' : ''}`}>
       <div className="absolute top-4 left-4 z-10 flex flex-col items-end gap-1.5">
           <div className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm ${isOngoing ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>{isOngoing ? <Repeat className="w-3 h-3" /> : <Clock className="w-3 h-3" />}{isOngoing ? 'ברטר מתמשך' : 'פרויקט חד פעמי'}</div>
-          {isExpired && <div className="bg-red-100 text-red-600 border border-red-200 px-2 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-1"><Clock className="w-3 h-3" />פג תוקף</div>}
-          {isPending && <div className="group relative"><div className="bg-orange-100 text-orange-700 border border-orange-200 px-2 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-1 cursor-help"><EyeOff className="w-3 h-3" />ממתין לאישור</div><div className="absolute top-full mt-1 left-0 bg-slate-800 text-white text-[10px] p-2 rounded w-40 z-20 hidden group-hover:block leading-tight">המודעה גלויה רק לך. תפורסם לאחר אישור מנהל.</div></div>}
-          {offer.expirationDate && !isExpired && <div className="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-1"><Calendar className="w-3 h-3" />עד: {new Date(offer.expirationDate).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}</div>}
       </div>
 
       <div className="p-5 flex-1 flex flex-col">
@@ -156,21 +153,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                 <div className="w-10 h-10 shrink-0">
                     <img src={offer.profile.avatarUrl} loading="lazy" alt={offer.profile.name} className={`w-10 h-10 rounded-full object-cover border group-hover:border-brand-500 transition-colors ${isHighRated ? 'border-yellow-400' : 'border-slate-100'}`} />
                 </div>
-                <div><h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4><span className="text-xs text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full font-medium">{offer.profile.expertise}</span></div>
-            </div>
-            
-            {/* Grid View Actions */}
-            <div className="flex gap-1">
-                {onEdit && (
-                    <button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך הצעה">
-                        <Edit className="w-4 h-4" />
-                    </button>
-                )}
-                {onDelete && (
-                    <button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="מחק הצעה">
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-                )}
+                <div><h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4></div>
             </div>
         </div>
         <div className="mb-2">{renderStars()}</div>
