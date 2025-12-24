@@ -113,7 +113,9 @@ export const App: React.FC = () => {
         return;
     }
 
-    const unsubMessages = db.collection("chats")
+    // UPDATE: Using 'conversations' collection and Explicit Filter
+    // This MUST match the security rule: allow read: if request.auth.uid in resource.data.participantIds;
+    const unsubMessages = db.collection("conversations")
         .where("participantIds", "array-contains", authUid)
         .onSnapshot(s => {
             setMessagesMap(prev => {
@@ -325,7 +327,7 @@ export const App: React.FC = () => {
                 return; 
             }
             
-            // שימוש באובייקט נקי ללא ID שנוצר אוטומטית ע"י פיירבייס
+            // Clean object without auto-generated ID, using 'conversations'
             const msgData = { 
               senderId: authUid, 
               receiverId: rid, 
@@ -338,12 +340,12 @@ export const App: React.FC = () => {
               isRead: false 
             };
             
-            db.collection("chats").add(msgData).catch(e => {
+            db.collection("conversations").add(msgData).catch(e => {
                 console.error("Detailed Send Error:", e);
                 alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שהחוקים מעודכנים בקונסול.`);
             });
         }} 
-        onMarkAsRead={id => { if (!authUid) return; db.collection("chats").doc(id).update({ isRead: true }); }} 
+        onMarkAsRead={id => { if (!authUid) return; db.collection("conversations").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
       />
 
