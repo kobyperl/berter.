@@ -47,7 +47,11 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [offers, setOffers] = useState<BarterOffer[]>([]);
-  const [messagesMap, setMessagesMap] = useState<Record<string, Message>>({});
+  
+  // Split state for messages to handle Firestore OR query limitation
+  const [sentMessagesMap, setSentMessagesMap] = useState<Record<string, Message>>({});
+  const [receivedMessagesMap, setReceivedMessagesMap] = useState<Record<string, Message>>({});
+  
   const [systemAds, setSystemAds] = useState<SystemAd[]>([]);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isOffersLoading, setIsOffersLoading] = useState(true);
@@ -64,7 +68,8 @@ export const App: React.FC = () => {
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setMessagesMap({});
+          setSentMessagesMap({});
+          setReceivedMessagesMap({});
           setIsAuthChecking(false);
       }
     });
@@ -106,38 +111,56 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - FIXED & VERIFIED
+  // 4. Messaging Listener - SPLIT QUERY STRATEGY
+  // Firestore doesn't support logical OR across different fields in one query.
+  // We must listen to "sent" and "received" separately and merge them.
   useEffect(() => {
     if (!authUid) {
-        setMessagesMap({});
+        setSentMessagesMap({});
+        setReceivedMessagesMap({});
         return;
     }
 
-    // CRITICAL: This query matches the Security Rule:
-    // allow read: if request.auth.uid in resource.data.participantIds;
-    console.log("Setting up listener for conversations where participantIds contains:", authUid);
-    
-    const unsubMessages = db.collection("conversations")
-        .where("participantIds", "array-contains", authUid)
+    console.log("Setting up split listeners for messages...");
+
+    // Listener A: Messages I SENT
+    const unsubSent = db.collection("messages")
+        .where("senderId", "==", authUid)
         .onSnapshot(s => {
-            setMessagesMap(prev => {
+            setSentMessagesMap(prev => {
                 const next = { ...prev };
                 s.docChanges().forEach(change => {
                     if (change.type === 'removed') {
                         delete next[change.doc.id];
                     } else {
-                        // Spread doc.data() and ensure ID is attached
-                        const data = change.doc.data() as Message;
-                        next[change.doc.id] = { ...data, id: change.doc.id };
+                        next[change.doc.id] = { ...change.doc.data(), id: change.doc.id } as Message;
                     }
                 });
                 return next;
             });
-        }, e => {
-            console.error("Messaging Listener Error (Permission Denied?):", e);
-        });
+        }, e => console.error("Error fetching sent messages:", e));
 
-    return () => unsubMessages();
+    // Listener B: Messages I RECEIVED
+    const unsubReceived = db.collection("messages")
+        .where("receiverId", "==", authUid)
+        .onSnapshot(s => {
+            setReceivedMessagesMap(prev => {
+                const next = { ...prev };
+                s.docChanges().forEach(change => {
+                    if (change.type === 'removed') {
+                        delete next[change.doc.id];
+                    } else {
+                        next[change.doc.id] = { ...change.doc.data(), id: change.doc.id } as Message;
+                    }
+                });
+                return next;
+            });
+        }, e => console.error("Error fetching received messages:", e));
+
+    return () => {
+        unsubSent();
+        unsubReceived();
+    };
   }, [authUid]);
 
   // 5. Admin Data Fetch
@@ -150,13 +173,17 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
+  // Merge and sort messages from both listeners
   const messages = useMemo(() => {
-    return (Object.values(messagesMap) as Message[]).sort((a: Message, b: Message) => {
+    // Merge maps (duplicates handled by object keys)
+    const combinedMap = { ...sentMessagesMap, ...receivedMessagesMap };
+    
+    return Object.values(combinedMap).sort((a: Message, b: Message) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
         return timeB - timeA; 
     });
-  }, [messagesMap]);
+  }, [sentMessagesMap, receivedMessagesMap]);
 
   const availableInterests = useMemo(() => Array.from(new Set([...COMMON_INTERESTS, ...(taxonomy.approvedInterests || [])])).sort(), [taxonomy.approvedInterests]);
   const availableCategories = useMemo(() => Array.from(new Set([...CATEGORIES, ...(taxonomy.approvedCategories || [])])).sort(), [taxonomy.approvedCategories]);
@@ -330,12 +357,10 @@ export const App: React.FC = () => {
                 return; 
             }
             
-            // CRITICAL FIX: Adding participantIds to the payload
-            // This is required by the security rule: allow create: if request.auth.uid in request.resource.data.participantIds;
+            // Using 'messages' collection, simple sender/receiver logic
             const msgData = { 
               senderId: authUid, 
               receiverId: rid, 
-              participantIds: [authUid, rid], // <--- This was missing/critical
               senderName: currentUser?.name || 'משתמש', 
               receiverName: rn, 
               subject: s, 
@@ -344,12 +369,12 @@ export const App: React.FC = () => {
               isRead: false 
             };
             
-            db.collection("conversations").add(msgData).catch(e => {
+            db.collection("messages").add(msgData).catch(e => {
                 console.error("Detailed Send Error:", e);
-                alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שחוקי האבטחה (participantIds) תקינים.`);
+                alert(`שגיאה בשליחת הודעה: ${e.message}`);
             });
         }} 
-        onMarkAsRead={id => { if (!authUid) return; db.collection("conversations").doc(id).update({ isRead: true }); }} 
+        onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 
       />
 
