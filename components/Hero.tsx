@@ -29,10 +29,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                   <span>הצטרפו למהפכת הכלכלה השיתופית</span>
               </div>
 
-              <h1 className="text-4xl tracking-tight font-extrabold text-slate-800 sm:text-5xl md:text-6xl leading-tight">
+              <h1 className="text-4xl tracking-tight font-extrabold text-slate-900 sm:text-5xl md:text-6xl leading-tight">
                 <span className="block">הכסף החדש של</span>{' '}
                 <span className="relative inline-block mt-1">
-                    <span className="relative z-10 text-brand-800">העצמאים בישראל</span>
+                    <span className="relative z-10 text-brand-600">העצמאים בישראל</span>
                     <span className="absolute bottom-1 right-0 w-full h-3 bg-brand-100 -z-10 opacity-70 skew-x-[-10deg]"></span>
                 </span>
               </h1>
@@ -129,7 +129,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                     <h3 className="font-bold text-slate-900 text-lg mb-1 group-hover:text-emerald-700 transition-colors">חוסכים בהוצאות העסק</h3>
                     {/* Fixed height to ensure alignment,removed line-clamp to show full text */}
                     <p className="text-slate-500 text-sm font-normal leading-relaxed min-h-[3.5rem]">
-                        משתמשים בכישרון שלכם כמטבע עובר לסוחר. מקבלים שירותים שווים בלי להוציא שקל.
+                        משתמשים בכישרון שלכם כמטבע עבור הסוחר. מקבלים שירותים שווים בלי להוציא שקל.
                     </p>
                 </div>
             </div>
