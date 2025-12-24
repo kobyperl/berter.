@@ -78,7 +78,7 @@ export const App: React.FC = () => {
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setMessagesMap({}); // Clear messages on logout
+          setMessagesMap({});
           setIsAuthChecking(false);
       }
     });
@@ -95,10 +95,7 @@ export const App: React.FC = () => {
         }
         setIsAuthChecking(false);
       },
-      err => { 
-        console.error("Profile sync error:", err); 
-        setIsAuthChecking(false); 
-      }
+      err => { console.error("Profile sync error:", err); setIsAuthChecking(false); }
     );
     return () => unsub();
   }, [authUid]);
@@ -108,7 +105,6 @@ export const App: React.FC = () => {
     const isAdmin = currentUser?.role === 'admin';
     let offersQuery = db.collection("offers");
     
-    // Non-admins only query active to avoid Permission Denied
     if (!isAdmin) {
         offersQuery = offersQuery.where("status", "==", "active") as any;
     }
@@ -121,40 +117,38 @@ export const App: React.FC = () => {
             setIsOffersLoading(false); 
         },
         e => { 
-            console.error("Offers fetch error:", e); 
+            if (e.code !== 'permission-denied') console.error("Offers fetch error:", e);
             setIsOffersLoading(false); 
         }
     );
 
     const unsubAds = db.collection("systemAds").where("isActive", "==", true).onSnapshot(
         s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setSystemAds(f); },
-        e => console.error("Ads fetch error:", e)
+        e => {}
     );
 
     const unsubTax = db.collection("system").doc("taxonomy").onSnapshot(
         d => d.exists && setTaxonomy(d.data() as SystemTaxonomy),
-        e => console.error("Taxonomy fetch error:", e)
+        e => {}
     );
 
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
-  }, [currentUser?.role]);
+  }, [currentUser?.role, authUid]);
 
-  // 4. Messaging Listeners - Clear map on auth change and filter strictly
+  // 4. Messaging Listeners - Robust Unified Map
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // Reset messages when starting a new listener for a new user
-    setMessagesMap({});
-
     const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
       setMessagesMap(prev => {
         const next = { ...prev };
         s.forEach(d => {
           const data = d.data() as Message;
-          if (data.senderId && data.receiverId) {
+          // וידוא שההודעה תקינה ורלוונטית
+          if (data.senderId && data.receiverId && (data.senderId === authUid || data.receiverId === authUid)) {
              next[d.id] = { ...data, id: d.id };
           }
         });
@@ -162,19 +156,14 @@ export const App: React.FC = () => {
       });
     };
 
+    // שאילתות נפרדות לביצועים ודיוק מול ה-Rules
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleUpdate, e => {
-            if (e.code === 'permission-denied') console.warn("Messages access restricted by rules.");
-            else console.error("Sent messages listener error:", e);
-        });
+        .onSnapshot(handleUpdate, e => console.warn("Sent messages access:", e.message));
 
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleUpdate, e => {
-            if (e.code === 'permission-denied') console.warn("Messages access restricted by rules.");
-            else console.error("Received messages listener error:", e);
-        });
+        .onSnapshot(handleUpdate, e => console.warn("Received messages access:", e.message));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -184,7 +173,7 @@ export const App: React.FC = () => {
     if (!authUid || !currentUser || currentUser.role !== 'admin') return;
     const unsubUsers = db.collection("users").onSnapshot(
       s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setUsers(f); },
-      e => console.error("Admin users fetch error:", e)
+      e => {}
     );
     const unsubPendingOffers = db.collection("offers").where("status", "==", "pending").onSnapshot(
         s => {
