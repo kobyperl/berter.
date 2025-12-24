@@ -70,16 +70,15 @@ export const App: React.FC = () => {
       approvedCategories: [], pendingCategories: [], approvedInterests: [], pendingInterests: [], categoryHierarchy: {}
   });
 
-  // 1. Auth Listener - IMPORTANT: Clears state on logout
+  // 1. Auth Listener
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
-      console.log("Auth Change detected:", firebaseUser?.uid ? "IN" : "OUT");
       if (firebaseUser) {
           setAuthUid(firebaseUser.uid);
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setMessagesMap({}); // CRITICAL: Clear messages when logging out to prevent privacy leak
+          setMessagesMap({});
           setIsAuthChecking(false);
       }
     });
@@ -118,42 +117,45 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, []);
 
-  // 4. Private Messaging (Strict Filters + Clean Memory)
+  // 4. Private Messaging - Improved Logic
   useEffect(() => {
     if (!authUid) {
-        setMessagesMap({}); // Clear messages map if no user
+        setMessagesMap({});
         return;
     }
 
-    // Reset local map when switching users
-    setMessagesMap({});
+    console.log("Initializing Message Listeners for UID:", authUid);
 
-    const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
+    const handleUpdate = (s: firebase.firestore.QuerySnapshot, source: string) => {
+      console.log(`Received ${s.size} messages from ${source}`);
       setMessagesMap(prev => {
         const next = { ...prev };
-        s.forEach(d => { next[d.id] = { ...d.data() as Message, id: d.id }; });
+        s.forEach(d => {
+          next[d.id] = { ...d.data() as Message, id: d.id };
+        });
         return next;
       });
     };
 
-    console.log("Setting up private message listeners for:", authUid);
-
-    // Filter strictly by sender OR receiver. 
-    // Adding orderBy will trigger index requirements which we want for speed.
+    // listener 1: Sent by me
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
         .orderBy("timestamp", "desc")
         .onSnapshot(
-            handleUpdate, 
-            e => console.error("Sent messages failed. Index link in console? ->", e.message)
+            s => handleUpdate(s, "SENT"),
+            e => {
+                console.error("SENT Messages Query Failed:", e.message);
+                // If it fails because of missing index, Firebase provides a link in the console
+            }
         );
 
+    // listener 2: Received by me
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
         .orderBy("timestamp", "desc")
         .onSnapshot(
-            handleUpdate, 
-            e => console.error("Received messages failed. Index link in console? ->", e.message)
+            s => handleUpdate(s, "RECEIVED"),
+            e => console.error("RECEIVED Messages Query Failed:", e.message)
         );
 
     return () => { unsubSent(); unsubReceived(); };
@@ -170,7 +172,12 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
-  const messages = useMemo(() => Object.values(messagesMap).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [messagesMap]);
+  const messages = useMemo(() => {
+    const list = Object.values(messagesMap);
+    console.log("Current merged messages count:", list.length);
+    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [messagesMap]);
+
   const availableInterests = useMemo(() => Array.from(new Set([...COMMON_INTERESTS, ...(taxonomy.approvedInterests || [])])).sort(), [taxonomy.approvedInterests]);
   const availableCategories = useMemo(() => Array.from(new Set([...CATEGORIES, ...(taxonomy.approvedCategories || [])])).sort(), [taxonomy.approvedCategories]);
 
