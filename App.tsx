@@ -123,7 +123,7 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - ROBUST MODE (No orderBy, Client-side Sort)
+  // 4. Messaging Listener - ALIGNED WITH INDEXES
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
@@ -146,18 +146,27 @@ export const App: React.FC = () => {
         });
     };
 
-    // Simple WHERE queries utilize automatic single-field indexes.
-    // This bypasses any issues with composite indexes or sorting errors on the server.
-    
-    // 1. Messages I Sent
+    console.log("Setting up chat listeners for User:", authUid);
+
+    // Query 1: Messages I sent
+    // Must match index: senderId Ascending, timestamp Descending
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleSnap, e => console.error("Chat Error (Sent):", e));
+        .orderBy("timestamp", "desc")
+        .onSnapshot(
+            handleSnap, 
+            e => console.error("Chat Error (Sent):", e.code, e.message)
+        );
 
-    // 2. Messages I Received
+    // Query 2: Messages I received
+    // Must match index: receiverId Ascending, timestamp Descending
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleSnap, e => console.error("Chat Error (Received):", e));
+        .orderBy("timestamp", "desc")
+        .onSnapshot(
+            handleSnap, 
+            e => console.error("Chat Error (Received):", e.code, e.message)
+        );
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -172,12 +181,11 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
-  // Client-side Sorting: Handles the order perfectly without needing Firestore indexes
   const messages = useMemo(() => {
     return Object.values(messagesMap).sort((a, b) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return timeA - timeB; // Ascending for chat flow logic, or handled in UI
+        return timeB - timeA; 
     });
   }, [messagesMap]);
 
