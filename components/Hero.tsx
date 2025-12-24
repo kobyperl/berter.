@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Wallet, Users, TrendingUp, Sparkles, ArrowDown } from 'lucide-react';
 import { UserProfile } from '../types';

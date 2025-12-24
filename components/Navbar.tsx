@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ArrowRightLeft, Menu, X, PlusCircle, MessageSquare, User as UserIcon, LogOut, Shield, FileText, Search, Megaphone, BarChart3, Home, Heart, Settings } from 'lucide-react';
 import { UserProfile } from '../types';
