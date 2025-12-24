@@ -57,7 +57,7 @@ export interface Message {
   id: string;
   senderId: string;
   receiverId: string;
-  participantIds?: string[]; // Added for new optimized query
+  participantIds: string[]; // חובה! נדרש עבור חוקי האבטחה החדשים
   senderName: string;
   receiverName: string;
   subject: string;
