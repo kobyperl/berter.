@@ -106,19 +106,17 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - USING NEW CLEAN COLLECTION 'chats'
+  // 4. Messaging Listener - SIMPLIFIED QUERY (No OrderBy/Limit to fix permissions)
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // שימוש בקולקציית 'chats' החדשה.
-    // אם תופיע שגיאה בקונסול עם לינק לאינדקס - לחץ עליו!
+    // הסרנו את orderBy ו-limit כדי למנוע התנגשות עם חוקי האבטחה והצורך באינדקסים מורכבים.
+    // המיון מתבצע בצד הלקוח ב-useMemo למטה.
     const unsubMessages = db.collection("chats")
         .where("participantIds", "array-contains", authUid)
-        .orderBy("timestamp", "desc") // הוספנו מיון כדי לוודא סדר נכון
-        .limit(100) // הגבלה סבירה לשיפור ביצועים
         .onSnapshot(s => {
             setMessagesMap(prev => {
                 const next = { ...prev };
@@ -133,7 +131,7 @@ export const App: React.FC = () => {
                 return next;
             });
         }, e => {
-            console.error("Chat Listener Error (Check Console for Index Link):", e);
+            console.error("Chat Listener Error:", e);
         });
 
     return () => unsubMessages();
@@ -329,7 +327,6 @@ export const App: React.FC = () => {
                 return; 
             }
             
-            // יצירת הודעה ב-chats. הוספנו לוגים לדיבוג.
             const msg: Message = { 
               id: '', 
               senderId: authUid, 
@@ -343,8 +340,6 @@ export const App: React.FC = () => {
               isRead: false 
             };
             
-            console.log("Sending to chats:", msg);
-
             db.collection("chats").add(msg).catch(e => {
                 console.error("Detailed Send Error:", e);
                 alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שהחוקים מעודכנים בקונסול.`);
