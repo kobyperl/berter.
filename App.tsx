@@ -123,14 +123,13 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - FIXED TO USE INDEXES
+  // 4. Messaging Listener - ROBUST MODE (No orderBy, Client-side Sort)
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // A helper to safely update the map
     const handleSnap = (s: firebase.firestore.QuerySnapshot) => {
         setMessagesMap(prev => {
             const next = { ...prev };
@@ -138,26 +137,27 @@ export const App: React.FC = () => {
                 if (change.type === 'removed') {
                     delete next[change.doc.id];
                 } else {
-                    next[change.doc.id] = { ...change.doc.data() as Message, id: change.doc.id };
+                    const data = change.doc.data() as Message;
+                    // Ensure ID is present
+                    next[change.doc.id] = { ...data, id: change.doc.id };
                 }
             });
             return next;
         });
     };
 
-    // Query 1: Messages I sent (Uses Index: senderId Asc, timestamp Desc)
+    // Simple WHERE queries utilize automatic single-field indexes.
+    // This bypasses any issues with composite indexes or sorting errors on the server.
+    
+    // 1. Messages I Sent
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .orderBy("timestamp", "desc") 
-        .limit(100) // Optimization limit
-        .onSnapshot(handleSnap, e => console.error("Messaging Error (Sent):", e));
+        .onSnapshot(handleSnap, e => console.error("Chat Error (Sent):", e));
 
-    // Query 2: Messages I received (Uses Index: receiverId Asc, timestamp Desc)
+    // 2. Messages I Received
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .orderBy("timestamp", "desc")
-        .limit(100) // Optimization limit
-        .onSnapshot(handleSnap, e => console.error("Messaging Error (Received):", e));
+        .onSnapshot(handleSnap, e => console.error("Chat Error (Received):", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
@@ -172,11 +172,12 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
+  // Client-side Sorting: Handles the order perfectly without needing Firestore indexes
   const messages = useMemo(() => {
     return Object.values(messagesMap).sort((a, b) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return timeB - timeA;
+        return timeA - timeB; // Ascending for chat flow logic, or handled in UI
     });
   }, [messagesMap]);
 
