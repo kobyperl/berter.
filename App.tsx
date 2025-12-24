@@ -74,10 +74,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
-          console.log("Logged in as UID:", firebaseUser.uid);
           setAuthUid(firebaseUser.uid);
       } else {
-          console.log("No user logged in.");
           setAuthUid(null);
           setCurrentUser(null);
           setMessagesMap({});
@@ -102,7 +100,7 @@ export const App: React.FC = () => {
     return () => unsub();
   }, [authUid]);
 
-  // 3. Public Data (Offers, Ads, Taxonomy)
+  // 3. Public Data
   useEffect(() => {
     const unsubOffers = db.collection("offers").onSnapshot(
         s => { let f: any[] = []; s.forEach(d => f.push({...d.data(), id: d.id})); setOffers(f); setIsOffersLoading(false); },
@@ -119,14 +117,14 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, []);
 
-  // 4. Private Messaging
+  // 4. Personal Messaging - Strict Filters
   useEffect(() => {
-    if (!authUid) return;
+    if (!authUid) {
+        setMessagesMap({});
+        return;
+    }
 
-    console.log("Setting up messaging listeners for UID:", authUid);
-
-    const handleUpdate = (s: firebase.firestore.QuerySnapshot, source: string) => {
-      console.log(`Success: Found ${s.size} messages in ${source}`);
+    const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
       setMessagesMap(prev => {
         const next = { ...prev };
         s.forEach(d => {
@@ -136,35 +134,20 @@ export const App: React.FC = () => {
       });
     };
 
-    // First attempt: with orderBy (requires index)
-    // If you see "Permission Denied" here, it means some docs in your DB 
-    // are missing 'senderId' or 'receiverId' fields.
+    // listener 1: הודעות ששלחתי
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .orderBy("timestamp", "desc")
-        .onSnapshot(
-            s => handleUpdate(s, "SENT"),
-            e => {
-                console.error("SENT Query Failed:", e.message);
-                // Fallback: Try without orderBy to see if it's a field issue
-                db.collection("messages").where("senderId", "==", authUid).get()
-                    .then(s => console.log("Fallback check: found", s.size, "sent docs without order"))
-                    .catch(err => console.error("Total failure on SENT:", err.message));
-            }
-        );
+        .onSnapshot(handleUpdate, e => console.error("Error fetching sent messages:", e));
 
+    // listener 2: הודעות שקיבלתי
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .orderBy("timestamp", "desc")
-        .onSnapshot(
-            s => handleUpdate(s, "RECEIVED"),
-            e => console.error("RECEIVED Query Failed:", e.message)
-        );
+        .onSnapshot(handleUpdate, e => console.error("Error fetching received messages:", e));
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
 
-  // 5. Admin Only
+  // 5. Admin Only Data
   useEffect(() => {
     if (!authUid || !currentUser || currentUser.role !== 'admin') return;
     const unsub = db.collection("users").onSnapshot(
