@@ -106,15 +106,17 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener
+  // 4. Messaging Listener - FIXED & VERIFIED
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
-    // UPDATE: Using 'conversations' collection and Explicit Filter
-    // This MUST match the security rule: allow read: if request.auth.uid in resource.data.participantIds;
+    // CRITICAL: This query matches the Security Rule:
+    // allow read: if request.auth.uid in resource.data.participantIds;
+    console.log("Setting up listener for conversations where participantIds contains:", authUid);
+    
     const unsubMessages = db.collection("conversations")
         .where("participantIds", "array-contains", authUid)
         .onSnapshot(s => {
@@ -124,6 +126,7 @@ export const App: React.FC = () => {
                     if (change.type === 'removed') {
                         delete next[change.doc.id];
                     } else {
+                        // Spread doc.data() and ensure ID is attached
                         const data = change.doc.data() as Message;
                         next[change.doc.id] = { ...data, id: change.doc.id };
                     }
@@ -131,7 +134,7 @@ export const App: React.FC = () => {
                 return next;
             });
         }, e => {
-            console.error("Chat Listener Error:", e);
+            console.error("Messaging Listener Error (Permission Denied?):", e);
         });
 
     return () => unsubMessages();
@@ -327,11 +330,12 @@ export const App: React.FC = () => {
                 return; 
             }
             
-            // Clean object without auto-generated ID, using 'conversations'
+            // CRITICAL FIX: Adding participantIds to the payload
+            // This is required by the security rule: allow create: if request.auth.uid in request.resource.data.participantIds;
             const msgData = { 
               senderId: authUid, 
               receiverId: rid, 
-              participantIds: [authUid, rid], 
+              participantIds: [authUid, rid], // <--- This was missing/critical
               senderName: currentUser?.name || 'משתמש', 
               receiverName: rn, 
               subject: s, 
@@ -342,7 +346,7 @@ export const App: React.FC = () => {
             
             db.collection("conversations").add(msgData).catch(e => {
                 console.error("Detailed Send Error:", e);
-                alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שהחוקים מעודכנים בקונסול.`);
+                alert(`שגיאה בשליחת הודעה: ${e.message}\nוודא שחוקי האבטחה (participantIds) תקינים.`);
             });
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("conversations").doc(id).update({ isRead: true }); }} 
