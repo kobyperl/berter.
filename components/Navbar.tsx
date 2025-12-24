@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-slate-50 text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-normal transition duration-150 ease-in-out"
+                    className="block w-full pl-4 pr-10 py-1.5 border border-slate-300 rounded-full leading-5 bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 sm:text-sm font-normal transition duration-150 ease-in-out"
                     placeholder="חיפוש..."
                     onChange={(e) => onSearch(e.target.value)}
                   />
@@ -238,7 +238,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                   <input
                     type="text"
-                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-slate-50 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-normal"
+                    className="block w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:bg-white focus:border-brand-500 transition duration-150 ease-in-out font-normal text-slate-900"
                     placeholder="חיפוש שירות..."
                     onChange={(e) => onSearch(e.target.value)}
                   />

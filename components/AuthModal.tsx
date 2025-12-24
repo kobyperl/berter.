@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mail, Lock, Briefcase, CheckCircle2, Heart, Plus, Tag, Camera, Image as ImageIcon, Trash2, Loader2, Upload, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { X, Mail, Lock, Briefcase, CheckCircle2, Heart, Plus, Tag, Camera, Image as ImageIcon, Trash2, Loader2, Upload, AlertCircle, Eye, EyeOff, Search, Sparkles } from 'lucide-react';
 import { UserProfile, ExpertiseLevel } from '../types';
+import firebase, { db } from '../services/firebaseConfig';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -21,7 +22,6 @@ const normalizeUrl = (url: string): string => {
     return `https://${trimmed}`;
 };
 
-// Aggressive compression to handle 10+ images within 1MB Firestore limit
 const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -31,22 +31,19 @@ const compressImage = (file: File): Promise<string> => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_SIZE = 600; // Smaller size for better safety
+          const MAX_SIZE = 600; 
           let width = img.width;
           let height = img.height;
-  
           if (width > height) {
             if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
           } else {
             if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
           }
-  
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              // 0.4 quality ensures images are small (30-50KB) so 10+ fit in one document
               resolve(canvas.toDataURL('image/jpeg', 0.4));
           } else { reject(new Error("Canvas context error")); }
         };
@@ -109,29 +106,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       try {
           const promises = Array.from(files).map(f => compressImage(f as File));
           const results = await Promise.all(promises);
-          setPortfolioImages(prev => [...prev, ...results].slice(0, 15)); // Safe limit of 15 compressed images
+          setPortfolioImages(prev => [...prev, ...results].slice(0, 15));
       } catch (err) { alert("שגיאה בטעינת התמונות"); }
       finally { setIsUploading(false); e.target.value = ''; }
   };
 
+  const handleAddInterest = (interest: string) => {
+      const val = interest.trim();
+      if (!val) return;
+      if (!interestsList.includes(val)) {
+          setInterestsList([...interestsList, val]);
+          // Check if custom to add to pending in backend
+          if (!availableInterests.includes(val)) {
+              db.collection("system").doc("taxonomy").update({
+                  pendingInterests: firebase.firestore.FieldValue.arrayUnion(val)
+              }).catch(e => console.error("Taxonomy update failed", e));
+          }
+      }
+      setInterestInput('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (isLoginMode) {
-        if (!email.trim() || !password.trim()) {
-            alert("נא למלא אימייל וסיסמה");
-            return;
-        }
+        if (!email.trim() || !password.trim()) { alert("נא למלא אימייל וסיסמה"); return; }
         setIsSubmitting(true);
-        try {
-            await onLogin(email, password);
-        } catch (err) {
-            setIsSubmitting(false);
-        }
+        try { await onLogin(email, password); } catch (err) { setIsSubmitting(false); }
     } else {
         if (!firstName.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !mainField.trim() || interestsList.length < 2 || !acceptedPrivacy) {
             setShowErrors(true);
-            if (password.length < 6) alert("הסיסמה חייבת להכיל לפחות 6 תווים");
             return;
         }
         setIsSubmitting(true);
@@ -145,15 +148,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
           interests: interestsList
         };
-        try {
-            await onRegister(newUser, password);
-        } catch (err) {
-            setIsSubmitting(false);
-        }
+        try { await onRegister(newUser, password); } catch (err) { setIsSubmitting(false); }
     }
   };
 
-  const inputBaseClass = "w-full text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm border border-slate-300 text-right";
+  const inputBaseClass = "w-full text-slate-900 placeholder-slate-400 rounded-xl p-3.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm border border-slate-300 text-right bg-white";
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
@@ -166,7 +165,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
             
-            <div className="p-6 bg-slate-50/50 max-h-[85vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6 bg-white max-h-[85vh] overflow-y-auto custom-scrollbar">
                 <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                     {!isLoginMode && (
                         <div className="flex justify-center mb-4">
@@ -209,38 +208,63 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 <datalist id="categories-list">{availableCategories.map(cat => <option key={cat} value={cat} />)}</datalist>
                             </div>
 
-                            <div className={`p-3 rounded-xl border ${showErrors && interestsList.length < 2 ? 'bg-red-50 border-red-200' : 'border-slate-200'}`}>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-2">תחומי עניין (לפחות 2) *</label>
-                                <div className="flex gap-2 mb-2">
-                                    <input list="interests-list" className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs outline-none text-right" placeholder="חפש או הוסף..." value={interestInput} onChange={e => setInterestInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), interestInput.trim() && (setInterestsList([...new Set([...interestsList, interestInput.trim()])]), setInterestInput('')))} />
-                                    <button type="button" onClick={() => interestInput.trim() && (setInterestsList([...new Set([...interestsList, interestInput.trim()])]), setInterestInput(''))} className="bg-brand-600 text-white rounded-lg px-3"><Plus className="w-4 h-4" /></button>
+                            <div className="relative">
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">תחומי עניין (לפחות 2) *</label>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <input 
+                                            list="interests-list"
+                                            className={`${inputBaseClass} ${showErrors && interestsList.length < 2 ? 'border-red-500' : ''}`} 
+                                            placeholder="הוסף תחום עניין..." 
+                                            value={interestInput} 
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                // If value matches an option exactly, add it immediately for a smooth native-like feel
+                                                if (availableInterests.includes(val)) {
+                                                    handleAddInterest(val);
+                                                } else {
+                                                    setInterestInput(val);
+                                                }
+                                            }} 
+                                            onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), handleAddInterest(interestInput))} 
+                                        />
+                                        <datalist id="interests-list">{availableInterests.filter(i => !interestsList.includes(i)).map(int => <option key={int} value={int} />)}</datalist>
+                                    </div>
+                                    <button type="button" onClick={() => handleAddInterest(interestInput)} disabled={!interestInput.trim()} className="bg-slate-800 text-white rounded-xl px-4 hover:bg-black transition-colors disabled:opacity-50 shadow-sm"><Plus className="w-5 h-5" /></button>
                                 </div>
-                                <div className="flex flex-wrap gap-1.5">{interestsList.map(int => <span key={int} className="bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1">{int}<button type="button" onClick={() => setInterestsList(interestsList.filter(i => i !== int))}><X className="w-3 h-3 text-slate-400" /></button></span>)}</div>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {interestsList.map(int => (
+                                        <span key={int} className="bg-brand-50 text-brand-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-brand-100 shadow-sm animate-in zoom-in-95">
+                                            {int}
+                                            <button type="button" onClick={() => setInterestsList(interestsList.filter(i => i !== int))}><X className="w-3.5 h-3.5" /></button>
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
 
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-brand-500" />גלריית עבודות (אופציונלי)</label>
                                 <div className="flex flex-wrap gap-2 mb-2">
                                     {portfolioImages.map((img, idx) => <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden border group"><img src={img} className="w-full h-full object-cover" alt="work" /><button type="button" onClick={() => setPortfolioImages(prev => prev.filter((_, i) => i !== idx))} className="absolute inset-0 bg-black/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Trash2 className="w-3 h-3" /></button></div>)}
-                                    <button type="button" onClick={() => !isUploading && portfolioInputRef.current?.click()} className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-white">{isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</button>
+                                    <button type="button" onClick={() => !isUploading && portfolioInputRef.current?.click()} className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-colors">{isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</button>
                                 </div>
                                 <input type="file" ref={portfolioInputRef} className="hidden" accept="image/*" multiple onChange={handlePortfolioUpload} />
                                 <input type="text" className={inputBaseClass} placeholder="לינק לאתר (אופציונלי)" value={portfolioUrl} onChange={e => setPortfolioUrl(e.target.value)} />
                             </div>
 
-                            <div className={`flex items-start gap-2 p-2.5 rounded-xl border text-[10px] ${showErrors && !acceptedPrivacy ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                            <div className={`flex items-start gap-2 p-3 rounded-xl border text-[10px] ${showErrors && !acceptedPrivacy ? 'bg-red-50 border-red-200 text-red-700 font-bold' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                                 <input type="checkbox" id="privacy" className="mt-0.5" checked={acceptedPrivacy} onChange={e => setAcceptedPrivacy(e.target.checked)} />
-                                <label htmlFor="privacy" className="cursor-pointer">אני מאשר/ת את <button type="button" onClick={onOpenPrivacyPolicy} className="text-brand-600 underline font-bold">מדיניות הפרטיות</button> ותנאי השימוש. *</label>
+                                <label htmlFor="privacy" className="cursor-pointer leading-relaxed">אני מאשר/ת את <button type="button" onClick={onOpenPrivacyPolicy} className="text-brand-600 underline font-bold">מדיניות הפרטיות</button> ותנאי השימוש באתר. *</label>
                             </div>
                         </>
                     )}
 
-                    <button type="submit" disabled={isSubmitting || isUploading} className="w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                    <button type="submit" disabled={isSubmitting || isUploading} className="w-full bg-brand-600 text-white font-bold py-4 rounded-xl hover:bg-brand-700 transition-all shadow-md active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2">
                         {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLoginMode ? 'התחברות' : 'הרשמה')}
                     </button>
                 </form>
 
-                <div className="mt-6 text-center text-sm">
+                <div className="mt-6 text-center text-sm border-t border-slate-50 pt-4">
                     <span className="text-slate-500">{isLoginMode ? 'אין לך חשבון?' : 'כבר רשום?'}</span>
                     <button onClick={() => setIsLoginMode(!isLoginMode)} className="mr-2 text-brand-600 font-bold hover:underline">{isLoginMode ? 'הירשם עכשיו' : 'התחבר'}</button>
                 </div>

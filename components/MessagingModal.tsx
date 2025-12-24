@@ -173,7 +173,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input 
                             type="text" 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pr-10 pl-4 text-sm focus:border-brand-500 focus:bg-white outline-none transition-all"
+                            className="w-full bg-white border border-slate-200 rounded-full py-2 pr-10 pl-4 text-sm focus:border-brand-500 focus:bg-white outline-none transition-all text-slate-900"
                             placeholder="חפש שיחה..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -245,7 +245,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                         <div className="bg-white p-3 flex items-center gap-2 border-t border-slate-200 shrink-0">
                             <input 
                                 type="text"
-                                className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 rounded-full py-2.5 px-5 outline-none focus:border-brand-500 focus:bg-white transition-all text-sm"
+                                className="flex-1 bg-white border border-slate-200 text-slate-900 rounded-full py-2.5 px-5 outline-none focus:border-brand-500 focus:bg-white transition-all text-sm"
                                 placeholder="הקלד הודעה..."
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
