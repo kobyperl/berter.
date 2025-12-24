@@ -25,7 +25,7 @@ const compressImage = (file: File): Promise<string> => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 800; 
+          const MAX_WIDTH = 400; // Aggressive compression
           let width = img.width;
           let height = img.height;
   
@@ -40,7 +40,7 @@ const compressImage = (file: File): Promise<string> => {
           const ctx = canvas.getContext('2d');
           if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL('image/jpeg', 0.8));
+              resolve(canvas.toDataURL('image/jpeg', 0.4)); // Low quality
           } else {
               reject(new Error("Could not get canvas context"));
           }
@@ -67,9 +67,15 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
       
       setIsLoading(true);
       try {
-          const promises = Array.from(files).map(file => compressImage(file as File));
+          const remainingSlots = 6 - portfolioImages.length;
+          if (remainingSlots <= 0) {
+              alert("ניתן להעלות עד 6 תמונות.");
+              return;
+          }
+          const filesToProcess = Array.from(files).slice(0, remainingSlots);
+          const promises = filesToProcess.map(file => compressImage(file as File));
           const compressedImages = await Promise.all(promises);
-          setPortfolioImages(prev => [...prev, ...compressedImages]);
+          setPortfolioImages(prev => [...prev, ...compressedImages].slice(0, 6));
       } catch (err) {
           console.error(err);
           alert('שגיאה בטעינת התמונות');
@@ -81,6 +87,10 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
 
   const handleAddImageUrl = () => {
       if (newImageUrl) {
+          if (portfolioImages.length >= 6) {
+              alert("ניתן להוסיף עד 6 תמונות.");
+              return;
+          }
           setPortfolioImages(prev => [...prev, newImageUrl]);
           setNewImageUrl('');
       }
@@ -93,7 +103,7 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
   const handleSave = () => {
       onSave({ 
           portfolioUrl: normalizeUrl(portfolioUrl), 
-          portfolioImages 
+          portfolioImages: portfolioImages.slice(0, 6) 
       });
   };
 
@@ -142,15 +152,18 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
                     </div>
 
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                            <ImageIcon className="w-4 h-4 text-brand-500" />
-                            העלאת עבודות לתיק העבודות
-                        </label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-bold text-slate-700 flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4 text-brand-500" />
+                                העלאת עבודות לתיק העבודות
+                            </label>
+                            <span className="text-xs text-slate-400">{portfolioImages.length}/6</span>
+                        </div>
                         
                         <div className="flex gap-2 mb-3 items-center">
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                disabled={isLoading}
+                                disabled={isLoading || portfolioImages.length >= 6}
                                 className="bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-200 flex items-center gap-2 border border-slate-200 transition-colors disabled:opacity-50"
                             >
                                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -174,10 +187,11 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({ isOp
                                     placeholder="או הדבק קישור לתמונה"
                                     value={newImageUrl}
                                     onChange={(e) => setNewImageUrl(e.target.value)}
+                                    disabled={portfolioImages.length >= 6}
                                 />
                                 <button 
                                     onClick={handleAddImageUrl}
-                                    disabled={!newImageUrl}
+                                    disabled={!newImageUrl || portfolioImages.length >= 6}
                                     className="absolute left-1 top-1 bottom-1 bg-brand-50 text-brand-600 px-2 rounded-lg hover:bg-brand-100 disabled:opacity-0 transition-all"
                                 >
                                     <Plus className="w-5 h-5" />

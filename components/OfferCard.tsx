@@ -98,38 +98,39 @@ export const OfferCard: React.FC<OfferCardProps> = ({
                                     <h4 className={`font-bold text-lg leading-snug flex flex-wrap items-center gap-2 ${isExpired ? 'text-slate-500' : 'text-slate-900'}`}>
                                         {offer.title}
                                         {isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">פג תוקף</span>}
-                                        {isPending && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><EyeOff className="w-3 h-3" />ממתין</span>}
+                                        {isPending && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><EyeOff className="w-3 h-3" />ממתין לאישור מנהל</span>}
                                     </h4>
-                                    
-                                    {/* Action Buttons in Compact Mode - Moved here for better visibility */}
-                                    <div className="flex items-center gap-1 mr-2" onClick={e => e.stopPropagation()}>
-                                        {onEdit && (
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); onEdit(offer); }} 
-                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-full transition-colors" 
-                                                title="ערוך הצעה"
-                                            >
-                                                <Edit className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                        {onDelete && (
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} 
-                                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" 
-                                                title="מחק הצעה"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </div>
                                 </div>
                                 <div className="mt-0.5 mb-1 opacity-90 scale-95 origin-top-right" onClick={e => e.stopPropagation()}>{renderStars(true)}</div>
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-0.5"><span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><MapPin className="w-3 h-3" />{offer.location}</span>{offer.expirationDate && !isExpired && <span className="inline-flex items-center gap-1 text-[11px] text-red-500 font-medium"><Calendar className="w-3 h-3" />עד: {new Date(offer.expirationDate).toLocaleDateString('he-IL')}</span>}</div>
                             </div>
                             <div className="flex flex-col gap-1.5 w-full mt-1"><div className="flex items-start gap-1.5 min-w-0"><span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-indigo-600'}`}>מבקש/ת:</span><span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.requestedService}</span></div><div className="flex items-start gap-1.5 min-w-0"><span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-emerald-600'}`}>נותן/ת:</span><span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.offeredService}</span></div></div>
                         </div>
-                        <div className="flex flex-col items-end justify-center h-full pl-1">
-                            <div className="text-slate-400">{isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>
+                        <div className="flex flex-col items-end justify-start h-full pl-1 gap-2">
+                            <div className="text-slate-400 hover:text-slate-600 transition-colors p-1">{isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>
+                            
+                            {(onEdit || onDelete) && (
+                                <div className="flex flex-col gap-2 mt-1" onClick={e => e.stopPropagation()}>
+                                    {onEdit && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onEdit(offer); }} 
+                                            className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors" 
+                                            title="ערוך הצעה"
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    {onDelete && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} 
+                                            className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+                                            title="מחק הצעה"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -145,6 +146,12 @@ export const OfferCard: React.FC<OfferCardProps> = ({
     <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col h-full relative ${isLowRated ? 'opacity-80' : ''} ${isExpired ? 'opacity-75 bg-slate-50' : ''} ${isPending ? 'border-orange-300 ring-1 ring-orange-100' : ''}`}>
       <div className="absolute top-4 left-4 z-10 flex flex-col items-end gap-1.5">
           <div className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm ${isOngoing ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>{isOngoing ? <Repeat className="w-3 h-3" /> : <Clock className="w-3 h-3" />}{isOngoing ? 'ברטר מתמשך' : 'פרויקט חד פעמי'}</div>
+          {isPending && (
+              <div className="px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm bg-orange-100 text-orange-700 border border-orange-200 animate-pulse">
+                  <EyeOff className="w-3 h-3" />
+                  ממתין לאישור מנהל
+              </div>
+          )}
       </div>
 
       <div className="p-5 flex-1 flex flex-col">
@@ -162,7 +169,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
         <div className="h-32 overflow-y-auto mb-2 custom-scrollbar"><p className="text-sm text-slate-500 leading-relaxed font-normal">{offer.description}</p></div>
         <div className="flex flex-wrap gap-2 mb-2 mt-auto">{offer.tags.map(tag => <span key={tag} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded">#{tag}</span>)}</div>
       </div>
-      <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-4"><div className="flex flex-col sm:flex-row gap-1 sm:gap-3 text-xs text-slate-400"><div className="flex items-center gap-1"><MapPin className="w-3 h-3 flex-shrink-0" /><span className="leading-none">{offer.location}</span></div><div className="flex items-center gap-1"><Calendar className="w-3 h-3 flex-shrink-0" /><span className="leading-none">{new Date(offer.createdAt).toLocaleDateString('he-IL')}</span></div></div><button onClick={() => onContact(offer.profile)} disabled={isExpired} className={`text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shrink-0 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4" />{isExpired ? 'לא רלוונטי' : 'שלח הודעה'}</button></div>
+      <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-4"><div className="flex flex-col sm:flex-row gap-1 sm:gap-3 text-xs text-slate-400"><div className="flex items-center gap-1"><MapPin className="w-3 h-3 flex-shrink-0" /><span className="leading-none">{offer.location}</span></div><div className="flex items-center gap-1"><Calendar className="w-3 h-3 flex-shrink-0" /><span className="leading-none">{new Date(offer.createdAt).toLocaleDateString('he-IL')}</span></div></div><div className="flex items-center gap-2"><button onClick={() => onContact(offer.profile)} disabled={isExpired} className={`text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shrink-0 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4" />{isExpired ? 'לא רלוונטי' : 'שלח הודעה'}</button>{(onDelete || onEdit) && (<div className="flex gap-1 border-r border-slate-200 pr-2 mr-2">{onEdit && (<button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors"><Edit className="w-4 h-4" /></button>)}{onDelete && (<button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>)}</div>)}</div></div>
     </div>
   );
 };

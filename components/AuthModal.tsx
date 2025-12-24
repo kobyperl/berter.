@@ -31,7 +31,7 @@ const compressImage = (file: File): Promise<string> => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_SIZE = 600; 
+          const MAX_SIZE = 400; // Aggressive compression for Firestore limits
           let width = img.width;
           let height = img.height;
           if (width > height) {
@@ -44,7 +44,7 @@ const compressImage = (file: File): Promise<string> => {
           const ctx = canvas.getContext('2d');
           if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL('image/jpeg', 0.4));
+              resolve(canvas.toDataURL('image/jpeg', 0.4)); // Low quality for small thumbnails
           } else { reject(new Error("Canvas context error")); }
         };
         img.onerror = (err) => reject(err);
@@ -108,9 +108,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (!files) return;
       setIsUploading(true);
       try {
-          const promises = Array.from(files).map(f => compressImage(f as File));
+          const remainingSlots = 6 - portfolioImages.length;
+          if (remainingSlots <= 0) {
+              alert("ניתן להעלות עד 6 תמונות.");
+              setIsUploading(false);
+              return;
+          }
+          const filesToProcess = Array.from(files).slice(0, remainingSlots);
+          const promises = filesToProcess.map(f => compressImage(f as File));
           const results = await Promise.all(promises);
-          setPortfolioImages(prev => [...prev, ...results].slice(0, 15));
+          setPortfolioImages(prev => [...prev, ...results].slice(0, 6));
       } catch (err) { alert("שגיאה בטעינת התמונות"); }
       finally { setIsUploading(false); e.target.value = ''; }
   };
@@ -166,7 +173,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           mainField: mainFieldsList[0], // First one is primary
           secondaryFields: mainFieldsList.slice(1), // Rest are secondary
           portfolioUrl: normalizeUrl(portfolioUrl),
-          portfolioImages, 
+          portfolioImages: portfolioImages.slice(0, 6), // Explicitly slice
           expertise: ExpertiseLevel.MID,
           avatarUrl: avatarDataUrl || `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
           interests: interestsList
@@ -252,7 +259,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 </div>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                     {mainFieldsList.map(field => (
-                                        <span key={field} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-blue-100 shadow-sm animate-in zoom-in-95">
+                                        <span key={field} className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border border-blue-100 shadow-sm animate-in zoom-in-95">
+                                            <Briefcase className="w-3.5 h-3.5" />
                                             {field}
                                             <button type="button" onClick={() => setMainFieldsList(mainFieldsList.filter(f => f !== field))}><X className="w-3.5 h-3.5" /></button>
                                         </span>
@@ -287,7 +295,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 </div>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                     {interestsList.map(int => (
-                                        <span key={int} className="bg-brand-50 text-brand-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-brand-100 shadow-sm animate-in zoom-in-95">
+                                        <span key={int} className="bg-brand-50 text-brand-700 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border border-brand-100 shadow-sm animate-in zoom-in-95">
+                                            <Heart className="w-3.5 h-3.5" />
                                             {int}
                                             <button type="button" onClick={() => setInterestsList(interestsList.filter(i => i !== int))}><X className="w-3.5 h-3.5" /></button>
                                         </span>
@@ -296,10 +305,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-brand-500" />גלריית עבודות (אופציונלי)</label>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-2 flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5 text-brand-500" />גלריית עבודות (אופציונלי - עד 6 תמונות)</label>
                                 <div className="flex flex-wrap gap-2 mb-2">
                                     {portfolioImages.map((img, idx) => <div key={idx} className="relative w-12 h-12 rounded-lg overflow-hidden border group"><img src={img} className="w-full h-full object-cover" alt="work" /><button type="button" onClick={() => setPortfolioImages(prev => prev.filter((_, i) => i !== idx))} className="absolute inset-0 bg-black/40 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Trash2 className="w-3 h-3" /></button></div>)}
-                                    <button type="button" onClick={() => !isUploading && portfolioInputRef.current?.click()} className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-colors">{isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</button>
+                                    <button type="button" onClick={() => !isUploading && portfolioImages.length < 6 && portfolioInputRef.current?.click()} disabled={portfolioImages.length >= 6} className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</button>
                                 </div>
                                 <input type="file" ref={portfolioInputRef} className="hidden" accept="image/*" multiple onChange={handlePortfolioUpload} />
                                 <input type="text" className={inputBaseClass} placeholder="לינק לאתר (אופציונלי)" value={portfolioUrl} onChange={e => setPortfolioUrl(e.target.value)} />
