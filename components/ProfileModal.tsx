@@ -175,15 +175,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     <div className="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={onClose}></div>
-        <div className="inline-block bg-white rounded-2xl text-right shadow-xl transform transition-all sm:max-w-4xl w-full max-h-[90vh] flex flex-col relative z-50 overflow-hidden">
-            <div className="h-28 bg-gradient-to-r from-brand-500 to-teal-600 relative shrink-0 z-0">
-                <button onClick={onClose} className="absolute top-4 left-4 bg-black/20 hover:bg-black/30 text-white p-2 rounded-full transition-all z-10 backdrop-blur-sm"><X className="w-5 h-5" /></button>
+        <div className="inline-block bg-white rounded-2xl text-right shadow-xl transform transition-all sm:max-w-4xl w-full max-h-[90vh] flex flex-col relative z-50 overflow-y-auto custom-scrollbar">
+            <div className="h-28 bg-gradient-to-r from-brand-500 to-teal-600 sticky top-0 shrink-0 z-10">
+                <button onClick={onClose} className="absolute top-4 left-4 bg-black/20 hover:bg-black/30 text-white p-2 rounded-full transition-all z-20 backdrop-blur-sm"><X className="w-5 h-5" /></button>
                 {(isOwnProfile || isAdmin) && !isEditing && (
-                    <button onClick={() => setIsEditing(true)} className="absolute top-4 right-4 bg-white text-brand-700 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-slate-50 transition-colors"><Pencil className="w-3 h-3" />{isAdmin && !isOwnProfile ? 'ערוך (מנהל)' : 'ערוך פרופיל'}</button>
+                    <button onClick={() => setIsEditing(true)} className="absolute top-4 right-4 bg-white text-brand-700 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-slate-50 transition-colors z-20"><Pencil className="w-3 h-3" />{isAdmin && !isOwnProfile ? 'ערוך (מנהל)' : 'ערוך פרופיל'}</button>
                 )}
             </div>
             
-            <div className="px-6 pb-6 overflow-y-auto custom-scrollbar relative z-10 flex-1">
+            <div className="px-6 pb-6 relative">
                 {isEditing && editFormData ? (
                     <form onSubmit={handleSave} className="-mt-10 relative z-20 bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-4">
                          <div className="mb-4 flex justify-center">
@@ -258,16 +258,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     </form>
                 ) : (
                     <>
-                        <div className="relative z-20 flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-10 mb-6 gap-4">
-                            <div className="flex items-end gap-4">
-                                <img src={displayProfile.avatarUrl} alt={displayProfile.name} className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover aspect-square shrink-0" />
-                                <div className="pb-1"> 
+                        <div className="relative z-40 flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-10 mb-6 gap-4">
+                            <div className="flex items-end gap-4 relative z-50">
+                                <img src={displayProfile.avatarUrl} alt={displayProfile.name} className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover aspect-square shrink-0 relative z-50" />
+                                <div className="pb-1 relative z-50"> 
                                     <h2 className="text-2xl font-bold text-slate-900 leading-tight">{displayProfile.name}</h2>
                                     <p className="text-sm text-slate-500 flex items-center gap-1.5 mt-1 font-medium"><Briefcase className="w-3.5 h-3.5 shrink-0" />{displayProfile.mainField}</p>
                                 </div>
                             </div>
                             {displayProfile.portfolioUrl && (
-                                <div className="w-full sm:w-auto flex justify-start sm:justify-end sm:mb-1">
+                                <div className="w-full sm:w-auto flex justify-start sm:justify-end sm:mb-1 relative z-50">
                                     <a href={displayProfile.portfolioUrl} target="_blank" rel="noreferrer" className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-50 hover:text-brand-600 flex items-center justify-center gap-2 shadow-sm transition-all w-full sm:w-auto"><ExternalLink className="w-3.5 h-3.5" />תיק עבודות</a>
                                 </div>
                             )}
