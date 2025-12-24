@@ -17,6 +17,7 @@ export interface UserProfile {
   portfolioImages?: string[]; // New: Visual portfolio gallery
   expertise: ExpertiseLevel;
   mainField: string; // Used for ad targeting and relevance
+  secondaryFields?: string[]; // New: Allow up to 3 fields in registration
   interests?: string[]; // New: For personalization (Sports, Baking, etc.)
   bio?: string;
   joinedAt?: string;

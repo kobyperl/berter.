@@ -74,7 +74,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [mainField, setMainField] = useState('');
+  
+  // Replaced single mainField string with list logic
+  const [mainFieldsList, setMainFieldsList] = useState<string[]>([]);
+  const [mainFieldInput, setMainFieldInput] = useState('');
+
   const [portfolioUrl, setPortfolioUrl] = useState('');
   const [avatarDataUrl, setAvatarDataUrl] = useState('');
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
@@ -111,6 +115,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       finally { setIsUploading(false); e.target.value = ''; }
   };
 
+  const handleAddMainField = (category: string) => {
+      const val = category.trim();
+      if (!val) return;
+      if (mainFieldsList.length >= 3) {
+          return; // Max 3
+      }
+      if (!mainFieldsList.includes(val)) {
+          setMainFieldsList([...mainFieldsList, val]);
+          // Check if custom to add to pending in backend
+          if (!availableCategories.includes(val)) {
+              db.collection("system").doc("taxonomy").update({
+                  pendingCategories: firebase.firestore.FieldValue.arrayUnion(val)
+              }).catch(e => console.error("Taxonomy update failed", e));
+          }
+      }
+      setMainFieldInput('');
+  };
+
   const handleAddInterest = (interest: string) => {
       const val = interest.trim();
       if (!val) return;
@@ -133,7 +155,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setIsSubmitting(true);
         try { await onLogin(email, password); } catch (err) { setIsSubmitting(false); }
     } else {
-        if (!firstName.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !mainField.trim() || interestsList.length < 2 || !acceptedPrivacy) {
+        if (!firstName.trim() || !lastName.trim() || !email.trim() || password.length < 6 || mainFieldsList.length === 0 || interestsList.length < 2 || !acceptedPrivacy) {
             setShowErrors(true);
             return;
         }
@@ -141,7 +163,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const newUser: Partial<UserProfile> = {
           name: `${firstName} ${lastName}`,
           email,
-          mainField: mainField.trim(),
+          mainField: mainFieldsList[0], // First one is primary
+          secondaryFields: mainFieldsList.slice(1), // Rest are secondary
           portfolioUrl: normalizeUrl(portfolioUrl),
           portfolioImages, 
           expertise: ExpertiseLevel.MID,
@@ -202,12 +225,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                     {!isLoginMode && (
                         <>
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-1">תחום עיסוק ראשי *</label>
-                                <input list="categories-list" className={`${inputBaseClass} ${showErrors && !mainField ? 'border-red-500' : ''}`} placeholder="התחל להקליד..." value={mainField} onChange={e => setMainField(e.target.value)} />
-                                <datalist id="categories-list">{availableCategories.map(cat => <option key={cat} value={cat} />)}</datalist>
+                            {/* Main Field of Occupation - Updated UI */}
+                            <div className="relative">
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">תחום עיסוק (עד 3) *</label>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <input 
+                                            list="categories-list"
+                                            className={`${inputBaseClass} ${showErrors && mainFieldsList.length === 0 ? 'border-red-500' : ''}`}
+                                            placeholder="הוסף תחום עיסוק"
+                                            value={mainFieldInput}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                if (availableCategories.includes(val)) {
+                                                    handleAddMainField(val);
+                                                } else {
+                                                    setMainFieldInput(val);
+                                                }
+                                            }}
+                                            onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), handleAddMainField(mainFieldInput))}
+                                            disabled={mainFieldsList.length >= 3}
+                                        />
+                                        <datalist id="categories-list">{availableCategories.filter(c => !mainFieldsList.includes(c)).map(cat => <option key={cat} value={cat} />)}</datalist>
+                                    </div>
+                                    <button type="button" onClick={() => handleAddMainField(mainFieldInput)} disabled={!mainFieldInput.trim() || mainFieldsList.length >= 3} className="bg-brand-600 text-white rounded-xl px-4 hover:bg-brand-700 transition-colors disabled:opacity-50 shadow-sm"><Plus className="w-5 h-5" /></button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {mainFieldsList.map(field => (
+                                        <span key={field} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 border border-blue-100 shadow-sm animate-in zoom-in-95">
+                                            {field}
+                                            <button type="button" onClick={() => setMainFieldsList(mainFieldsList.filter(f => f !== field))}><X className="w-3.5 h-3.5" /></button>
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
 
+                            {/* Interests - Updated Button Color */}
                             <div className="relative">
                                 <label className="block text-[11px] font-bold text-slate-700 mb-1">תחומי עניין (לפחות 2) *</label>
                                 <div className="flex gap-2">
@@ -230,7 +283,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                         />
                                         <datalist id="interests-list">{availableInterests.filter(i => !interestsList.includes(i)).map(int => <option key={int} value={int} />)}</datalist>
                                     </div>
-                                    <button type="button" onClick={() => handleAddInterest(interestInput)} disabled={!interestInput.trim()} className="bg-slate-800 text-white rounded-xl px-4 hover:bg-black transition-colors disabled:opacity-50 shadow-sm"><Plus className="w-5 h-5" /></button>
+                                    <button type="button" onClick={() => handleAddInterest(interestInput)} disabled={!interestInput.trim()} className="bg-brand-600 text-white rounded-xl px-4 hover:bg-brand-700 transition-colors disabled:opacity-50 shadow-sm"><Plus className="w-5 h-5" /></button>
                                 </div>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                     {interestsList.map(int => (
