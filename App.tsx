@@ -70,16 +70,16 @@ export const App: React.FC = () => {
       approvedCategories: [], pendingCategories: [], approvedInterests: [], pendingInterests: [], categoryHierarchy: {}
   });
 
-  // 1. Auth Listener
+  // 1. Auth Listener - IMPORTANT: Clears state on logout
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
-      console.log("Auth Status:", firebaseUser ? "Logged In: " + firebaseUser.uid : "Logged Out");
+      console.log("Auth Change detected:", firebaseUser?.uid ? "IN" : "OUT");
       if (firebaseUser) {
           setAuthUid(firebaseUser.uid);
       } else {
           setAuthUid(null);
           setCurrentUser(null);
-          setMessagesMap({});
+          setMessagesMap({}); // CRITICAL: Clear messages when logging out to prevent privacy leak
           setIsAuthChecking(false);
       }
     });
@@ -118,9 +118,15 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, []);
 
-  // 4. Private Messaging (Optimized for no permissions errors)
+  // 4. Private Messaging (Strict Filters + Clean Memory)
   useEffect(() => {
-    if (!authUid) return;
+    if (!authUid) {
+        setMessagesMap({}); // Clear messages map if no user
+        return;
+    }
+
+    // Reset local map when switching users
+    setMessagesMap({});
 
     const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
       setMessagesMap(prev => {
@@ -130,17 +136,25 @@ export const App: React.FC = () => {
       });
     };
 
-    console.log("Starting Messaging listeners for user:", authUid);
+    console.log("Setting up private message listeners for:", authUid);
 
-    // split queries to minimize index requirements
-    const unsubSent = db.collection("messages").where("senderId", "==", authUid).onSnapshot(
-        handleUpdate, 
-        e => console.error("Query 'messages where senderId' failed:", e.message)
-    );
-    const unsubReceived = db.collection("messages").where("receiverId", "==", authUid).onSnapshot(
-        handleUpdate, 
-        e => console.error("Query 'messages where receiverId' failed:", e.message)
-    );
+    // Filter strictly by sender OR receiver. 
+    // Adding orderBy will trigger index requirements which we want for speed.
+    const unsubSent = db.collection("messages")
+        .where("senderId", "==", authUid)
+        .orderBy("timestamp", "desc")
+        .onSnapshot(
+            handleUpdate, 
+            e => console.error("Sent messages failed. Index link in console? ->", e.message)
+        );
+
+    const unsubReceived = db.collection("messages")
+        .where("receiverId", "==", authUid)
+        .orderBy("timestamp", "desc")
+        .onSnapshot(
+            handleUpdate, 
+            e => console.error("Received messages failed. Index link in console? ->", e.message)
+        );
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
