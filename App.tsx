@@ -77,7 +77,7 @@ export const App: React.FC = () => {
       categoryHierarchy: {}
   });
 
-  // --- Auth Listener ---
+  // --- 1. Auth Listener (Fundamental) ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
@@ -92,7 +92,7 @@ export const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  // Fetch current user doc
+  // --- 2. Current User Profile Sync ---
   useEffect(() => {
     if (!authUid) return;
     const unsubscribeUserDoc = db.collection("users").doc(authUid).onSnapshot(
@@ -103,14 +103,14 @@ export const App: React.FC = () => {
         setIsAuthChecking(false); 
       },
       (error) => {
-        console.warn("User profile sync delay:", error.message);
+        console.error("Auth Profile Error:", error.message);
         setIsAuthChecking(false);
       }
     );
     return () => unsubscribeUserDoc();
   }, [authUid]);
 
-  // --- Public Data ---
+  // --- 3. Public Data Listeners (Always Allowed) ---
   useEffect(() => {
     const unsubscribeOffers = db.collection("offers").onSnapshot(
       (snapshot) => {
@@ -121,7 +121,7 @@ export const App: React.FC = () => {
         setIsOffersLoading(false);
       },
       (error) => {
-        console.warn("Offers sync delay:", error.message);
+        console.warn("Offers Sync Error (Check Rules):", error.message);
         setIsOffersLoading(false);
       }
     );
@@ -132,22 +132,26 @@ export const App: React.FC = () => {
         snapshot.forEach((doc) => fetched.push({ ...doc.data() as SystemAd, id: doc.id }));
         setSystemAds(fetched);
       },
-      (error) => console.warn("Ads sync delay")
+      (error) => console.warn("Ads Sync Error:", error.message)
     );
 
     const unsubscribeTaxonomy = db.collection("system").doc("taxonomy").onSnapshot(
       (docSnap) => {
         if (docSnap.exists) setTaxonomy(docSnap.data() as SystemTaxonomy);
       },
-      (error) => console.warn("Taxonomy sync delay")
+      (error) => console.warn("Taxonomy Sync Error:", error.message)
     );
 
     return () => { unsubscribeOffers(); unsubscribeAds(); unsubscribeTaxonomy(); };
   }, []);
 
-  // --- PRIVATE MESSAGES SYNC (Vercel Fix) ---
+  // --- 4. Private Messaging Listeners (Vercel Fix) ---
   useEffect(() => {
-    if (!authUid) { setMessagesMap({}); return; }
+    // CRITICAL: Only run if we have a valid Auth ID
+    if (!authUid) { 
+        setMessagesMap({}); 
+        return; 
+    }
 
     const handleMessageUpdate = (snapshot: firebase.firestore.QuerySnapshot) => {
         setMessagesMap(prev => {
@@ -160,11 +164,11 @@ export const App: React.FC = () => {
     };
 
     const handleError = (err: any) => {
-        // If you see this in console, you need to click the link provided by Firebase to create an index
-        console.error("Firestore Query Error:", err.message);
+        // If this appears, click the link in the browser console to create a Firestore Index
+        console.error("Messaging Listener Error:", err.message);
     };
 
-    // We split into two listeners to ensure we catch everything without needing complex composite indexes initially
+    // Separate queries to avoid complex index requirements initially
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
         .onSnapshot(handleMessageUpdate, handleError);
@@ -176,19 +180,26 @@ export const App: React.FC = () => {
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
 
-  // --- Admin Logic ---
+  // --- 5. Admin-Only Listeners ---
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'admin') { setUsers([]); return; }
+    // Only listen if user is confirmed ADMIN and ID is present
+    if (!authUid || !currentUser || currentUser.role !== 'admin') { 
+        setUsers([]); 
+        return; 
+    }
+
     const unsubscribeUsers = db.collection("users").onSnapshot(
       (snapshot) => {
         const fetched: UserProfile[] = [];
         snapshot.forEach((doc) => fetched.push({ ...doc.data() as UserProfile, id: doc.id }));
         setUsers(fetched);
       },
-      (error) => console.warn("Admin users sync restricted")
+      (error) => {
+        console.error("Admin Users List Error (Permission Denied):", error.message);
+      }
     );
     return () => unsubscribeUsers();
-  }, [currentUser?.role, authUid]); 
+  }, [authUid, currentUser?.role]); 
 
   // --- Computed ---
   const messages = useMemo(() => {
@@ -254,7 +265,7 @@ export const App: React.FC = () => {
   
   const handleAddOffer = async (newOffer: BarterOffer) => { 
     if (!authUid) return;
-    db.collection("offers").doc(newOffer.id).set(newOffer).catch(e => alert("שגיאה בפרסום: " + e.message));
+    db.collection("offers").doc(newOffer.id).set(newOffer).catch(e => alert("שגיאת הרשאה: " + e.message));
   };
 
   const filteredOffers = useMemo(() => {
@@ -320,7 +331,7 @@ export const App: React.FC = () => {
                             onContact={p => { setSelectedProfile(p); setInitialMessageSubject(offer.title); setIsMessagingModalOpen(true); }} 
                             onUserClick={p => { setSelectedProfile(p); setIsProfileModalOpen(true); }} 
                             currentUserId={authUid || undefined} viewMode={viewMode}
-                            onDelete={id => db.collection("offers").doc(id).delete().catch(e => console.error("Delete restricted"))}
+                            onDelete={id => db.collection("offers").doc(id).delete().catch(e => console.error("Delete failed"))}
                             onEdit={o => { setEditingOffer(o); setIsCreateModalOpen(true); }}
                         />
                     ))}
@@ -378,7 +389,7 @@ export const App: React.FC = () => {
           />
       )}
 
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(false)} />
       
       <MessagingModal 
         isOpen={isMessagingModalOpen} 
