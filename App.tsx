@@ -135,20 +135,23 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [currentUser?.role, authUid]);
 
-  // 4. Messaging Listeners - Robust Unified Map
+  // 4. Messaging Listeners - Participant Privacy (Even for Admins)
   useEffect(() => {
     if (!authUid) {
         setMessagesMap({});
         return;
     }
 
+    // Reset messages when starting a new listener
+    setMessagesMap({});
+
     const handleUpdate = (s: firebase.firestore.QuerySnapshot) => {
       setMessagesMap(prev => {
         const next = { ...prev };
         s.forEach(d => {
           const data = d.data() as Message;
-          // וידוא שההודעה תקינה ורלוונטית
-          if (data.senderId && data.receiverId && (data.senderId === authUid || data.receiverId === authUid)) {
+          // Security filter double-check on client side
+          if (data.senderId === authUid || data.receiverId === authUid) {
              next[d.id] = { ...data, id: d.id };
           }
         });
@@ -156,19 +159,24 @@ export const App: React.FC = () => {
       });
     };
 
-    // שאילתות נפרדות לביצועים ודיוק מול ה-Rules
+    // We only listen to messages where WE are a participant. 
+    // This query matches the Security Rules exactly.
     const unsubSent = db.collection("messages")
         .where("senderId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.warn("Sent messages access:", e.message));
+        .onSnapshot(handleUpdate, e => {
+            if (e.code === 'permission-denied') console.warn("Messages Restricted (Sent Branch)");
+        });
 
     const unsubReceived = db.collection("messages")
         .where("receiverId", "==", authUid)
-        .onSnapshot(handleUpdate, e => console.warn("Received messages access:", e.message));
+        .onSnapshot(handleUpdate, e => {
+            if (e.code === 'permission-denied') console.warn("Messages Restricted (Received Branch)");
+        });
 
     return () => { unsubSent(); unsubReceived(); };
   }, [authUid]);
 
-  // 5. Admin Only Data
+  // 5. Admin Only Data (Excluding global messages for privacy)
   useEffect(() => {
     if (!authUid || !currentUser || currentUser.role !== 'admin') return;
     const unsubUsers = db.collection("users").onSnapshot(
