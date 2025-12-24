@@ -43,7 +43,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     const map = new Map<string, Conversation>();
     
     // סינון קריטי: וודא שרק הודעות שקשורות למשתמש הנוכחי נכנסות לחישוב השיחות
-    const personalMessages = messages.filter(m => m.senderId === currentUser || m.receiverId === currentUser);
+    // זה מבטיח שכל אחד (כולל אדמין) רואה רק את התיבה האישית שלו
+    const personalMessages = messages.filter(m => m && (m.senderId === currentUser || m.receiverId === currentUser));
 
     personalMessages.forEach(msg => {
       const isMeSender = msg.senderId === currentUser;
@@ -58,7 +59,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
         map.set(partnerId, {
           partnerId,
-          partnerName,
+          partnerName: partnerName || 'משתמש',
           lastMessage: msg,
           unreadCount: (existing?.unreadCount || 0) + (shouldCountAsUnread ? 1 : 0)
         });
@@ -85,14 +86,14 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return [];
-    // הצג רק הודעות בין המשתמש הנוכחי לבין הפרטנר שנבחר
-    return messages.filter(m => 
+    // הצג רק הודעות בתוך השיחה האישית שנבחרה
+    return messages.filter(m => m && (
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
-    ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    )).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // Jump to specific user conversation if provided
+  // Jump to specific user conversation if provided (e.g. from offer card)
   useEffect(() => {
     if (isOpen) {
         if (recipientProfile) {
@@ -102,7 +103,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     }
   }, [isOpen, recipientProfile]);
 
-  // Mark as read
+  // Mark as read logic
   useEffect(() => {
     if (isOpen && activeConversationId) {
         const unreadForActive = activeMessages.filter(m => 
@@ -156,7 +157,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
         subject = activeMessages[activeMessages.length - 1].subject; 
     }
 
-    onSendMessage(activeConversationId, receiverName, subject, newMessage);
+    onSendMessage(activeConversationId, receiverName || 'משתמש', subject, newMessage);
     setNewMessage('');
   };
 
