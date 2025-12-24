@@ -48,7 +48,7 @@ export const App: React.FC = () => {
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [offers, setOffers] = useState<BarterOffer[]>([]);
   
-  // Split state for messages to handle Firestore OR query limitation
+  // Split state for messages to strictly comply with Firestore Rules
   const [sentMessagesMap, setSentMessagesMap] = useState<Record<string, Message>>({});
   const [receivedMessagesMap, setReceivedMessagesMap] = useState<Record<string, Message>>({});
   
@@ -111,9 +111,9 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - SPLIT QUERY STRATEGY
-  // Firestore doesn't support logical OR across different fields in one query.
-  // We must listen to "sent" and "received" separately and merge them.
+  // 4. Messaging Listener - SPLIT QUERY STRATEGY (Fixed)
+  // We execute two separate queries to satisfy the security rule:
+  // allow read: if (resource.data.senderId == auth.uid || resource.data.receiverId == auth.uid);
   useEffect(() => {
     if (!authUid) {
         setSentMessagesMap({});
@@ -121,41 +121,35 @@ export const App: React.FC = () => {
         return;
     }
 
-    console.log("Setting up split listeners for messages...");
+    console.log("Initializing split message listeners...");
 
-    // Listener A: Messages I SENT
-    const unsubSent = db.collection("messages")
-        .where("senderId", "==", authUid)
-        .onSnapshot(s => {
-            setSentMessagesMap(prev => {
-                const next = { ...prev };
-                s.docChanges().forEach(change => {
-                    if (change.type === 'removed') {
-                        delete next[change.doc.id];
-                    } else {
-                        next[change.doc.id] = { ...change.doc.data(), id: change.doc.id } as Message;
-                    }
-                });
-                return next;
+    // Query 1: Messages where I am the SENDER
+    // Matches rule part: resource.data.senderId == request.auth.uid
+    const q1 = db.collection("messages").where("senderId", "==", authUid);
+    const unsubSent = q1.onSnapshot(
+        snapshot => {
+            const msgs: Record<string, Message> = {};
+            snapshot.forEach(doc => {
+                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
             });
-        }, e => console.error("Error fetching sent messages:", e));
+            setSentMessagesMap(msgs);
+        }, 
+        error => console.error("Error reading sent messages (q1):", error)
+    );
 
-    // Listener B: Messages I RECEIVED
-    const unsubReceived = db.collection("messages")
-        .where("receiverId", "==", authUid)
-        .onSnapshot(s => {
-            setReceivedMessagesMap(prev => {
-                const next = { ...prev };
-                s.docChanges().forEach(change => {
-                    if (change.type === 'removed') {
-                        delete next[change.doc.id];
-                    } else {
-                        next[change.doc.id] = { ...change.doc.data(), id: change.doc.id } as Message;
-                    }
-                });
-                return next;
+    // Query 2: Messages where I am the RECEIVER
+    // Matches rule part: resource.data.receiverId == request.auth.uid
+    const q2 = db.collection("messages").where("receiverId", "==", authUid);
+    const unsubReceived = q2.onSnapshot(
+        snapshot => {
+            const msgs: Record<string, Message> = {};
+            snapshot.forEach(doc => {
+                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
             });
-        }, e => console.error("Error fetching received messages:", e));
+            setReceivedMessagesMap(msgs);
+        }, 
+        error => console.error("Error reading received messages (q2):", error)
+    );
 
     return () => {
         unsubSent();
@@ -173,15 +167,15 @@ export const App: React.FC = () => {
   }, [authUid, currentUser?.role]);
 
   // --- Computed ---
-  // Merge and sort messages from both listeners
+  // Merge the two maps into one list and sort by time
   const messages = useMemo(() => {
-    // Merge maps (duplicates handled by object keys)
+    // Combine maps. If a message appears in both (e.g., self-message), key dedupes it.
     const combinedMap = { ...sentMessagesMap, ...receivedMessagesMap };
     
     return Object.values(combinedMap).sort((a: Message, b: Message) => {
         const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
         const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return timeB - timeA; 
+        return timeB - timeA; // Newest first
     });
   }, [sentMessagesMap, receivedMessagesMap]);
 
