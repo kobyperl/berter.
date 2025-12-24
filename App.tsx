@@ -111,51 +111,52 @@ export const App: React.FC = () => {
     return () => { unsubOffers(); unsubAds(); unsubTax(); };
   }, [authUid]);
 
-  // 4. Messaging Listener - SPLIT QUERY STRATEGY (Fixed)
-  // We execute two separate queries to satisfy the security rule:
-  // allow read: if (resource.data.senderId == auth.uid || resource.data.receiverId == auth.uid);
-  useEffect(() => {
-    if (!authUid) {
-        setSentMessagesMap({});
-        setReceivedMessagesMap({});
-        return;
-    }
+// 4. Messaging Listener - SPLIT QUERY STRATEGY (עם דיבוג)
+  useEffect(() => {
+    if (!authUid) {
+        setSentMessagesMap({});
+        setReceivedMessagesMap({});
+        return;
+    }
 
-    console.log("Initializing split message listeners...");
+    console.log("🟢 מתחיל להאזין להודעות עבור משתמש:", authUid);
 
-    // Query 1: Messages where I am the SENDER
-    // Matches rule part: resource.data.senderId == request.auth.uid
-    const q1 = db.collection("messages").where("senderId", "==", authUid);
-    const unsubSent = q1.onSnapshot(
-        snapshot => {
-            const msgs: Record<string, Message> = {};
-            snapshot.forEach(doc => {
-                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
-            });
-            setSentMessagesMap(msgs);
-        }, 
-        error => console.error("Error reading sent messages (q1):", error)
-    );
+    // Query 1: הודעות שאני שלחתי
+    const q1 = db.collection("messages").where("senderId", "==", authUid);
+    const unsubSent = q1.onSnapshot(
+        snapshot => {
+            console.log(`📨 נשלחו: מצאתי ${snapshot.size} הודעות שאני שלחתי`);
+            const msgs: Record<string, Message> = {};
+            snapshot.forEach(doc => {
+                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
+            });
+            setSentMessagesMap(msgs);
+        }, 
+        error => console.error("❌ שגיאה בטעינת הודעות שנשלחו:", error)
+    );
 
-    // Query 2: Messages where I am the RECEIVER
-    // Matches rule part: resource.data.receiverId == request.auth.uid
-    const q2 = db.collection("messages").where("receiverId", "==", authUid);
-    const unsubReceived = q2.onSnapshot(
-        snapshot => {
-            const msgs: Record<string, Message> = {};
-            snapshot.forEach(doc => {
-                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
-            });
-            setReceivedMessagesMap(msgs);
-        }, 
-        error => console.error("Error reading received messages (q2):", error)
-    );
+    // Query 2: הודעות שאני קיבלתי
+    const q2 = db.collection("messages").where("receiverId", "==", authUid);
+    const unsubReceived = q2.onSnapshot(
+        snapshot => {
+            console.log(`📥 התקבלו: מצאתי ${snapshot.size} הודעות שאני קיבלתי`);
+            // בדיקה האם יש הודעות ב-Snapshot
+            snapshot.forEach(doc => console.log("תוכן הודעה שהתקבלה:", doc.data()));
 
-    return () => {
-        unsubSent();
-        unsubReceived();
-    };
-  }, [authUid]);
+            const msgs: Record<string, Message> = {};
+            snapshot.forEach(doc => {
+                msgs[doc.id] = { ...doc.data(), id: doc.id } as Message;
+            });
+            setReceivedMessagesMap(msgs);
+        }, 
+        error => console.error("❌ שגיאה בטעינת הודעות שהתקבלו:", error)
+    );
+
+    return () => {
+        unsubSent();
+        unsubReceived();
+    };
+  }, [authUid]);
 
   // 5. Admin Data Fetch
   useEffect(() => {
