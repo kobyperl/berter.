@@ -6,7 +6,7 @@ import { Message, UserProfile } from '../types';
 interface MessagingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: string;
+  currentUser: string; // authUid
   messages: Message[];
   onSendMessage: (receiverId: string, receiverName: string, subject: string, content: string) => void;
   onMarkAsRead: (messageId: string) => void;
@@ -36,20 +36,23 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Track message IDs currently being updated to prevent flickering loops
   const processingReadIds = useRef<Set<string>>(new Set());
 
-  // --- Group messages into conversations ---
+  // --- Group messages into personal conversations only ---
   const conversationsMap = useMemo(() => {
     const map = new Map<string, Conversation>();
-    messages.forEach(msg => {
+    
+    // סינון קריטי: וודא שרק הודעות שקשורות למשתמש הנוכחי נכנסות לחישוב השיחות
+    const personalMessages = messages.filter(m => m.senderId === currentUser || m.receiverId === currentUser);
+
+    personalMessages.forEach(msg => {
       const isMeSender = msg.senderId === currentUser;
       const partnerId = isMeSender ? msg.receiverId : msg.senderId;
       const partnerName = isMeSender ? msg.receiverName : msg.senderName;
 
       const existing = map.get(partnerId);
       
-      // Calculate unread: I am the receiver AND message is unread AND it's NOT the conversation I am looking at right now
+      // בדיקה אם ההודעה לא נקראה (נחשב רק אם אני המקבל)
       const shouldCountAsUnread = !isMeSender && !msg.isRead && partnerId !== activeConversationId;
 
       if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
@@ -82,15 +85,14 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return [];
+    // הצג רק הודעות בין המשתמש הנוכחי לבין הפרטנר שנבחר
     return messages.filter(m => 
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
     ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // --- Effects ---
-
-  // 1. Initial Setup: If modal opens with a specific profile, jump to that conversation
+  // Jump to specific user conversation if provided
   useEffect(() => {
     if (isOpen) {
         if (recipientProfile) {
@@ -100,7 +102,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     }
   }, [isOpen, recipientProfile]);
 
-  // 2. Mark as read when viewing a conversation - Optimized with ref to prevent sync loop flickering
+  // Mark as read
   useEffect(() => {
     if (isOpen && activeConversationId) {
         const unreadForActive = activeMessages.filter(m => 
@@ -118,22 +120,17 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     }
   }, [isOpen, activeConversationId, activeMessages, currentUser, onMarkAsRead]);
 
-  // Cleanup processing list on modal close
   useEffect(() => {
-      if (!isOpen) {
-          processingReadIds.current.clear();
-      }
+      if (!isOpen) processingReadIds.current.clear();
   }, [isOpen]);
 
-  // 3. Auto-scroll to bottom
+  // Scroll to bottom
   useEffect(() => {
     if (isOpen && activeConversationId) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [activeMessages.length, isOpen, activeConversationId]);
 
-  // --- Helpers ---
-  
   const formatListDate = (dateStr: string) => {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return '';
@@ -152,7 +149,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     if (conv) receiverName = conv.partnerName;
     else if (recipientProfile && recipientProfile.id === activeConversationId) receiverName = recipientProfile.name;
 
-    // Determine subject: Use initial subject for new chats, or inherit from last message
     let subject = "Chat";
     if (activeMessages.length === 0 && initialSubject) {
         subject = initialSubject;
@@ -173,10 +169,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
       <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
       <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50">
-            {/* Sidebar: List of Conversations */}
             <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
-                    <h2 className="font-bold text-slate-800 text-lg">הודעות</h2>
+                    <h2 className="font-bold text-slate-800 text-lg">תיבת הודעות</h2>
                     <button onClick={onClose} className="sm:hidden p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
                 </div>
                 
@@ -195,7 +190,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredConversations.length === 0 && !recipientProfile ? (
-                        <div className="text-center p-8 text-slate-400 text-sm italic">אין שיחות פעילות</div>
+                        <div className="text-center p-8 text-slate-400 text-sm italic">אין לך שיחות פעילות כרגע</div>
                     ) : (
                         filteredConversations.map(conv => (
                             <div 
@@ -206,7 +201,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 <div className="relative shrink-0">
                                     <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">{conv.partnerName[0]}</div>
                                     {conv.unreadCount > 0 && (
-                                        <div className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white animate-pulse">
+                                        <div className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
                                             {conv.unreadCount}
                                         </div>
                                     )}
@@ -226,11 +221,9 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                 </div>
             </div>
 
-            {/* Main Chat Area */}
             <div className={`flex-1 flex flex-col bg-slate-100 relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 {activeConversationId ? (
                     <>
-                        {/* Chat Header */}
                         <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-10 shrink-0">
                             <div className="flex items-center gap-3">
                                 <button onClick={() => setActiveConversationId(null)} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
@@ -240,7 +233,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
                         </div>
 
-                        {/* Messages List */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                             {activeMessages.map((msg) => {
                                 const isMe = msg.senderId === currentUser;
@@ -258,7 +250,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input Area */}
                         <div className="bg-white p-3 flex items-center gap-2 border-t border-slate-200 shrink-0">
                             <input 
                                 type="text"
