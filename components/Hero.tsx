@@ -53,7 +53,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenWhoIsItFor, onOpenSearchTips, 
                                 onClick={onOpenSearchTips}
                                 className="w-full flex items-center justify-center px-8 py-4 border border-transparent text-base font-bold rounded-xl text-white bg-brand-600 hover:bg-brand-700 md:text-lg transition-all"
                             >
-                                מצאו שותף לברטר
+                                מצאו שותף לבארטר
                             </button>
                         </div>
 
