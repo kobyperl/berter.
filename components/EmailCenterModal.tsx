@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { X, Send, Clock, CheckCircle, Mail, AlertCircle, LayoutTemplate, Smartphone, Monitor, ChevronLeft, Settings, Menu } from 'lucide-react';
 import { WelcomeEmailPreview, ChatMessageAlertPreview, SmartMatchAlertPreview } from './EmailTemplates';
+import { db } from '../services/firebaseConfig';
 
 interface EmailCenterModalProps {
   isOpen: boolean;
@@ -28,45 +29,47 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
       setIsSidebarOpen(false); // Close sidebar on selection (mobile)
   };
 
-  const handleSendTest = async () => {
-      // 1. Debugging Logs & Alerts as requested
-      console.log("Button Clicked!");
-      alert("Sending... (Click OK to proceed with fetch)");
+  const getTestHtml = (type: EmailType) => {
+      const wrapper = (content: string) => `<div style="direction: rtl; text-align: right; font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; border-radius: 8px;">${content}</div>`;
+      
+      switch(type) {
+          case 'welcome': 
+            return wrapper(`
+                <h1 style="color: #0d9488; margin-bottom: 16px;">ברוכים הבאים (בדיקה)</h1>
+                <p>זוהי הודעת בדיקה למייל הרשמה.</p>
+            `);
+          case 'chat_alert':
+            return wrapper(`
+                <h1 style="color: #0d9488; margin-bottom: 16px;">הודעה חדשה (בדיקה)</h1>
+                <p>זוהי הודעת בדיקה להתראת צ'אט.</p>
+            `);
+          case 'smart_match':
+            return wrapper(`
+                <h1 style="color: #0d9488; margin-bottom: 16px;">התאמה חכמה (בדיקה)</h1>
+                <p>זוהי הודעת בדיקה למנוע ההתאמות.</p>
+            `);
+          default: return '';
+      }
+  };
 
+  const handleSendTest = async () => {
+      console.log("Sending Test Email via Firestore Trigger...");
       setIsSending(true);
 
       try {
-          // 2. Real Fetch Request
-          const response = await fetch('/api/emails/send', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                  type: selectedType,
-                  // Hardcoded admin email for testing purposes
-                  to: 'yaikov.p.0548562029@gmail.com', 
-                  data: {
-                      userName: 'Admin Tester',
-                      senderName: 'System Debugger'
-                  }
-              })
+          await db.collection('mail').add({
+              to: 'yaikov.p.0548562029@gmail.com', // Admin Email
+              message: {
+                  subject: `בדיקת מערכת: ${selectedType}`,
+                  html: getTestHtml(selectedType)
+              }
           });
 
-          // 3. Handle Response
-          if (response.ok) {
-              const result = await response.json();
-              console.log("Server Success:", result);
-              alert(`מייל בדיקה נשלח בהצלחה!\nID: ${result.id}`);
-          } else {
-              const errorData = await response.json().catch(() => ({}));
-              console.error("Server Error:", response.status, errorData);
-              alert(`שגיאה בשליחה: ${response.status} ${response.statusText}`);
-          }
+          alert("בקשת שליחה נרשמה בהצלחה ב-Firestore (אוסף 'mail')!");
 
       } catch (error: any) {
-          console.error("Network/Fetch Error:", error);
-          alert(`שגיאת רשת: ${error.message}`);
+          console.error("Firestore Write Error:", error);
+          alert(`שגיאה בשליחה: ${error.message}`);
       } finally {
           setIsSending(false);
       }
@@ -108,9 +111,9 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                 </div>
                 <div>
                     <h3 className="text-lg sm:text-xl font-bold tracking-wide">מרכז שליטה לאימיילים</h3>
-                    <p className="text-[10px] sm:text-xs text-slate-400 font-light flex items-center gap-2">
+                    <p className="text-[10px] sm:text-xs text-slate-400 font-normal flex items-center gap-2">
                         <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                        מחובר לשרת הדיוור (Resend API)
+                        מחובר ל-Firestore Trigger Extension
                     </p>
                 </div>
             </div>
@@ -282,7 +285,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
                             </div>
                         </div>
 
-                        {/* SEND BUTTON - DEBUGGING ADDED */}
+                        {/* SEND BUTTON */}
                         <button 
                             type="button"
                             onClick={handleSendTest}

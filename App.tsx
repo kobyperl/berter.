@@ -44,6 +44,54 @@ const translateAuthError = (code: string) => {
   }
 };
 
+// --- Email Templates Helpers ---
+const getWelcomeHtml = (name: string) => `
+  <div style="direction: rtl; text-align: right; font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <h1 style="color: #0d9488; margin-bottom: 16px;">ברוכים הבאים ל-Barter.org.il!</h1>
+    <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+      היי ${name},<br/><br/>
+      איזה כיף שהצטרפת לקהילה שלנו!<br/>
+      הפלטפורמה שלנו נועדה לאפשר לך לסחור בכישרון שלך, לחסוך בהוצאות ולהרחיב את הנטוורקינג העסקי שלך.<br/><br/>
+      <strong>מה כדאי לעשות עכשיו?</strong><br/>
+      כדי שאנשים יפנו אליך, אתה חייב לפרסם הצעה ראשונה. זה לוקח דקה ופותח לך דלת לעולם של אפשרויות.
+    </p>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="https://barter.org.il" style="display: inline-block; background-color: #0d9488; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">העלאת הצעה ראשונה</a>
+    </div>
+    <p style="font-size: 12px; color: #94a3b8; margin-top: 30px; text-align: center;">
+      © Barter.org.il
+    </p>
+  </div>
+`;
+
+const getChatHtml = (receiverName: string, senderName: string) => `
+  <div style="direction: rtl; text-align: right; font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <h1 style="color: #0d9488; margin-bottom: 16px;">הודעה חדשה מחכה לך</h1>
+    <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+      היי ${receiverName},<br/><br/>
+      <strong>${senderName}</strong> שלח/ה לך הודעה חדשה בצ'אט באתר.<br/>
+      שיתופי הפעולה הטובים ביותר נסגרים מהר - כדאי להיכנס ולהגיב.
+    </p>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="https://barter.org.il" style="display: inline-block; background-color: #0d9488; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">מעבר לצ'אט</a>
+    </div>
+  </div>
+`;
+
+const getSmartMatchHtml = (name: string) => `
+  <div style="direction: rtl; text-align: right; font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <h1 style="color: #0d9488; margin-bottom: 16px;">מצאנו התאמה עבורך!</h1>
+    <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+      היי ${name},<br/><br/>
+      האלגוריתם שלנו זיהה הצעות חדשות שעלו לאתר ומתאימות בול לפרופיל המקצועי ולתחומי העניין שלך.<br/>
+      ההזדמנויות האלו מחכות לך עכשיו ב"במיוחד בשבילך".
+    </p>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="https://barter.org.il" style="display: inline-block; background-color: #0d9488; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">צפה בהתאמות</a>
+    </div>
+  </div>
+`;
+
 export const App: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -160,7 +208,7 @@ export const App: React.FC = () => {
     return () => { unsubUsers(); };
   }, [authUid, currentUser?.role]);
 
-  // 6. Smart Match Email Logic
+  // 6. Smart Match Email Logic - TRIGGER EMAIL via Firestore
   useEffect(() => {
       if (!currentUser || !offers.length || isOffersLoading) return;
 
@@ -192,24 +240,22 @@ export const App: React.FC = () => {
           // Trigger Email if Matches > 5
           if (relevantOffers.length >= 5) {
               try {
-                  // Send Email
-                  await fetch('/api/emails/send', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                          type: 'smart_match',
-                          to: currentUser.email,
-                          data: { userName: currentUser.name }
-                      })
+                  // Trigger Email Extension via Firestore 'mail' collection
+                  await db.collection('mail').add({
+                      to: currentUser.email,
+                      message: {
+                          subject: 'מצאנו עבורך פרויקטים חדשים!',
+                          html: getSmartMatchHtml(currentUser.name)
+                      }
                   });
 
                   // Update Timestamp
                   await db.collection("users").doc(currentUser.id).update({
                       lastSmartMatchSent: new Date().toISOString()
                   });
-                  console.log("Smart match email sent successfully");
+                  console.log("Smart match email trigger added to 'mail' collection");
               } catch (e) {
-                  console.error("Failed to send smart match email", e);
+                  console.error("Failed to add smart match email trigger", e);
               }
           }
       };
@@ -256,7 +302,7 @@ export const App: React.FC = () => {
   const [durationFilter, setDurationFilter] = useState<'all' | 'one-time' | 'ongoing'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'deadline'>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
-  const [visibleCount, setVisibleCount] = useState(12); // Performance: Render 12 cards initially for grid alignment (3x4 or 2x6)
+  const [visibleCount, setVisibleCount] = useState(12); 
 
   // --- Handlers ---
   const handleRegister = async (u: Partial<UserProfile>, p: string) => {
@@ -267,18 +313,16 @@ export const App: React.FC = () => {
         await db.collection("users").doc(uid).set(profileData);
         
         // -----------------------
-        // TRIGGER: Welcome Email
+        // TRIGGER: Welcome Email via Firestore Extension
         // -----------------------
         if (u.email) {
-            fetch('/api/emails/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'welcome',
-                    to: u.email,
-                    data: { userName: u.name || 'משתמש חדש' }
-                })
-            }).catch(err => console.error("Welcome email failed", err));
+            db.collection('mail').add({
+                to: u.email,
+                message: {
+                    subject: 'ברוכים הבאים ל-Barter.org.il!',
+                    html: getWelcomeHtml(u.name || 'משתמש חדש')
+                }
+            }).catch(err => console.error("Welcome email trigger failed", err));
         }
 
         setIsAuthModalOpen(false);
@@ -303,7 +347,6 @@ export const App: React.FC = () => {
       if (!authUid) return; 
       try {
           await db.collection("offers").doc(o.id).set(o);
-          // Only show professionalism prompt if it's not a bulk admin update or similar
           if (o.profileId === authUid) {
               setIsProfessionalismPromptOpen(true);
           }
@@ -346,14 +389,11 @@ export const App: React.FC = () => {
 
   const handleGlobalProfileUpdate = async (profileData: any) => {
       try {
-          // 1. Update the User Document (This handles the merge and the pendingUpdate delete if present)
           await db.collection("users").doc(profileData.id).set(profileData, { merge: true });
 
-          // 2. Update Offers
-          // Create a "clean" object for the offers (snapshot).
           const cleanProfile = { ...profileData };
-          delete cleanProfile.pendingUpdate; // Don't store pending state in offers
-          delete cleanProfile.password; // Security cleanup just in case
+          delete cleanProfile.pendingUpdate; 
+          delete cleanProfile.password; 
           
           const offersSnap = await db.collection("offers").where("profileId", "==", profileData.id).get();
           const batch = db.batch();
@@ -545,23 +585,18 @@ export const App: React.FC = () => {
             db.collection("messages").add(msgData);
             
             // -----------------------
-            // TRIGGER: Chat Alert Email
+            // TRIGGER: Chat Alert Email via Firestore Extension
             // -----------------------
             db.collection("users").doc(rid).get().then(doc => {
                 const userData = doc.data() as UserProfile;
                 if (userData && userData.email) {
-                     fetch('/api/emails/send', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'chat_alert',
-                            to: userData.email,
-                            data: { 
-                                userName: userData.name,
-                                senderName: currentUser?.name || 'משתמש'
-                            }
-                        })
-                    }).catch(err => console.error("Chat alert email failed", err));
+                     db.collection('mail').add({
+                        to: userData.email,
+                        message: {
+                            subject: `הודעה חדשה מ-${currentUser?.name || 'משתמש'}`,
+                            html: getChatHtml(userData.name, currentUser?.name || 'משתמש')
+                        }
+                    }).catch(err => console.error("Chat alert email trigger failed", err));
                 }
             });
         }} 
