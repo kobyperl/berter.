@@ -160,6 +160,64 @@ export const App: React.FC = () => {
     return () => { unsubUsers(); };
   }, [authUid, currentUser?.role]);
 
+  // 6. Smart Match Email Logic
+  useEffect(() => {
+      if (!currentUser || !offers.length || isOffersLoading) return;
+
+      const checkSmartMatch = async () => {
+          // Check if we should even run this (spam prevention)
+          if (currentUser.lastSmartMatchSent) {
+              const lastSent = new Date(currentUser.lastSmartMatchSent);
+              const now = new Date();
+              const diffTime = Math.abs(now.getTime() - lastSent.getTime());
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              
+              // Only send once every 7 days
+              if (diffDays < 7) return; 
+          }
+
+          // Calculate "For You" Matches
+          const myCategories = [currentUser.mainField, ...(currentUser.secondaryFields || [])];
+          const myInterests = currentUser.interests || [];
+          
+          const relevantOffers = offers.filter(o => {
+              if (o.profileId === currentUser.id || o.status !== 'active') return false;
+              // Check if offer needs my skills (requested service matches my field)
+              const requestedMatch = myCategories.some(cat => o.requestedService.includes(cat) || o.title.includes(cat));
+              // Check if offer provides something I'm interested in (tags/service match my interests)
+              const interestMatch = myInterests.some(int => o.tags.includes(int) || o.offeredService.includes(int));
+              return requestedMatch || interestMatch;
+          });
+
+          // Trigger Email if Matches > 5
+          if (relevantOffers.length >= 5) {
+              try {
+                  // Send Email
+                  await fetch('/api/emails/send', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                          type: 'smart_match',
+                          to: currentUser.email,
+                          data: { userName: currentUser.name }
+                      })
+                  });
+
+                  // Update Timestamp
+                  await db.collection("users").doc(currentUser.id).update({
+                      lastSmartMatchSent: new Date().toISOString()
+                  });
+                  console.log("Smart match email sent successfully");
+              } catch (e) {
+                  console.error("Failed to send smart match email", e);
+              }
+          }
+      };
+
+      checkSmartMatch();
+  }, [currentUser, offers, isOffersLoading]);
+
+
   // --- Computed ---
   const messages = useMemo(() => {
     const combinedMap = { ...sentMessagesMap, ...receivedMessagesMap };
@@ -207,6 +265,22 @@ export const App: React.FC = () => {
         const uid = cred.user!.uid;
         const profileData = { ...u, id: uid, role: u.email === ADMIN_EMAIL ? 'admin' : 'user', joinedAt: new Date().toISOString() };
         await db.collection("users").doc(uid).set(profileData);
+        
+        // -----------------------
+        // TRIGGER: Welcome Email
+        // -----------------------
+        if (u.email) {
+            fetch('/api/emails/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'welcome',
+                    to: u.email,
+                    data: { userName: u.name || 'משתמש חדש' }
+                })
+            }).catch(err => console.error("Welcome email failed", err));
+        }
+
         setIsAuthModalOpen(false);
         // Show the post-registration onboarding popup
         setIsPostRegisterPromptOpen(true);
@@ -469,6 +543,27 @@ export const App: React.FC = () => {
             if (!authUid || !rid) return; 
             const msgData = { senderId: authUid, receiverId: rid, participantIds: [authUid, rid], senderName: currentUser?.name || 'משתמש', receiverName: rn, subject: s, content: c, timestamp: new Date().toISOString(), isRead: false };
             db.collection("messages").add(msgData);
+            
+            // -----------------------
+            // TRIGGER: Chat Alert Email
+            // -----------------------
+            db.collection("users").doc(rid).get().then(doc => {
+                const userData = doc.data() as UserProfile;
+                if (userData && userData.email) {
+                     fetch('/api/emails/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'chat_alert',
+                            to: userData.email,
+                            data: { 
+                                userName: userData.name,
+                                senderName: currentUser?.name || 'משתמש'
+                            }
+                        })
+                    }).catch(err => console.error("Chat alert email failed", err));
+                }
+            });
         }} 
         onMarkAsRead={id => { if (!authUid) return; db.collection("messages").doc(id).update({ isRead: true }); }} 
         recipientProfile={selectedProfile} initialSubject={initialMessageSubject} 

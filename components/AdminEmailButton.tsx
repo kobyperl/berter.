@@ -14,7 +14,7 @@ export const AdminEmailButton: React.FC<AdminEmailButtonProps> = ({ onClick }) =
       title="מרכז שליטה לאימיילים"
     >
       <Mail className="w-4 h-4 text-emerald-400" />
-      <span>ניהול ותזמון אימיילים</span>
+      <span>אימיילים</span>
     </button>
   );
 };

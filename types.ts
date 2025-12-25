@@ -22,6 +22,7 @@ export interface UserProfile {
   bio?: string;
   joinedAt?: string;
   pendingUpdate?: Partial<UserProfile>; // Staging area for profile changes requiring approval
+  lastSmartMatchSent?: string; // Timestamp for throttling smart match emails
 }
 
 export interface Rating {
