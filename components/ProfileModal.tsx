@@ -73,7 +73,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // No longer blocking the UI with a modal, using inline notification instead
   const [interestInput, setInterestInput] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null); 
   
@@ -129,15 +128,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         let pendingData: any = null;
 
         if (isAdmin) {
+            // Remove pendingUpdate from the spread to prevent overwriting the delete command
+            const { pendingUpdate, ...cleanData } = editFormData;
+            
             dataToSave = { 
                 id: editFormData.id,
-                ...editFormData, 
+                ...cleanData, 
                 bio: editFormData.bio || "",
                 interests: editFormData.interests || [],
                 portfolioImages: finalPortfolioImages,
                 mainField: editOccupationsList[0], 
                 secondaryFields: editOccupationsList.slice(1), 
                 portfolioUrl: normalizeUrl(editFormData.portfolioUrl),
+                // Explicitly delete the pendingUpdate field from Firestore
                 pendingUpdate: firebase.firestore.FieldValue.delete()
             };
             // Estimate size
@@ -429,7 +432,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                          {/* Action Buttons */}
                          <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 mt-2 sticky bottom-0 bg-white pb-2">
                              <button type="button" onClick={() => setIsEditing(false)} className="px-6 py-3 text-slate-500 text-sm font-bold hover:bg-slate-50 rounded-xl transition-colors">ביטול</button>
-                             <button type="submit" disabled={isUploading || isSaving} className="bg-brand-600 hover:bg-brand-700 text-white px-10 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-brand-500/20 transition-all disabled:opacity-50 active:scale-95">{isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{isAdmin ? 'שמור (מנהל)' : 'שמור שינויים'}</button>
+                             <button type="submit" disabled={isUploading || isSaving} className="bg-brand-600 hover:bg-brand-700 text-white px-10 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-brand-500/20 transition-all disabled:opacity-50 active:scale-95">{isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{isAdmin ? 'שמור ועדכן מיידית (מנהל)' : 'שמור שינויים'}</button>
                          </div>
                     </form>
                 ) : (

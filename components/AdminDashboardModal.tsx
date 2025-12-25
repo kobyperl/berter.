@@ -122,6 +122,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   
   // Local State
   const [userSearch, setUserSearch] = useState('');
+  const [usersSubTab, setUsersSubTab] = useState<'all' | 'pending'>('all'); // Added pending tab
   const [contentTab, setContentTab] = useState<'pending' | 'all'>('pending');
   const [dateThreshold, setDateThreshold] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -249,7 +250,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
   // 1. Users
   const renderUsers = () => {
-      const filtered = safeUsers.filter(u => 
+      let displayedUsers = safeUsers;
+      if (usersSubTab === 'pending') {
+          displayedUsers = safeUsers.filter(u => u.pendingUpdate);
+      }
+
+      const filtered = displayedUsers.filter(u => 
         (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
         (u.email || '').toLowerCase().includes(userSearch.toLowerCase())
       ).sort((a, b) => {
@@ -260,16 +266,22 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
       
       return (
           <div className="space-y-4">
-              <div className="flex items-center justify-between px-1 mb-1">
-                  <div className="flex items-center gap-2 text-slate-600">
-                      <Users className="w-4 h-4 text-brand-600" />
-                      <span className="text-sm font-medium">סה"כ משתמשים רשומים:</span>
-                      <span className="text-sm font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">{safeUsers.length}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 uppercase tracking-tight">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                      מעודכן בזמן אמת
-                  </div>
+              <div className="flex gap-2 border-b border-slate-200">
+                  <button 
+                      onClick={() => setUsersSubTab('all')} 
+                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${usersSubTab === 'all' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                      כל המשתמשים ({safeUsers.length})
+                  </button>
+                  <button 
+                      onClick={() => setUsersSubTab('pending')} 
+                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${usersSubTab === 'pending' ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                      ממתינים לאישור
+                      {pendingUserUpdates > 0 && (
+                          <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[10px] font-black">{pendingUserUpdates}</span>
+                      )}
+                  </button>
               </div>
 
               <div className="relative">
@@ -310,6 +322,15 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                   </td>
                                   <td className="px-4 py-3">
                                       <div className="flex gap-2 items-center">
+                                          {user.pendingUpdate && (
+                                              <button 
+                                                  onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} 
+                                                  className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg shadow-sm"
+                                                  title="צפה ואשר שינויים"
+                                              >
+                                                  <CheckCircle className="w-4 h-4" />
+                                              </button>
+                                          )}
                                           <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
                                           {user.id !== props.currentUser?.id && (
                                               <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
@@ -322,7 +343,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                   </table>
                   {filtered.length === 0 && (
                       <div className="p-10 text-center text-slate-400 font-medium">
-                          לא נמצאו משתמשים תואמים לחיפוש
+                          {usersSubTab === 'pending' ? 'אין משתמשים הממתינים לאישור' : 'לא נמצאו משתמשים תואמים לחיפוש'}
                       </div>
                   )}
               </div>

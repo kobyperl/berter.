@@ -270,6 +270,32 @@ export const App: React.FC = () => {
       }
   };
 
+  const handleGlobalProfileUpdate = async (profileData: any) => {
+      try {
+          // 1. Update the User Document (This handles the merge and the pendingUpdate delete if present)
+          await db.collection("users").doc(profileData.id).set(profileData, { merge: true });
+
+          // 2. Update Offers
+          // Create a "clean" object for the offers (snapshot).
+          const cleanProfile = { ...profileData };
+          delete cleanProfile.pendingUpdate; // Don't store pending state in offers
+          delete cleanProfile.password; // Security cleanup just in case
+          
+          const offersSnap = await db.collection("offers").where("profileId", "==", profileData.id).get();
+          const batch = db.batch();
+          
+          if (!offersSnap.empty) {
+              offersSnap.forEach(doc => {
+                  batch.update(doc.ref, { profile: cleanProfile });
+              });
+              await batch.commit();
+          }
+      } catch (e) {
+          console.error("Global Update Error:", e);
+          alert("אירעה שגיאה בעדכון הגורף של הפרופיל.");
+      }
+  };
+
   const filteredOffers = useMemo(() => {
     return offers.filter(o => {
       const isMine = authUid && o.profileId === authUid;
@@ -392,7 +418,14 @@ export const App: React.FC = () => {
             onDeleteUser={id => db.collection("users").doc(id).delete()}
             onApproveUpdate={id => {
                 const u = users.find(x => x.id === id);
-                if (u?.pendingUpdate) db.collection("users").doc(id).update({ ...u.pendingUpdate, pendingUpdate: firebase.firestore.FieldValue.delete() });
+                if (u && u.pendingUpdate) {
+                    const updatedProfile = { 
+                        ...u, 
+                        ...u.pendingUpdate, 
+                        pendingUpdate: firebase.firestore.FieldValue.delete() 
+                    };
+                    handleGlobalProfileUpdate(updatedProfile);
+                }
             }} 
             onRejectUpdate={id => db.collection("users").doc(id).update({ pendingUpdate: firebase.firestore.FieldValue.delete() })}
             offers={offers} onDeleteOffer={id => db.collection("offers").doc(id).delete()}
@@ -448,7 +481,7 @@ export const App: React.FC = () => {
         currentUser={currentUser} 
         userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
         onDeleteOffer={id => db.collection("offers").doc(id).delete()} 
-        onUpdateProfile={async p => db.collection("users").doc(p.id).set(p, {merge:true})} 
+        onUpdateProfile={handleGlobalProfileUpdate} 
         onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} 
         onRate={handleRate}
         availableCategories={availableCategories} 
