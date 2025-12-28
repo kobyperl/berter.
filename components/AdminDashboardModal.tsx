@@ -801,23 +801,21 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                         <button onClick={() => setActiveTab('tags')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'tags' ? 'bg-white shadow-md text-indigo-700 font-bold ring-1 ring-indigo-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Tag className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">ניהול תגיות</span></button>
                     </nav>
                 </div>
-                <div className={`order-1 sm:order-2 flex-1 bg-white shadow-inner flex flex-col ${activeTab === 'tags' ? 'overflow-hidden' : 'overflow-y-auto p-4 sm:p-6'}`}>
-                    <div className={`flex flex-col h-full ${activeTab === 'tags' ? 'w-full' : 'max-w-4xl mx-auto'}`}>
-                        <div className={`shrink-0 ${activeTab === 'tags' ? 'p-4 pb-2 border-b border-slate-100' : 'mb-6'}`}>
-                            <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-                                {activeTab === 'users' && 'ניהול משתמשים'}
-                                {activeTab === 'content' && 'ניהול מודעות'}
-                                {activeTab === 'data' && 'ניהול נתונים'}
-                                {activeTab === 'ads' && 'ניהול פרסום'}
-                                {activeTab === 'tags' && 'מנוע תגיות ומיפוי'}
-                            </h2>
-                        </div>
-                        <div className={`w-full ${activeTab === 'tags' ? 'flex-1 min-h-0' : ''}`}>
-                            {activeTab === 'users' && renderUsers()}
-                            {activeTab === 'content' && renderContent()}
-                            {activeTab === 'data' && (<div className="h-full"><div className="p-4 bg-blue-50 text-blue-800 rounded-xl mb-4 text-xs font-medium border border-blue-100 flex items-start gap-2"><GitMerge className="w-5 h-5 flex-shrink-0 mt-0.5" /><span><strong>ניהול טקסונומיה:</strong> שינוי שם של קטגוריה או מיזוג יעדכן את כל הפרופילים והמודעות המשוייכים באופן אוטומטי במערכת.</span></div>{renderData()}</div>)}
-                            {activeTab === 'ads' && renderAds()}
-                            {activeTab === 'tags' && (
+                <div className={`order-1 sm:order-2 flex-1 bg-white shadow-inner flex flex-col h-full overflow-hidden`}>
+                    <div className={`flex flex-col h-full ${activeTab === 'tags' ? 'w-full' : 'max-w-4xl mx-auto overflow-y-auto p-4 sm:p-6'}`}>
+                        {activeTab !== 'tags' && (
+                            <div className="shrink-0 mb-6">
+                                <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+                                    {activeTab === 'users' && 'ניהול משתמשים'}
+                                    {activeTab === 'content' && 'ניהול מודעות'}
+                                    {activeTab === 'data' && 'ניהול נתונים'}
+                                    {activeTab === 'ads' && 'ניהול פרסום'}
+                                </h2>
+                            </div>
+                        )}
+                        
+                        {activeTab === 'tags' ? (
+                            <div className="flex-1 w-full flex flex-col min-h-0 overflow-hidden">
                                 <TagManager 
                                     offers={safeOffers} 
                                     availableCategories={safeAvailableCategories} 
@@ -825,8 +823,15 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                     onAddCategory={props.onAddCategory}
                                     onAddInterest={props.onAddInterest}
                                 />
-                            )}
-                        </div>
+                            </div>
+                        ) : (
+                            <>
+                                {activeTab === 'users' && renderUsers()}
+                                {activeTab === 'content' && renderContent()}
+                                {activeTab === 'data' && (<div className="h-full"><div className="p-4 bg-blue-50 text-blue-800 rounded-xl mb-4 text-xs font-medium border border-blue-100 flex items-start gap-2"><GitMerge className="w-5 h-5 flex-shrink-0 mt-0.5" /><span><strong>ניהול טקסונומיה:</strong> שינוי שם של קטגוריה או מיזוג יעדכן את כל הפרופילים והמודעות המשוייכים באופן אוטומטי במערכת.</span></div>{renderData()}</div>)}
+                                {activeTab === 'ads' && renderAds()}
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

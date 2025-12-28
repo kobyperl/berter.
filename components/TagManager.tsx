@@ -195,11 +195,11 @@ export const TagManager: React.FC<TagManagerProps> = ({
   });
 
   return (
-    <div className="h-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
+    <div className="h-full flex flex-col md:flex-row bg-slate-50 overflow-hidden relative">
       
       {/* Left Column: Tag List */}
-      <div className={`w-full md:w-1/3 flex flex-col border-l border-slate-200 bg-white ${selectedTag ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-4 border-b border-slate-100 bg-slate-50">
+      <div className={`w-full md:w-1/3 flex flex-col border-l border-slate-200 bg-white h-full ${selectedTag ? 'hidden md:flex' : 'flex'}`}>
+        <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
             <div className="relative">
                 <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
@@ -212,7 +212,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
             </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2 min-h-0 pb-4 md:pb-2 overscroll-contain">
             {filteredTags.length === 0 && (
                 <div className="text-center py-10 text-slate-400">אין תגיות להצגה</div>
             )}
@@ -245,16 +245,16 @@ export const TagManager: React.FC<TagManagerProps> = ({
       </div>
 
       {/* Right Column: Work Area */}
-      <div className={`flex-1 flex flex-col bg-slate-50 relative ${!selectedTag ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col bg-slate-50 relative h-full ${!selectedTag ? 'hidden md:flex' : 'flex'}`}>
          {selectedTag ? (
-             <div className="flex flex-col h-full">
+             <div className="flex flex-col h-full w-full">
                  {/* Mobile Header */}
-                 <div className="md:hidden p-4 bg-white border-b border-slate-200 flex items-center gap-3">
+                 <div className="md:hidden p-4 bg-white border-b border-slate-200 flex items-center gap-3 shrink-0">
                      <button onClick={() => setSelectedTag(null)} className="p-2 bg-slate-100 rounded-full"><X className="w-5 h-5"/></button>
                      <span className="font-bold text-lg">{selectedTag}</span>
                  </div>
 
-                 <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">
+                 <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 min-h-0 pb-24 md:pb-8">
                      
                      <div className="flex justify-between items-center">
                          <div className="flex items-center gap-2">
@@ -354,8 +354,8 @@ export const TagManager: React.FC<TagManagerProps> = ({
 
                  </div>
 
-                 {/* Footer Action */}
-                 <div className="p-4 bg-white border-t border-slate-200 flex justify-end gap-3 sticky bottom-0 z-10">
+                 {/* Footer Action - Fixed Bottom */}
+                 <div className="p-4 bg-white border-t border-slate-200 flex justify-end gap-3 absolute bottom-0 left-0 right-0 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                      <button onClick={() => setSelectedTag(null)} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors hidden md:block">ביטול</button>
                      <button 
                          onClick={handleSaveMapping}
