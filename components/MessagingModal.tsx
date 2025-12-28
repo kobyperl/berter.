@@ -60,7 +60,7 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   currentUser, 
   messages, 
   onSendMessage, 
-  onMarkAsRead,
+  onMarkAsRead, 
   recipientProfile,
   initialSubject,
   users,
@@ -273,7 +273,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   return (
     // Fixed layout for mobile: full screen height (100dvh), remove padding on mobile
-    <div className="fixed inset-0 z-[80] flex items-center justify-center sm:p-6" role="dialog" aria-modal="true">
+    // z-index increased to 200 to be above AccessibilityToolbar (z-100) and other layers
+    <div className="fixed inset-0 z-[200] flex items-center justify-center sm:p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
       <div className="relative bg-white w-full max-w-5xl h-[100dvh] sm:h-[85vh] sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 text-right font-sans" dir="rtl">
