@@ -11,6 +11,7 @@ interface CreateOfferModalProps {
   onUpdateOffer?: (offer: BarterOffer) => void;
   currentUser: UserProfile;
   editingOffer?: BarterOffer | null; // Optional prop for editing
+  targetProfile?: UserProfile | null; // Profile to create offer for (admin feature)
 }
 
 export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ 
@@ -19,7 +20,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     onAddOffer, 
     onUpdateOffer,
     currentUser, 
-    editingOffer 
+    editingOffer,
+    targetProfile
 }) => {
   const [step, setStep] = useState(1);
   const [roughText, setRoughText] = useState('');
@@ -214,20 +216,26 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
         onUpdateOffer(updatedOffer);
         onClose();
     } else {
+        // Use targetProfile if provided (admin acting as user), otherwise currentUser
+        const ownerProfile = targetProfile || currentUser;
+        
         const newOffer: BarterOffer = {
             id: Date.now().toString(),
-            profileId: currentUser.id,
-            profile: currentUser,
+            profileId: ownerProfile.id,
+            profile: ownerProfile,
             ...commonFields,
+            // If admin is posting (currentUser.role === 'admin'), it's active immediately
             status: currentUser.role === 'admin' ? 'active' : 'pending',
             createdAt: new Date().toISOString(),
             ratings: [],
             averageRating: 0
         };
         onAddOffer(newOffer);
-        onClose(); // Parent (App.tsx) handles the "success" nudge modal for better flow
+        onClose(); 
     }
   };
+
+  const isPublishingAsOther = targetProfile && targetProfile.id !== currentUser.id;
 
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -237,9 +245,16 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
         <div className="inline-block align-bottom bg-white rounded-xl text-right overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
           <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg leading-6 font-bold text-slate-900" id="modal-title">
-                    {editingOffer ? 'עריכת הצעה' : (step === 1 ? 'מה תרצה להחליף?' : 'עריכת ההצעה')}
-                </h3>
+                <div className="flex flex-col">
+                    <h3 className="text-lg leading-6 font-bold text-slate-900" id="modal-title">
+                        {editingOffer ? 'עריכת הצעה' : (step === 1 ? 'מה תרצה להחליף?' : 'עריכת ההצעה')}
+                    </h3>
+                    {isPublishingAsOther && (
+                        <span className="text-xs text-brand-600 font-bold bg-brand-50 px-2 py-0.5 rounded-md mt-1 w-fit">
+                            מפרסם בשם: {targetProfile?.name}
+                        </span>
+                    )}
+                </div>
                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-1.5 rounded-full transition-colors">
                     <X className="w-5 h-5" />
                 </button>
