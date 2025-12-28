@@ -154,7 +154,7 @@ export const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  // 2. Profile Sync & ADMIN FORCE FIX
+  // 2. Profile Sync & ADMIN FORCE FIX (Case Insensitive & Aggressive Set)
   useEffect(() => {
     if (!authUid) return;
     const unsub = db.collection("users").doc(authUid).onSnapshot(
@@ -162,17 +162,18 @@ export const App: React.FC = () => {
         if (doc.exists) {
           const data = doc.data() as UserProfile;
           
-          // Force local admin state if email matches
-          if (data.email === ADMIN_EMAIL) {
+          // Force local admin state if email matches (Case Insensitive)
+          const isAdminEmail = data.email && data.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+          
+          if (isAdminEmail) {
               data.role = 'admin'; 
               
-              // Force DB update if missing 'admin' role
-              // Using update() instead of set() prevents overwriting other fields accidentally
+              // Force DB update if missing 'admin' role in DB
+              // Use set with merge: true which is often more permissive than update
               if (doc.data()?.role !== 'admin') {
-                  console.log("Syncing Admin Role to Firestore...");
-                  db.collection("users").doc(authUid).update({ role: 'admin' }).catch(err => {
-                      // Fallback to set with merge if update fails (e.g. doc strictly doesn't exist which shouldn't happen here)
-                      db.collection("users").doc(authUid).set({ role: 'admin' }, { merge: true });
+                  console.log("Forcing Admin Role via SET/MERGE...");
+                  db.collection("users").doc(authUid).set({ role: 'admin' }, { merge: true }).catch(err => {
+                      console.error("Auto-Admin Promotion Failed:", err);
                   });
               }
           }
@@ -345,7 +346,11 @@ export const App: React.FC = () => {
     try {
         const cred = await auth.createUserWithEmailAndPassword(u.email!, p);
         const uid = cred.user!.uid;
-        const profileData = { ...u, id: uid, role: u.email === ADMIN_EMAIL ? 'admin' : 'user', joinedAt: new Date().toISOString() };
+        
+        // Ensure admin role on creation if matches
+        const role = u.email && u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'user';
+        
+        const profileData = { ...u, id: uid, role, joinedAt: new Date().toISOString() };
         await db.collection("users").doc(uid).set(cleanObject(profileData));
         
         if (u.email) {
@@ -424,8 +429,10 @@ export const App: React.FC = () => {
           const sanitizedProfile = cleanObject(profileData);
           if (!sanitizedProfile.id) throw new Error("Invalid Profile Data: ID missing");
 
-          // Use update instead of set to allow granular permissions on fields
-          await db.collection("users").doc(sanitizedProfile.id).update(sanitizedProfile);
+          // Use SET with MERGE instead of update. 
+          // 'update' fails if the document structure is deemed incomplete or permissions are strict on update vs create/set.
+          // This often fixes the "Missing or insufficient permissions" error for Admins editing others.
+          await db.collection("users").doc(sanitizedProfile.id).set(sanitizedProfile, { merge: true });
 
           try {
               // Also update user info in their offers
@@ -433,7 +440,6 @@ export const App: React.FC = () => {
               delete cleanProfile.pendingUpdate; 
               delete cleanProfile.password; 
               
-              // We don't want to pass 'undefined' fields
               const safeProfileForOffer = cleanObject(cleanProfile);
 
               const offersSnap = await db.collection("offers").where("profileId", "==", sanitizedProfile.id).get();
@@ -451,7 +457,7 @@ export const App: React.FC = () => {
       } catch (e: any) {
           console.error("Global Update Error:", e);
           if (e.code === 'permission-denied') {
-              alert("שגיאת הרשאות: אין לך הרשאה לעדכן משתמש זה. וודא שאתה מחובר כמנהל ושהנתונים תקינים.");
+              alert("שגיאת הרשאות: וודא שאתה מחובר כמנהל ושהאימייל שלך מוגדר כ-Admin במסד הנתונים.");
           } else {
               alert(`אירעה שגיאה בעדכון הפרופיל: ${e.message}`);
           }
@@ -482,7 +488,7 @@ export const App: React.FC = () => {
       } catch (e: any) {
           console.error("Delete User Error:", e);
           if (e.code === 'permission-denied') {
-              alert("שגיאת הרשאות: אין לך הרשאה למחוק משתמש זה. וודא שאתה מחובר כ-Admin.");
+              alert("שגיאת הרשאות: אין לך הרשאה למחוק משתמש זה.");
           } else {
               alert(`שגיאה במחיקת המשתמש: ${e.message}`);
           }
