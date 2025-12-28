@@ -140,7 +140,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 mainField: editOccupationsList[0], 
                 secondaryFields: editOccupationsList.slice(1), 
                 portfolioUrl: normalizeUrl(editFormData.portfolioUrl),
-                // Explicitly delete the pendingUpdate field from Firestore
+                // Explicitly delete the pendingUpdate field from Firestore when Admin saves
                 pendingUpdate: firebase.firestore.FieldValue.delete()
             };
             // Estimate size (exclude FieldValue from calc as it breaks JSON.stringify)

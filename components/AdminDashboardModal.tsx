@@ -66,6 +66,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editParent, setEditParent] = useState('');
+  // User Drilldown Logic
   const [viewingUsersFor, setViewingUsersFor] = useState<{name: string, type: 'category' | 'interest'} | null>(null);
   
   // Reassign State
@@ -182,8 +183,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                               <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
                                   <td className="px-4 py-3 flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}><img src={user.avatarUrl} className="w-8 h-8 rounded-full border border-slate-200" /><span className="font-bold text-slate-800">{user.name}</span></td>
                                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
-                                  <td className="px-4 py-3">{user.pendingUpdate ? <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold">ממתין</span> : <span className="text-green-600 text-xs">פעיל</span>}</td>
-                                  <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => props.onDeleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4"/></button></div></td>
+                                  <td className="px-4 py-3">{user.pendingUpdate ? (
+                                      <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold hover:bg-yellow-200">
+                                          ממתין
+                                      </button>
+                                  ) : <span className="text-green-600 text-xs">פעיל</span>}</td>
+                                  <td className="px-4 py-3">
+                                      <div className="flex gap-2">
+                                          <button onClick={() => props.onDeleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="מחיקה"><Trash2 className="w-4 h-4"/></button>
+                                          {user.pendingUpdate && (
+                                              <button onClick={() => props.onApproveUpdate(user.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="אישור"><CheckCircle className="w-4 h-4" /></button>
+                                          )}
+                                      </div>
+                                  </td>
                               </tr>
                           ))}
                       </tbody>
@@ -228,33 +240,143 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   const renderData = () => {
       const getCategoryCount = (cat: string) => safeUsers.filter(u => (u.mainField || '').trim().toLowerCase() === cat.trim().toLowerCase()).length;
       const getInterestCount = (int: string) => safeUsers.filter(u => (u.interests || []).some(i => i.trim().toLowerCase() === int.trim().toLowerCase())).length;
+      
       const handleAddData = () => {
           if (!newDataInput.trim()) return;
           dataSubTab === 'categories' ? props.onAddCategory(newDataInput.trim()) : props.onAddInterest(newDataInput.trim());
           setNewDataInput('');
       };
+      
       const activeList = dataSubTab === 'categories' ? safeAvailableCategories : safeAvailableInterests;
       
+      // Calculate derived sorted lists
+      const sortedCategories = [...safeAvailableCategories].sort((a, b) => getCategoryCount(b) - getCategoryCount(a));
+      
+      // Helper for saving edits
+      const handleSaveEdit = () => {
+          if (!editingItem || !editName.trim()) return;
+          if (dataSubTab === 'categories') {
+              props.onEditCategory(editingItem, editName.trim(), editParent || undefined);
+          } else {
+              props.onEditInterest(editingItem, editName.trim());
+          }
+          setEditingItem(null); setEditName(''); setEditParent('');
+      };
+
+      const handleStartEdit = (item: string) => {
+          setEditingItem(item);
+          setEditName(item);
+          if (dataSubTab === 'categories' && props.categoryHierarchy) {
+              setEditParent(props.categoryHierarchy[item] || '');
+          }
+      };
+
       return (
-          <div className="space-y-4 h-full flex flex-col">
+          <div className="space-y-4 h-full flex flex-col relative">
+              {viewingUsersFor && (
+                  <div className="absolute inset-0 bg-white z-20 flex flex-col animate-in fade-in slide-in-from-right-4 border-l border-slate-100">
+                      <div className="flex justify-between items-center p-3 border-b border-slate-100 bg-slate-50">
+                          <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                              <Users className="w-5 h-5 text-brand-600" />
+                              משתמשים ב: <span className="text-brand-700 underline">{viewingUsersFor.name}</span>
+                          </h4>
+                          <button onClick={() => setViewingUsersFor(null)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-sm">
+                              <ArrowRightLeft className="w-4 h-4" /> חזרה
+                          </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                          {safeUsers.filter(u => 
+                              viewingUsersFor.type === 'category' 
+                              ? (u.mainField || '').trim().toLowerCase() === viewingUsersFor.name.trim().toLowerCase()
+                              : (u.interests || []).some(i => i.trim().toLowerCase() === viewingUsersFor.name.trim().toLowerCase())
+                          ).map(u => (
+                              <div key={u.id} className="flex items-center gap-3 p-2 border border-slate-100 rounded-lg hover:bg-slate-50 cursor-pointer" onClick={() => props.onViewProfile(u)}>
+                                  <img src={u.avatarUrl} className="w-8 h-8 rounded-full bg-slate-200 object-cover" />
+                                  <div>
+                                      <div className="font-bold text-sm text-slate-800">{u.name}</div>
+                                      <div className="text-xs text-slate-500">{u.email}</div>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              )}
+
               <div className="flex border-b border-slate-200 bg-slate-50">
                   <button onClick={() => setDataSubTab('categories')} className={`flex-1 py-2 text-sm font-bold ${dataSubTab === 'categories' ? 'border-b-2 border-brand-600 text-brand-600 bg-white' : 'text-slate-500'}`}>תחומים</button>
                   <button onClick={() => setDataSubTab('pending')} className={`flex-1 py-2 text-sm font-bold ${dataSubTab === 'pending' ? 'border-b-2 border-orange-500 text-orange-600 bg-white' : 'text-slate-500'}`}>ממתינים ({pendingDataCount})</button>
                   <button onClick={() => setDataSubTab('interests')} className={`flex-1 py-2 text-sm font-bold ${dataSubTab === 'interests' ? 'border-b-2 border-pink-500 text-pink-600 bg-white' : 'text-slate-500'}`}>עניין</button>
               </div>
+              
               {dataSubTab !== 'pending' && <div className="flex gap-2"><input className="flex-1 border rounded-xl px-3 py-2 text-sm" placeholder="הוסף..." value={newDataInput} onChange={e => setNewDataInput(e.target.value)} /><button onClick={handleAddData} className="bg-slate-800 text-white px-4 rounded-xl text-sm font-bold">הוסף</button></div>}
+              
               <div className="flex-1 overflow-y-auto custom-scrollbar p-1 space-y-2">
                   {dataSubTab === 'pending' ? (
-                      safePendingCategories.map(c => <div key={c} className="bg-orange-50 p-2 rounded flex justify-between"><span>{c} (מקצוע)</span><div className="flex gap-2"><button onClick={() => props.onApproveCategory(c)} className="text-green-600"><CheckCircle className="w-4 h-4"/></button><button onClick={() => props.onRejectCategory(c)} className="text-red-600"><Trash2 className="w-4 h-4"/></button></div></div>)
-                  ) : (
-                      activeList.map(item => (
-                          <div key={item} className="flex justify-between items-center p-2 border-b hover:bg-slate-50">
-                              <span>{item} ({dataSubTab === 'categories' ? getCategoryCount(item) : getInterestCount(item)})</span>
-                              <div className="flex gap-2">
-                                  <button onClick={() => { if(window.confirm(`למחוק את ${item}?`)) dataSubTab === 'categories' ? props.onDeleteCategory(item) : props.onDeleteInterest(item); }} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                      safePendingCategories.map(c => (
+                          <div key={c} className="bg-orange-50 p-2 rounded flex justify-between flex-wrap gap-2 items-center border border-orange-100">
+                              <span className="font-bold text-sm">{c}</span>
+                              <div className="flex gap-2 items-center w-full sm:w-auto">
+                                  <select className="text-xs border rounded p-1" onChange={(e) => { if (e.target.value) { props.onReassignCategory(c, e.target.value); } }}>
+                                      <option value="">מיזוג ל...</option>
+                                      {sortedCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                  </select>
+                                  <button onClick={() => props.onApproveCategory(c)} className="text-green-600"><CheckCircle className="w-4 h-4"/></button>
+                                  <button onClick={() => props.onRejectCategory(c)} className="text-red-600"><Trash2 className="w-4 h-4"/></button>
                               </div>
                           </div>
                       ))
+                  ) : (
+                      activeList.map(item => {
+                          const count = dataSubTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
+                          const isEditingThis = editingItem === item;
+                          const parent = (dataSubTab === 'categories' && props.categoryHierarchy) ? props.categoryHierarchy[item] : null;
+
+                          return (
+                              <div key={item} className={`flex justify-between items-center p-2 border-b hover:bg-slate-50 ${isEditingThis ? 'bg-blue-50' : ''}`}>
+                                  {isEditingThis ? (
+                                      <div className="flex flex-col w-full gap-2">
+                                          <div className="flex gap-2">
+                                              <input value={editName} onChange={e => setEditName(e.target.value)} className="border rounded px-2 py-1 flex-1 text-sm bg-white" />
+                                              {dataSubTab === 'categories' && (
+                                                  <select value={editParent} onChange={e => setEditParent(e.target.value)} className="border rounded text-xs bg-white">
+                                                      <option value="">ללא אב</option>
+                                                      {sortedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                                  </select>
+                                              )}
+                                          </div>
+                                          
+                                          {/* Merge Tool inside edit mode */}
+                                          <div className="flex gap-2 items-center bg-slate-100 p-1 rounded">
+                                              <span className="text-[10px] font-bold">מיזוג לתוך:</span>
+                                              <select className="text-xs border rounded bg-white flex-1" onChange={(e) => { if(e.target.value && props.onReassignCategory) { if(window.confirm(`למזג את ${item} לתוך ${e.target.value}?`)) { props.onReassignCategory(item, e.target.value); setEditingItem(null); } } }}>
+                                                  <option value="">בחר יעד...</option>
+                                                  {sortedCategories.filter(c => c !== item).map(c => <option key={c} value={c}>{c}</option>)}
+                                              </select>
+                                          </div>
+
+                                          <div className="flex justify-end gap-2">
+                                              <button onClick={handleSaveEdit} className="text-xs bg-green-600 text-white px-2 py-1 rounded">שמור</button>
+                                              <button onClick={() => setEditingItem(null)} className="text-xs bg-gray-300 px-2 py-1 rounded">ביטול</button>
+                                          </div>
+                                      </div>
+                                  ) : (
+                                      <>
+                                          <div className="flex items-center gap-2 cursor-pointer flex-1" onClick={() => setViewingUsersFor({name: item, type: dataSubTab === 'categories' ? 'category' : 'interest'})}>
+                                              <div className="flex flex-col">
+                                                  <span className="font-medium text-sm text-slate-800">{item}</span>
+                                                  {parent && <span className="text-[10px] text-slate-400 flex items-center"><CornerDownRight className="w-3 h-3 inline"/> {parent}</span>}
+                                              </div>
+                                              <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded-full">{count}</span>
+                                          </div>
+                                          <div className="flex gap-2">
+                                              <button onClick={() => handleStartEdit(item)} className="text-blue-400 hover:text-blue-600"><Pencil className="w-4 h-4"/></button>
+                                              <button onClick={() => { if(window.confirm(`למחוק את ${item}?`)) dataSubTab === 'categories' ? props.onDeleteCategory(item) : props.onDeleteInterest(item); }} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                          </div>
+                                      </>
+                                  )}
+                              </div>
+                          );
+                      })
                   )}
               </div>
           </div>
