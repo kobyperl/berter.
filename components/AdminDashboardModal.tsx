@@ -1,11 +1,13 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Shield, FileText, BarChart3, Megaphone, 
   Search, RefreshCw, Mail, Trash2, CheckCircle, 
-  Edit, Plus, Copy, Pencil, LayoutDashboard, Check, CornerDownRight, GitMerge, Users, Save, ArrowRightLeft
+  Edit, Plus, Copy, Pencil, LayoutDashboard, Check, CornerDownRight, GitMerge, Users, Save, ArrowRightLeft, Lock,
+  Upload, Target, Briefcase, Tag
 } from 'lucide-react';
 import { UserProfile, BarterOffer, SystemAd } from '../types';
+import { ADMIN_EMAIL } from '../constants';
+import { db } from '../services/firebaseConfig';
 
 interface AdminDashboardModalProps {
   isOpen: boolean;
@@ -50,6 +52,72 @@ interface AdminDashboardModalProps {
 
 type TabType = 'users' | 'content' | 'data' | 'ads';
 
+// Helper functions
+const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800; 
+          let width = img.width;
+          let height = img.height;
+          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) { ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.8)); } 
+          else { reject(new Error("Could not get canvas context")); }
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+};
+
+const DeleteToggleButton = ({ onDelete, className = "" }: { onDelete: () => void, className?: string }) => {
+    const [isConfirming, setIsConfirming] = useState(false);
+    
+    useEffect(() => {
+        if(isConfirming) {
+            const timer = setTimeout(() => setIsConfirming(false), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [isConfirming]);
+
+    const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (isConfirming) {
+            onDelete();
+            setIsConfirming(false);
+        } else {
+            setIsConfirming(true);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleClick}
+            className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] ${
+                isConfirming 
+                ? 'bg-red-600 text-white w-auto px-3 shadow-md' 
+                : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+            } ${className}`}
+            title={isConfirming ? "לחץ שוב לאישור סופי" : "מחק"}
+        >
+            {isConfirming ? (
+                <span className="text-[10px] font-bold whitespace-nowrap animate-in fade-in slide-in-from-left-1">מחק?</span>
+            ) : (
+                <Trash2 className="w-4 h-4 pointer-events-none" />
+            )}
+        </button>
+    );
+};
+
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) => {
   const [activeTab, setActiveTab] = useState<TabType>('users');
   
@@ -81,6 +149,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   const [targetCategories, setTargetCategories] = useState<string[]>(['Global']);
   const [targetInterests, setTargetInterests] = useState<string[]>([]);
   
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [catSearch, setCatSearch] = useState('');
+  const [intSearch, setIntSearch] = useState('');
+
   if (!props.isOpen) return null;
 
   // Safe Arrays
@@ -95,6 +167,18 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   const pendingUserUpdates = safeUsers.filter(u => u.pendingUpdate).length;
   const pendingOffersCount = safeOffers.filter(o => o.status === 'pending').length;
   const pendingDataCount = safePendingCategories.length + safePendingInterests.length;
+
+  const handleForceAdminSync = async () => {
+      if (!props.currentUser) return;
+      if (confirm("פעולה זו תכריח עדכון של הרשאת 'Admin' במסד הנתונים עבור המשתמש הנוכחי. האם להמשיך?")) {
+          try {
+              await db.collection("users").doc(props.currentUser.id).update({ role: 'admin' });
+              alert("הרשאת Admin עודכנה בהצלחה במסד הנתונים.");
+          } catch (e: any) {
+              alert(`שגיאה בעדכון: ${e.message}`);
+          }
+      }
+  };
 
   // --- Handlers ---
 
@@ -150,6 +234,20 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
       setAdForm({ title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', isActive: true });
       setTargetCategories(['Global']);
       setTargetInterests([]);
+  };
+
+  const toggleTargetCategory = (cat: string) => {
+      setTargetCategories(prev => {
+          if (prev.includes(cat)) {
+              if (prev.length === 1 && prev[0] === 'Global' && cat === 'Global') return prev;
+              return prev.filter(c => c !== cat);
+          }
+          return [...prev, cat];
+      });
+  };
+
+  const toggleTargetInterest = (int: string) => {
+      setTargetInterests(prev => prev.includes(int) ? prev.filter(i => i !== int) : [...prev, int]);
   };
 
   // --- Render Functions ---
@@ -384,9 +482,40 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   };
 
   const renderAds = () => {
+      const inputClassName = "w-full bg-white border border-slate-300 rounded-xl p-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all";
+      if (adEditId === 'new' || (adEditId && adEditId !== 'new')) {
+          const filteredInterests = safeAvailableInterests.filter(i => (i||'').toLowerCase().includes(intSearch.toLowerCase()));
+          const filteredCategories = safeAvailableCategories.filter(c => (c||'').toLowerCase().includes(catSearch.toLowerCase()));
+          return (
+              <form onSubmit={handleAdSubmit} className="space-y-4 overflow-y-auto max-h-[70vh] p-1">
+                  <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-2">
+                      <h3 className="font-bold text-lg text-slate-800">{adEditId === 'new' ? 'יצירת קמפיין חדש' : 'עריכת קמפיין'}</h3>
+                      <button type="button" onClick={() => setAdEditId(null)} className="text-slate-400 hover:text-slate-700 bg-slate-50 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       <div className="space-y-5">
+                           <div>
+                               <label className="block text-sm font-bold text-slate-700 mb-2">תמונת קמפיין</label>
+                               <div className="border-2 border-dashed border-slate-300 h-40 rounded-xl flex items-center justify-center cursor-pointer hover:bg-slate-50 relative overflow-hidden group bg-white shadow-inner" onClick={() => fileInputRef.current?.click()}>
+                                   {adForm.imageUrl ? <><img src={adForm.imageUrl} className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><span className="bg-white/90 text-slate-800 text-xs font-bold px-3 py-1 rounded-full shadow-sm">החלף תמונה</span></div></> : <div className="text-center"><Upload className="mx-auto mb-2 w-8 h-8 opacity-50"/><span className="text-xs text-slate-400">לחץ להעלאת תמונה</span></div>}
+                                   <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { try { const url = await compressImage(e.target.files[0]); setAdForm({...adForm, imageUrl: url}); } catch (e) { alert('Error uploading'); }}}} />
+                               </div>
+                               <div className="mt-2 relative"><input placeholder="או הדבק כתובת תמונה URL" className={inputClassName} value={adForm.imageUrl} onChange={e => setAdForm({...adForm, imageUrl: e.target.value})} /></div>
+                           </div>
+                           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex justify-between items-center"><div><label className="block text-sm font-bold text-slate-700">סטטוס המודעה</label><p className="text-[10px] text-slate-500">האם המודעה מוצגת כרגע באתר?</p></div><button type="button" onClick={() => setAdForm({...adForm, isActive: !adForm.isActive})} className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${adForm.isActive ? 'bg-green-500' : 'bg-slate-300'}`}><span className={`absolute top-1 bg-white w-5 h-5 rounded-full transition-transform duration-200 shadow-sm ${adForm.isActive ? 'left-1' : 'left-6'}`}></span></button></div>
+                           <div><label className="block text-sm font-bold text-slate-700 mb-1.5">כותרת ראשית</label><input required className={inputClassName} value={adForm.title} onChange={e => setAdForm({...adForm, title: e.target.value})} /></div>
+                           <div><label className="block text-sm font-bold text-slate-700 mb-1.5">תיאור הקמפיין</label><textarea className={`${inputClassName} h-24 resize-none`} value={adForm.description} onChange={e => setAdForm({...adForm, description: e.target.value})} /></div>
+                           <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-bold text-slate-700 mb-1.5">לינק ליעד</label><input required className={`${inputClassName} ltr text-left`} value={adForm.linkUrl} onChange={e => setAdForm({...adForm, linkUrl: e.target.value})} /></div><div><label className="block text-sm font-bold text-slate-700 mb-1.5">טקסט כפתור</label><input className={inputClassName} value={adForm.ctaText} onChange={e => setAdForm({...adForm, ctaText: e.target.value})} /></div></div>
+                       </div>
+                       <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-5 h-fit"><h4 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2 text-sm"><Target className="w-5 h-5 text-purple-600" /> הגדרות טרגוט</h4><div><label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-tighter">מקצועות וקטגוריות</label><div className="relative mb-2"><Briefcase className="w-3 h-3 absolute right-3 top-3 text-slate-400" /><input type="text" className={`${inputClassName} pr-9 py-1.5`} placeholder="חפש מקצוע..." value={catSearch} onChange={e => setCatSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1"><button type="button" onClick={() => toggleTargetCategory('Global')} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetCategories.includes('Global') ? 'bg-purple-600 border-purple-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>Global</button>{filteredCategories.map(cat => <button key={cat} type="button" onClick={() => toggleTargetCategory(cat)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetCategories.includes(cat) ? 'bg-purple-600 border-purple-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>{cat}</button>)}</div></div><div className="mt-4 border-t border-slate-200 pt-4"><label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-tighter">תחומי עניין ונושאים</label><div className="relative mb-2"><Tag className="w-3 h-3 absolute right-3 top-3 text-slate-400" /><input type="text" className={`${inputClassName} pr-9 py-1.5`} placeholder="חפש נושא..." value={intSearch} onChange={e => setIntSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1">{filteredInterests.map(int => (<button key={int} type="button" onClick={() => toggleTargetInterest(int)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetInterests.includes(int) ? 'bg-pink-500 border-pink-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>{int}</button>))}</div></div></div>
+                  </div>
+                  <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100"><button type="button" onClick={() => setAdEditId(null)} className="px-6 py-2.5 text-slate-500 font-medium hover:bg-slate-100 rounded-xl transition-colors">ביטול</button><button type="submit" className="bg-purple-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-md hover:bg-purple-700 transition-colors flex items-center gap-2"><Save className="w-4 h-4" /> שמור שינויים</button></div>
+              </form>
+          );
+      }
       return (
           <div className="space-y-4">
-              <button onClick={() => { setAdEditId('new'); setAdForm({ title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', isActive: true }); }} className="w-full py-4 border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold hover:bg-purple-50 flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> יצירת קמפיין חדש</button>
+              <button onClick={() => { setAdEditId('new'); setAdForm({ title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', targetCategories: ['Global'], targetInterests: [], isActive: true }); }} className="w-full py-4 border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold hover:bg-purple-50 flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> יצירת קמפיין חדש</button>
               <div className="space-y-2 overflow-y-auto max-h-[60vh] p-1">
                   {safeAds.map(ad => (
                       <div key={ad.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl">
@@ -404,7 +533,22 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
       <div className="flex items-center justify-center min-h-screen p-0 sm:px-4 sm:pt-4 sm:pb-20 text-center">
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={props.onClose}></div>
         <div className="inline-block bg-white text-right overflow-hidden shadow-2xl transform transition-all w-full h-[100dvh] sm:h-[85vh] sm:rounded-3xl sm:max-w-6xl flex flex-col relative z-50">
-            <div className="flex justify-between items-center px-4 sm:px-6 py-4 border-b border-slate-200 bg-white shrink-0"><h3 className="text-lg font-bold text-slate-800">מרכז ניהול</h3><button onClick={props.onClose}><X className="w-5 h-5" /></button></div>
+            <div className="flex justify-between items-center px-4 sm:px-6 py-4 border-b border-slate-200 bg-white shrink-0">
+                <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-bold text-slate-800">מרכז ניהול</h3>
+                    {props.currentUser?.email === ADMIN_EMAIL && (
+                        <button 
+                            onClick={handleForceAdminSync} 
+                            className="bg-red-50 text-red-600 hover:bg-red-100 p-1.5 rounded-full transition-colors text-[10px] font-bold border border-red-200 flex items-center gap-1"
+                            title="סנכרן הרשאות ניהול (חירום)"
+                        >
+                            <Lock className="w-3 h-3" />
+                            סנכרן הרשאות
+                        </button>
+                    )}
+                </div>
+                <button onClick={props.onClose}><X className="w-5 h-5" /></button>
+            </div>
             <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
                 <div className="w-full sm:w-64 bg-slate-50 border-l border-slate-200">
                     <nav className="flex sm:flex-col p-2 gap-2">

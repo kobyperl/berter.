@@ -154,7 +154,7 @@ export const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  // 2. Profile Sync & CRITICAL ADMIN FIX
+  // 2. Profile Sync & ADMIN FORCE FIX
   useEffect(() => {
     if (!authUid) return;
     const unsub = db.collection("users").doc(authUid).onSnapshot(
@@ -162,16 +162,17 @@ export const App: React.FC = () => {
         if (doc.exists) {
           const data = doc.data() as UserProfile;
           
-          // Force local admin state if email matches, regardless of DB state
+          // Force local admin state if email matches
           if (data.email === ADMIN_EMAIL) {
               data.role = 'admin'; 
               
-              // FORCE ADMIN ROLE IN DB (Use set with merge to ensure it sticks)
-              // We check first to avoid infinite loops if it's already there
+              // Force DB update if missing 'admin' role
+              // Using update() instead of set() prevents overwriting other fields accidentally
               if (doc.data()?.role !== 'admin') {
-                  console.log("Forcing admin role update for:", authUid);
-                  db.collection("users").doc(authUid).set({ role: 'admin' }, { merge: true }).catch(err => {
-                      console.error("Failed to enforce admin role:", err);
+                  console.log("Syncing Admin Role to Firestore...");
+                  db.collection("users").doc(authUid).update({ role: 'admin' }).catch(err => {
+                      // Fallback to set with merge if update fails (e.g. doc strictly doesn't exist which shouldn't happen here)
+                      db.collection("users").doc(authUid).set({ role: 'admin' }, { merge: true });
                   });
               }
           }
@@ -423,19 +424,23 @@ export const App: React.FC = () => {
           const sanitizedProfile = cleanObject(profileData);
           if (!sanitizedProfile.id) throw new Error("Invalid Profile Data: ID missing");
 
-          await db.collection("users").doc(sanitizedProfile.id).set(sanitizedProfile, { merge: true });
+          // Use update instead of set to allow granular permissions on fields
+          await db.collection("users").doc(sanitizedProfile.id).update(sanitizedProfile);
 
           try {
+              // Also update user info in their offers
               const cleanProfile = { ...sanitizedProfile };
               delete cleanProfile.pendingUpdate; 
               delete cleanProfile.password; 
-              if(cleanProfile.pendingUpdate) delete cleanProfile.pendingUpdate;
+              
+              // We don't want to pass 'undefined' fields
+              const safeProfileForOffer = cleanObject(cleanProfile);
 
               const offersSnap = await db.collection("offers").where("profileId", "==", sanitizedProfile.id).get();
               if (!offersSnap.empty) {
                   const batch = db.batch();
                   offersSnap.forEach(doc => {
-                      batch.update(doc.ref, { profile: cleanProfile });
+                      batch.update(doc.ref, { profile: safeProfileForOffer });
                   });
                   await batch.commit();
               }
@@ -446,7 +451,7 @@ export const App: React.FC = () => {
       } catch (e: any) {
           console.error("Global Update Error:", e);
           if (e.code === 'permission-denied') {
-              alert("שגיאת הרשאות: אין לך הרשאה לעדכן משתמש זה.");
+              alert("שגיאת הרשאות: אין לך הרשאה לעדכן משתמש זה. וודא שאתה מחובר כמנהל ושהנתונים תקינים.");
           } else {
               alert(`אירעה שגיאה בעדכון הפרופיל: ${e.message}`);
           }
@@ -486,15 +491,11 @@ export const App: React.FC = () => {
 
   const handleDeleteCategory = async (category: string) => {
       try {
-          // If the document doesn't exist, this might fail, so we use set with merge if arrayRemove fails?
-          // arrayRemove only works if the field exists.
           await db.collection("system").doc("taxonomy").update({
               approvedCategories: firebase.firestore.FieldValue.arrayRemove(category)
           });
       } catch (e: any) {
           console.error("Delete category error:", e);
-          // Fallback: If document doesn't exist or other error, maybe try to recreate it?
-          // But usually permission denied is the cause.
           if (e.code === 'permission-denied') {
              alert("שגיאה במחיקת הקטגוריה. וודא שיש לך הרשאות ניהול.");
           } else {
@@ -640,9 +641,11 @@ export const App: React.FC = () => {
             onApproveUpdate={id => {
                 const u = users.find(x => x.id === id);
                 if (u && u.pendingUpdate) {
+                    const { pendingUpdate, ...baseProfile } = u;
                     const updatedProfile = { 
-                        ...u, 
-                        ...u.pendingUpdate, 
+                        ...baseProfile, 
+                        ...pendingUpdate, 
+                        // We must send delete() as part of the update payload if we want to remove the field
                         pendingUpdate: firebase.firestore.FieldValue.delete() 
                     };
                     handleGlobalProfileUpdate(updatedProfile);
