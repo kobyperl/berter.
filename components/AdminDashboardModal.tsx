@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Shield, FileText, BarChart3, Megaphone, 
@@ -6,6 +7,7 @@ import {
   Target, Copy, Pencil, LayoutDashboard, Check, Briefcase, Tag, CornerDownRight, GitMerge, ToggleRight, ToggleLeft, ArrowRightLeft, Users, UserPlus
 } from 'lucide-react';
 import { UserProfile, BarterOffer, SystemAd } from '../types';
+import { TagManager } from './TagManager';
 
 interface AdminDashboardModalProps {
   isOpen: boolean;
@@ -114,7 +116,7 @@ const DeleteToggleButton = ({ onDelete, className = "" }: { onDelete: () => void
     );
 };
 
-type TabType = 'users' | 'content' | 'data' | 'ads';
+type TabType = 'users' | 'content' | 'data' | 'ads' | 'tags';
 
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) => {
   const [activeTab, setActiveTab] = useState<TabType>('users');
@@ -784,7 +786,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   };
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-hidden sm:overflow-y-auto" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[120] overflow-hidden sm:overflow-y-auto" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen p-0 sm:px-4 sm:pt-4 sm:pb-20 text-center">
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={props.onClose}></div>
         <div className="inline-block bg-white text-right overflow-hidden shadow-2xl transform transition-all w-full h-[100dvh] sm:h-[85vh] sm:rounded-3xl sm:max-w-6xl flex flex-col relative z-50">
@@ -796,13 +798,23 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                         <button onClick={() => setActiveTab('content')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'content' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><FileText className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">מודעות</span>{pendingOffersCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingOffersCount}</span>}</button>
                         <button onClick={() => setActiveTab('data')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><BarChart3 className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">קטגוריות</span>{pendingDataCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingDataCount}</span>}</button>
                         <button onClick={() => setActiveTab('ads')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'ads' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Megaphone className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">פרסומות</span></button>
+                        <button onClick={() => setActiveTab('tags')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'tags' ? 'bg-white shadow-md text-indigo-700 font-bold ring-1 ring-indigo-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Tag className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">ניהול תגיות</span></button>
                     </nav>
                 </div>
-                <div className="order-1 sm:order-2 flex-1 overflow-y-auto p-4 sm:p-6 bg-white shadow-inner"><div className="max-w-4xl mx-auto h-full"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{activeTab === 'users' && 'ניהול משתמשים'}{activeTab === 'content' && 'ניהול מודעות'}{activeTab === 'data' && 'ניהול נתונים'}{activeTab === 'ads' && 'ניהול פרסום'}</h2></div>
+                <div className="order-1 sm:order-2 flex-1 overflow-y-auto p-4 sm:p-6 bg-white shadow-inner"><div className="max-w-4xl mx-auto h-full"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{activeTab === 'users' && 'ניהול משתמשים'}{activeTab === 'content' && 'ניהול מודעות'}{activeTab === 'data' && 'ניהול נתונים'}{activeTab === 'ads' && 'ניהול פרסום'}{activeTab === 'tags' && 'מנוע תגיות ומיפוי'}</h2></div>
                         {activeTab === 'users' && renderUsers()}
                         {activeTab === 'content' && renderContent()}
                         {activeTab === 'data' && (<div className="h-full"><div className="p-4 bg-blue-50 text-blue-800 rounded-xl mb-4 text-xs font-medium border border-blue-100 flex items-start gap-2"><GitMerge className="w-5 h-5 flex-shrink-0 mt-0.5" /><span><strong>ניהול טקסונומיה:</strong> שינוי שם של קטגוריה או מיזוג יעדכן את כל הפרופילים והמודעות המשוייכים באופן אוטומטי במערכת.</span></div>{renderData()}</div>)}
                         {activeTab === 'ads' && renderAds()}
+                        {activeTab === 'tags' && (
+                            <TagManager 
+                                offers={safeOffers} 
+                                availableCategories={safeAvailableCategories} 
+                                availableInterests={safeAvailableInterests}
+                                onAddCategory={props.onAddCategory}
+                                onAddInterest={props.onAddInterest}
+                            />
+                        )}
                     </div>
                 </div>
             </div>

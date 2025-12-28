@@ -39,7 +39,9 @@ export interface BarterOffer {
   requestedService: string; // What I want
   location: string;
   description: string;
-  tags: string[];
+  tags: string[]; // Legacy/Fallback general tags
+  giving_tags?: string[]; // New: Structured tags for what is offered (AI extracted)
+  receiving_tags?: string[]; // New: Structured tags for what is requested (AI extracted)
   durationType: 'one-time' | 'ongoing'; // New: Duration of the barter
   expirationDate?: string; // New: Optional expiration date for one-time offers
   status: 'active' | 'pending' | 'rejected' | 'expired'; // New: Moderation status
@@ -89,11 +91,19 @@ export interface SystemAd {
   isActive: boolean;
 }
 
+export interface TagMapping {
+  tagName: string;
+  mappedCategories: string[]; // IDs or Names of categories/occupations (Blue)
+  mappedInterests: string[]; // IDs or Names of interests (Green)
+  isHidden?: boolean; // New: If true, hide from mapping list (Blacklist)
+}
+
 export interface SystemTaxonomy {
   approvedCategories: string[];
   pendingCategories: string[];
   approvedInterests: string[];
   pendingInterests?: string[];
   categoryHierarchy?: Record<string, string>; // Child Category -> Parent Category Name
+  tagMappings?: Record<string, TagMapping>; // New: Map tag string to structured mapping
   isInitialized?: boolean; // New: Track if static constants have been migrated to DB
 }

@@ -10,6 +10,8 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
     requestedService: string,
     location: string,
     tags: string[],
+    giving_tags?: string[],
+    receiving_tags?: string[],
     durationType: 'one-time' | 'ongoing',
     expirationDate?: string
 } | null> => {
@@ -30,6 +32,17 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
 
     const data = await response.json();
 
+    // Ensure we have arrays
+    const giving = Array.isArray(data.giving_tags) ? data.giving_tags : [];
+    const receiving = Array.isArray(data.receiving_tags) ? data.receiving_tags : [];
+    
+    // Flatten tags for legacy support while keeping structured data
+    const combinedTags = Array.from(new Set([
+        ...giving,
+        ...receiving,
+        ...(Array.isArray(data.tags) ? data.tags : [])
+    ]));
+
     // Validate and fallback if fields are missing to ensure UI doesn't break
     return {
         title: data.title || "הצעה חדשה",
@@ -37,7 +50,9 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
         offeredService: data.offeredService || "שירות",
         requestedService: data.requestedService || "שירות",
         location: data.location || "כל הארץ",
-        tags: Array.isArray(data.tags) ? data.tags : [],
+        tags: combinedTags,
+        giving_tags: giving,
+        receiving_tags: receiving,
         durationType: data.durationType === 'ongoing' ? 'ongoing' : 'one-time',
         expirationDate: data.expirationDate
     };

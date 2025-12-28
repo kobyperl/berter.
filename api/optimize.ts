@@ -51,7 +51,9 @@ export default async function handler(req, res) {
       Current Date: ${today}
       Analyze this barter offer request: "${rawInput}"
       
-      Extract structrued data in Hebrew.
+      Extract structured data in Hebrew.
+      CRITICAL: You must strictly separate what the user is OFFERING (giving_tags) from what the user is REQUESTING (receiving_tags).
+      Example: "I build websites and need a lawyer" -> giving_tags: ["בניית אתרים"], receiving_tags: ["עריכת דין"].
     `;
 
     // Define JSON Schema for strict output
@@ -66,7 +68,17 @@ export default async function handler(req, res) {
             tags: { 
                 type: "ARRAY", 
                 items: { type: "STRING" },
-                description: "Up to 10 relevant tags (professions, skills, or interests)."
+                description: "General tags for context (Union of giving and receiving)."
+            },
+            giving_tags: {
+                type: "ARRAY",
+                items: { type: "STRING" },
+                description: "Specific skills or services the user is providing/giving."
+            },
+            receiving_tags: {
+                type: "ARRAY",
+                items: { type: "STRING" },
+                description: "Specific skills or services the user wants to receive."
             },
             durationType: { 
                 type: "STRING", 
@@ -75,7 +87,7 @@ export default async function handler(req, res) {
             },
             expirationDate: { type: "STRING", description: "YYYY-MM-DD format if a deadline is explicitly mentioned." }
         },
-        required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
+        required: ["title", "description", "offeredService", "requestedService", "tags", "giving_tags", "receiving_tags", "durationType"]
     };
 
     const model = 'gemini-2.5-flash';
@@ -91,7 +103,6 @@ export default async function handler(req, res) {
       }
     };
 
-    // Use the incoming request referer or fallback to the main domain
     const referer = req.headers.referer || 'https://www.barter.org.il';
 
     const response = await fetch(url, {

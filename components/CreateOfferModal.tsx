@@ -41,6 +41,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
       description: string;
       location: string;
       tags: string;
+      giving_tags: string[];
+      receiving_tags: string[];
       durationType: 'one-time' | 'ongoing';
       expirationDate: string;
   }>({
@@ -50,6 +52,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     description: '',
     location: '',
     tags: '',
+    giving_tags: [],
+    receiving_tags: [],
     durationType: 'one-time',
     expirationDate: ''
   });
@@ -63,6 +67,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             description: editingOffer.description,
             location: editingOffer.location,
             tags: editingOffer.tags.join(', '),
+            giving_tags: editingOffer.giving_tags || [],
+            receiving_tags: editingOffer.receiving_tags || [],
             durationType: editingOffer.durationType,
             expirationDate: editingOffer.expirationDate || ''
         });
@@ -77,6 +83,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             description: '',
             location: '',
             tags: '',
+            giving_tags: [],
+            receiving_tags: [],
             durationType: 'one-time',
             expirationDate: ''
         });
@@ -178,6 +186,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             requestedService: result.requestedService,
             location: result.location || 'כל הארץ',
             tags: result.tags.join(', '),
+            giving_tags: result.giving_tags || [],
+            receiving_tags: result.receiving_tags || [],
             durationType: result.durationType === 'ongoing' ? 'ongoing' : 'one-time',
             expirationDate: result.expirationDate || ''
         }));
@@ -203,6 +213,9 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
         location: formData.location || 'כל הארץ',
         description: formData.description,
         tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
+        // Persist structured tags from AI (hidden fields)
+        giving_tags: formData.giving_tags,
+        receiving_tags: formData.receiving_tags,
         durationType: formData.durationType,
         ...(formData.durationType === 'one-time' && formData.expirationDate ? { expirationDate: formData.expirationDate } : {})
     };

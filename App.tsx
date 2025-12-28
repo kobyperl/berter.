@@ -25,6 +25,9 @@ import { EmailCenterModal } from './components/EmailCenterModal';
 import { PostRegisterPrompt } from './components/PostRegisterPrompt';
 import { ProfessionalismPrompt } from './components/ProfessionalismPrompt';
 
+// Matching Engine V2
+import { isOfferRelevantForUser } from './modules/matching-engine-v2/matcher';
+
 // Data & Types
 import { CATEGORIES, COMMON_INTERESTS, ADMIN_EMAIL } from './constants';
 import { Plus, Loader2, ChevronDown } from 'lucide-react';
@@ -135,7 +138,7 @@ export const App: React.FC = () => {
   const [isOffersLoading, setIsOffersLoading] = useState(true);
   
   const [taxonomy, setTaxonomy] = useState<SystemTaxonomy>({
-      approvedCategories: [], pendingCategories: [], approvedInterests: [], pendingInterests: [], categoryHierarchy: {}
+      approvedCategories: [], pendingCategories: [], approvedInterests: [], pendingInterests: [], categoryHierarchy: {}, tagMappings: {}
   });
 
   // 1. Auth Listener
@@ -230,6 +233,7 @@ export const App: React.FC = () => {
                 pendingCategories: [],
                 pendingInterests: [],
                 categoryHierarchy: {},
+                tagMappings: {},
                 isInitialized: true
             });
         }
@@ -558,9 +562,18 @@ export const App: React.FC = () => {
 
   const filteredOffers = useMemo(() => {
     return offers.filter(o => {
+      // 1. Default Rules (Active Status / Ownership)
       const isMine = authUid && o.profileId === authUid;
       const isAdmin = currentUser?.role === 'admin';
       if (o.status !== 'active' && !isMine && !isAdmin) return false; 
+      
+      // 2. "For You" Logic - ADVANCED MATCHING V2
+      if (viewFilter === 'for_you' && currentUser) {
+          // Use centralized matching engine logic
+          return isOfferRelevantForUser(currentUser, o, taxonomy);
+      }
+
+      // 3. Search Filters (Standard)
       const q = searchQuery.toLowerCase();
       if (searchQuery && !((o.title||'').toLowerCase().includes(q) || (o.description||'').toLowerCase().includes(q))) return false;
       if (durationFilter !== 'all' && o.durationType !== durationFilter) return false;
@@ -579,7 +592,7 @@ export const App: React.FC = () => {
         }
         return 0;
     });
-  }, [offers, authUid, currentUser?.role, searchQuery, durationFilter, selectedCategories, sortBy]);
+  }, [offers, authUid, currentUser, searchQuery, durationFilter, selectedCategories, sortBy, viewFilter, taxonomy]);
 
   useEffect(() => {
       setVisibleCount(12);
@@ -636,6 +649,18 @@ export const App: React.FC = () => {
       <main id="offers-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
         <AdBanner contextCategories={selectedCategories} systemAds={systemAds} currentUser={currentUser} />
         
+        {viewFilter === 'for_you' && (
+            <div className="mb-6 bg-brand-50 border border-brand-100 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                <div className="bg-white p-2 rounded-full shadow-sm text-brand-600">
+                    <Loader2 className="w-5 h-5 animate-spin-slow" />
+                </div>
+                <div>
+                    <h3 className="font-bold text-brand-900">התאמות אישיות</h3>
+                    <p className="text-sm text-brand-700">מציגים לך הצעות שמתאימות לתחומי העניין שלך, ומסננים שירותים שאתה כבר מציע בעצמך.</p>
+                </div>
+            </div>
+        )}
+
         <FilterBar 
             keywordInput={searchQuery} setKeywordInput={setSearchQuery}
             locationInput="" setLocationInput={()=>{}}
@@ -650,18 +675,31 @@ export const App: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {isOffersLoading ? [1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-white rounded-xl skeleton"></div>) : (
                 <>
-                    {visibleOffers.map((o) => (
-                        <OfferCard 
-                            key={o.id} offer={o} 
-                            onContact={p => { setSelectedProfile(p); setInitialMessageSubject(o.title); setIsMessagingModalOpen(true); }} 
-                            onUserClick={p => { setSelectedProfile(p); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }} 
-                            currentUserId={authUid || undefined} viewMode={viewMode}
-                            onRate={handleRate}
-                            onDelete={(authUid === o.profileId || currentUser?.role === 'admin') ? id => db.collection("offers").doc(id).delete() : undefined}
-                            onEdit={(authUid === o.profileId || currentUser?.role === 'admin') ? offer => { setEditingOffer(offer); setActingUser(null); setIsCreateModalOpen(true); } : undefined}
-                        />
-                    ))}
-                    {visibleCount >= filteredOffers.length && (
+                    {visibleOffers.length === 0 ? (
+                        <div className="col-span-full py-12 text-center text-slate-400">
+                            {viewFilter === 'for_you' ? (
+                                <div>
+                                    <p className="font-bold text-lg mb-2">עדיין לא מצאנו התאמות מדויקות...</p>
+                                    <p className="text-sm">נסה לעדכן את תחומי העניין בפרופיל שלך כדי לקבל הצעות טובות יותר.</p>
+                                </div>
+                            ) : (
+                                <p>לא נמצאו הצעות תואמות לסינון הנוכחי.</p>
+                            )}
+                        </div>
+                    ) : (
+                        visibleOffers.map((o) => (
+                            <OfferCard 
+                                key={o.id} offer={o} 
+                                onContact={p => { setSelectedProfile(p); setInitialMessageSubject(o.title); setIsMessagingModalOpen(true); }} 
+                                onUserClick={p => { setSelectedProfile(p); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }} 
+                                currentUserId={authUid || undefined} viewMode={viewMode}
+                                onRate={handleRate}
+                                onDelete={(authUid === o.profileId || currentUser?.role === 'admin') ? id => db.collection("offers").doc(id).delete() : undefined}
+                                onEdit={(authUid === o.profileId || currentUser?.role === 'admin') ? offer => { setEditingOffer(offer); setActingUser(null); setIsCreateModalOpen(true); } : undefined}
+                            />
+                        ))
+                    )}
+                    {viewFilter === 'all' && visibleCount >= filteredOffers.length && (
                         <div onClick={() => { setEditingOffer(null); setActingUser(null); setIsCreateModalOpen(true); }} className="cursor-pointer border-2 border-dashed border-brand-300 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-brand-50 transition-all group">
                             <div className="bg-brand-100 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"><Plus className="w-8 h-8 text-brand-600" /></div>
                             <h3 className="text-xl font-bold text-slate-800">פרסם הצעה חדשה</h3>
