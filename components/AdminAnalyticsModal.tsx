@@ -1,752 +1,234 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  X, Shield, FileText, BarChart3, Megaphone, 
-  Search, RefreshCw, Mail, Trash2, CheckCircle, 
-  Edit, Plus, Upload, Save, Link as LinkIcon, 
-  Target, Copy, Pencil, LayoutDashboard, Check, Briefcase, Tag, CornerDownRight, GitMerge, ToggleRight, ToggleLeft, ArrowRightLeft, Users, UserPlus
-} from 'lucide-react';
-import { UserProfile, BarterOffer, SystemAd } from '../types';
+import React, { useState } from 'react';
+import { X, Briefcase, Heart, Plus, BarChart3, Trash2, CheckCircle, RefreshCw, ArrowRightLeft, Pencil, Save, GitMerge, CornerDownRight, Check, Users } from 'lucide-react';
+import { UserProfile } from '../types';
 
-interface AdminDashboardModalProps {
+interface AdminAnalyticsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // User Data
   users: UserProfile[];
-  currentUser: UserProfile | null;
-  onDeleteUser: (userId: string) => void;
-  onApproveUpdate: (userId: string) => void;
-  onRejectUpdate: (userId: string) => void;
-  // Offer Data
-  offers: BarterOffer[];
-  onDeleteOffer: (offerId: string) => void;
-  onBulkDelete: (dateThreshold: string) => void;
-  onApproveOffer: (offerId: string) => void;
-  onEditOffer: (offer: BarterOffer) => void;
-  // Analytics/Taxonomy Data
   availableCategories: string[];
   availableInterests: string[];
-  pendingCategories: string[];
-  pendingInterests: string[];
   categoryHierarchy?: Record<string, string>;
   onAddCategory: (category: string) => void;
   onAddInterest: (interest: string) => void;
   onDeleteCategory: (category: string) => void;
   onDeleteInterest: (interest: string) => void;
-  onApproveCategory: (category: string) => void;
-  onRejectCategory: (category: string) => void;
-  onReassignCategory: (oldCategory: string, newCategory: string) => void;
-  onApproveInterest: (interest: string) => void;
-  onRejectInterest: (interest: string) => void;
+  // Pending Management
+  pendingCategories?: string[];
+  pendingInterests?: string[];
+  onApproveCategory?: (category: string) => void;
+  onRejectCategory?: (category: string) => void;
+  onReassignCategory?: (oldCategory: string, newCategory: string) => void;
+  onApproveInterest?: (interest: string) => void;
+  onRejectInterest?: (interest: string) => void;
+  // Edit Existing
   onEditCategory: (oldName: string, newName: string, parentCategory?: string) => void;
   onEditInterest: (oldName: string, newName: string) => void;
-  // Ads Data
-  ads: SystemAd[];
-  onAddAd: (ad: SystemAd) => void;
-  onEditAd: (ad: SystemAd) => void;
-  onDeleteAd: (id: string) => void;
-  // Shared
-  onViewProfile: (profile: UserProfile) => void;
+  onViewProfile?: (profile: UserProfile) => void; // Added prop for user drilldown
 }
 
-// Helper functions
-const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 800; 
-          let width = img.width;
-          let height = img.height;
-          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-          canvas.width = width; canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) { ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.8)); } 
-          else { reject(new Error("Could not get canvas context")); }
-        };
-        img.onerror = (err) => reject(err);
-      };
-      reader.onerror = (err) => reject(err);
-    });
-};
-
-type TabType = 'users' | 'content' | 'data' | 'ads';
-
-export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) => {
-  const [activeTab, setActiveTab] = useState<TabType>('users');
+export const AdminAnalyticsModal: React.FC<AdminAnalyticsModalProps> = ({
+  isOpen,
+  onClose,
+  users,
+  availableCategories,
+  availableInterests,
+  categoryHierarchy = {},
+  onAddCategory,
+  onAddInterest,
+  onDeleteCategory,
+  onDeleteInterest,
+  pendingCategories = [],
+  pendingInterests = [],
+  onApproveCategory,
+  onRejectCategory,
+  onReassignCategory,
+  onApproveInterest,
+  onRejectInterest,
+  onEditCategory,
+  onEditInterest,
+  onViewProfile
+}) => {
+  const [activeTab, setActiveTab] = useState<'categories' | 'interests' | 'pending'>('categories');
+  const [newInput, setNewInput] = useState('');
   
-  // Local State
-  const [userSearch, setUserSearch] = useState('');
-  const [usersSubTab, setUsersSubTab] = useState<'all' | 'pending'>('all'); // Added pending tab
-  const [contentTab, setContentTab] = useState<'pending' | 'all'>('pending');
-  const [dateThreshold, setDateThreshold] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  
-  // Data Tab State
-  const [dataSubTab, setDataSubTab] = useState<'categories' | 'interests' | 'pending'>('categories');
-  const [newDataInput, setNewDataInput] = useState('');
-  const [editingItem, setEditingItem] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editParent, setEditParent] = useState('');
-  
-  // User Drilldown State (View users for specific category)
-  const [viewingUsersFor, setViewingUsersFor] = useState<{name: string, type: 'category' | 'interest'} | null>(null);
-  
-  // Reassign State for Pending Items
+  // Pending Reassign State
   const [reassignTarget, setReassignTarget] = useState<string | null>(null);
   const [reassignDestination, setReassignDestination] = useState('');
 
-  // Ads State
-  const [adEditId, setAdEditId] = useState<string | null>(null);
-  const [adForm, setAdForm] = useState<Partial<SystemAd>>({ 
-      title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', isActive: true 
-  });
-  const [targetCategories, setTargetCategories] = useState<string[]>(['Global']);
-  const [targetInterests, setTargetInterests] = useState<string[]>([]);
-  const [catSearch, setCatSearch] = useState('');
-  const [intSearch, setIntSearch] = useState('');
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Editing State
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editParent, setEditParent] = useState('');
 
-  if (!props.isOpen) return null;
+  if (!isOpen) return null;
 
-  // Safe Arrays
-  const safeUsers = props.users || [];
-  const safeOffers = props.offers || [];
-  const safeAds = props.ads || [];
-  const safeAvailableCategories = props.availableCategories || [];
-  const safeAvailableInterests = props.availableInterests || [];
-  const safePendingCategories = props.pendingCategories || [];
-  const safePendingInterests = props.pendingInterests || [];
-
-  const pendingUserUpdates = safeUsers.filter(u => u.pendingUpdate).length;
-  const pendingOffersCount = safeOffers.filter(o => o.status === 'pending').length;
-  const pendingDataCount = safePendingCategories.length + safePendingInterests.length;
-
-  // --- Handlers ---
-
-  const handleEditAdClick = (ad: SystemAd) => {
-      setAdEditId(ad.id);
-      setAdForm({
-          title: ad.title,
-          description: ad.description,
-          ctaText: ad.ctaText,
-          linkUrl: ad.linkUrl,
-          imageUrl: ad.imageUrl,
-          subLabel: ad.subLabel || '',
-          isActive: ad.isActive
-      });
-      setTargetCategories(ad.targetCategories || ['Global']);
-      setTargetInterests(ad.targetInterests || []);
+  const getCategoryCount = (category: string) => {
+    return users.filter(u => (u.mainField || '').trim().toLowerCase() === category.trim().toLowerCase()).length;
   };
 
-  const handleDuplicateAd = (ad: SystemAd) => {
-      const newAd: SystemAd = {
-          ...ad,
-          id: Date.now().toString(),
-          title: `${ad.title} (עותק)`,
-          isActive: false 
-      };
-      props.onAddAd(newAd);
-      alert('המודעה שוכפלה בהצלחה (כטיוטה לא פעילה).');
+  const getInterestCount = (interest: string) => {
+    return users.filter(u => (u.interests || []).some(i => i.trim().toLowerCase() === interest.trim().toLowerCase())).length;
   };
 
-  const handleToggleAdStatus = (ad: SystemAd) => {
-      props.onEditAd({ ...ad, isActive: !ad.isActive });
+  const sortedCategories = [...availableCategories].sort((a, b) => getCategoryCount(b) - getCategoryCount(a));
+  const sortedInterests = [...availableInterests].sort((a, b) => getInterestCount(b) - getInterestCount(a));
+
+  const handleAdd = () => {
+    if (!newInput.trim()) return;
+    if (activeTab === 'categories') {
+        onAddCategory(newInput.trim());
+    } else {
+        onAddInterest(newInput.trim());
+    }
+    setNewInput('');
   };
 
-  const handleAdSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!adForm.title || !adForm.linkUrl || !adForm.imageUrl) {
-          alert('נא למלא את כל שדות החובה');
-          return;
-      }
-
-      const finalAd: SystemAd = { 
-          id: (adEditId === 'new' || !adEditId) ? Date.now().toString() : adEditId,
-          title: adForm.title!,
-          description: adForm.description || '',
-          ctaText: adForm.ctaText || 'לפרטים',
-          linkUrl: adForm.linkUrl!,
-          imageUrl: adForm.imageUrl!,
-          subLabel: adForm.subLabel,
-          targetCategories: targetCategories,
-          targetInterests: targetInterests,
-          isActive: adForm.isActive ?? true 
-      };
-
-      if (adEditId && adEditId !== 'new') {
-          props.onEditAd(finalAd);
+  const handleDelete = (item: string) => {
+      const count = activeTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
+      if (count > 0) {
+          if (!window.confirm(`שים לב: ישנם ${count} משתמשים הרשומים תחת "${item}". האם אתה בטוח שברצונך למחוק?`)) {
+              return;
+          }
       } else {
-          props.onAddAd(finalAd);
-      }
-      
-      setAdEditId(null);
-      setAdForm({ title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', isActive: true });
-      setTargetCategories(['Global']);
-      setTargetInterests([]);
-  };
-
-  const toggleTargetCategory = (cat: string) => {
-      setTargetCategories(prev => {
-          if (prev.includes(cat)) {
-              if (prev.length === 1 && prev[0] === 'Global' && cat === 'Global') return prev;
-              return prev.filter(c => c !== cat);
-          }
-          return [...prev, cat];
-      });
-  };
-
-  const toggleTargetInterest = (int: string) => {
-      setTargetInterests(prev => prev.includes(int) ? prev.filter(i => i !== int) : [...prev, int]);
-  };
-
-  // --- Render Sections ---
-
-  // 1. Users
-  const renderUsers = () => {
-      let displayedUsers = safeUsers;
-      if (usersSubTab === 'pending') {
-          displayedUsers = safeUsers.filter(u => u.pendingUpdate);
+          if (!window.confirm(`האם למחוק את "${item}"?`)) return;
       }
 
-      const filtered = displayedUsers.filter(u => 
-        (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
-        (u.email || '').toLowerCase().includes(userSearch.toLowerCase())
-      ).sort((a, b) => {
-          const dateA = new Date(a.joinedAt || 0).getTime();
-          const dateB = new Date(b.joinedAt || 0).getTime();
-          return dateB - dateA;
-      });
+      if (activeTab === 'categories') {
+          onDeleteCategory(item);
+      } else {
+          onDeleteInterest(item);
+      }
+  };
+
+  const handleStartEdit = (item: string) => {
+      setEditingItem(item);
+      setEditName(item);
+      if (activeTab === 'categories') {
+          setEditParent(categoryHierarchy[item] || '');
+      }
+  };
+
+  const handleSaveEdit = () => {
+      if (!editingItem || !editName.trim()) return;
       
-      return (
-          <div className="space-y-4">
-              <div className="flex gap-2 border-b border-slate-200">
-                  <button 
-                      onClick={() => setUsersSubTab('all')} 
-                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${usersSubTab === 'all' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                  >
-                      כל המשתמשים ({safeUsers.length})
-                  </button>
-                  <button 
-                      onClick={() => setUsersSubTab('pending')} 
-                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${usersSubTab === 'pending' ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                  >
-                      ממתינים לאישור
-                      {pendingUserUpdates > 0 && (
-                          <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[10px] font-black">{pendingUserUpdates}</span>
-                      )}
-                  </button>
-              </div>
-
-              <div className="relative">
-                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                 <input 
-                    type="text" 
-                    placeholder="חפש משתמש לפי שם או אימייל..." 
-                    className="w-full pl-4 pr-10 py-2.5 border border-slate-300 rounded-xl bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm transition-all"
-                    value={userSearch}
-                    onChange={e => setUserSearch(e.target.value)}
-                 />
-              </div>
-
-              <div className="overflow-x-auto border rounded-xl max-h-[50vh] overflow-y-auto custom-scrollbar shadow-inner bg-white">
-                  <table className="w-full text-sm text-right">
-                      <thead className="bg-slate-50 sticky top-0 z-10 border-b">
-                          <tr><th className="px-4 py-3">שם</th><th className="px-4 py-3">מייל</th><th className="px-4 py-3">סטטוס</th><th className="px-4 py-3">פעולות</th></tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                          {filtered.map(user => (
-                              <tr key={user.id} className="hover:bg-slate-50/80 transition-colors group">
-                                  <td className="px-4 py-3 flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}>
-                                      <div className="relative shrink-0">
-                                          <img src={user.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" alt="" />
-                                      </div>
-                                      <div className="min-w-0">
-                                          <div className="font-bold text-slate-800 truncate group-hover:text-brand-600 transition-colors">{user.name}</div>
-                                          <div className="text-[10px] text-slate-500 truncate">{user.mainField}</div>
-                                      </div>
-                                  </td>
-                                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
-                                  <td className="px-4 py-3">
-                                      {user.pendingUpdate ? (
-                                          <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-200 transition-colors">
-                                              <RefreshCw className="w-3 h-3" /> ממתין לאישור
-                                          </button>
-                                      ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                      <div className="flex gap-2 items-center">
-                                          <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
-                                          {user.id !== props.currentUser?.id && (
-                                              <button 
-                                                  onClick={() => props.onDeleteUser(user.id)} 
-                                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                  title="מחק משתמש"
-                                              >
-                                                  <Trash2 className="w-4 h-4" />
-                                              </button>
-                                          )}
-                                      </div>
-                                  </td>
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
-                  {filtered.length === 0 && (
-                      <div className="p-10 text-center text-slate-400 font-medium">
-                          {usersSubTab === 'pending' ? 'אין משתמשים הממתינים לאישור' : 'לא נמצאו משתמשים תואמים לחיפוש'}
-                      </div>
-                  )}
-              </div>
-          </div>
-      );
+      if (activeTab === 'categories') {
+          onEditCategory(editingItem, editName.trim(), editParent || undefined);
+      } else {
+          onEditInterest(editingItem, editName.trim());
+      }
+      
+      setEditingItem(null);
+      setEditName('');
+      setEditParent('');
   };
 
-  // 2. Content
-  const renderContent = () => {
-      const pendingOffers = safeOffers.filter(o => o.status === 'pending');
-      const displayed = contentTab === 'pending' ? pendingOffers : safeOffers;
-
-      return (
-          <div className="space-y-4">
-              <div className="flex gap-2 border-b">
-                  <button onClick={() => setContentTab('pending')} className={`px-4 py-2 text-sm font-bold border-b-2 ${contentTab === 'pending' ? 'border-red-500 text-red-600' : 'border-transparent text-slate-500'}`}>ממתינות ({pendingOffers.length})</button>
-                  <button onClick={() => setContentTab('all')} className={`px-4 py-2 text-sm font-bold border-b-2 ${contentTab === 'all' ? 'border-red-500 text-red-600' : 'border-transparent text-slate-500'}`}>כל המודעות</button>
-              </div>
-
-              {contentTab === 'all' && (
-                  <div className="bg-slate-50 p-3 rounded-lg flex items-center gap-2 text-sm">
-                      <span className="font-bold text-slate-700">מחיקה מרוכזת לפני תאריך:</span>
-                      <input type="date" className="border border-slate-200 rounded px-2 py-1 bg-white" value={dateThreshold} onChange={e => setDateThreshold(e.target.value)} />
-                      <button 
-                        type="button"
-                        onClick={() => { if(confirmDelete) { props.onBulkDelete(dateThreshold); setConfirmDelete(false); } else setConfirmDelete(true); }}
-                        disabled={!dateThreshold}
-                        className={`px-3 py-1 rounded text-white font-bold ${confirmDelete ? 'bg-red-600 animate-pulse' : 'bg-slate-800'}`}
-                      >
-                          {confirmDelete ? 'בטוח למחוק הכל?' : 'מחק מרוכז'}
-                      </button>
-                  </div>
-              )}
-
-              <div className="space-y-3 overflow-y-auto max-h-[60vh] p-1">
-                  {displayed.length === 0 && <div className="text-center py-10 text-slate-400">אין מודעות להצגה</div>}
-                  {displayed.map(offer => (
-                      <div key={offer.id} className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${offer.status === 'pending' ? 'bg-orange-50 border-orange-200' : 'bg-white border-slate-200 shadow-sm'}`}>
-                          <div className="flex items-start gap-3 w-full">
-                              <div className="shrink-0 cursor-pointer" onClick={() => props.onViewProfile(offer.profile)}>
-                                  <img src={offer.profile.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square bg-white shrink-0" alt="" />
-                              </div>
-                              <div className="flex-1">
-                                  <h4 className="font-bold text-slate-900">{offer.title}</h4>
-                                  <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                      <span className="font-medium text-slate-700">{offer.profile.name}</span>
-                                      <span>•</span>
-                                      <span>{new Date(offer.createdAt).toLocaleDateString()}</span>
-                                  </div>
-                                  {offer.status === 'pending' && <p className="text-sm mt-2 p-2 bg-white/60 rounded border border-orange-100">{offer.description}</p>}
-                              </div>
-                          </div>
-
-                          <div className="flex gap-2 shrink-0 w-full sm:w-auto justify-end items-center">
-                              {offer.status === 'pending' && (
-                                  <button onClick={() => props.onApproveOffer(offer.id)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700">אשר</button>
-                              )}
-                              <button onClick={() => props.onEditOffer(offer)} className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200 transition-colors" title="ערוך"><Edit className="w-4 h-4"/></button>
-                              <button 
-                                onClick={() => { if(window.confirm('האם למחוק מודעה זו?')) props.onDeleteOffer(offer.id); }}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="מחק"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                          </div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      );
+  const handleExecuteReassign = () => {
+      if (reassignTarget && reassignDestination && onReassignCategory) {
+          if (window.confirm(`האם למזג את "${reassignTarget}" לתוך "${reassignDestination}"?`)) {
+              onReassignCategory(reassignTarget, reassignDestination);
+              setReassignTarget(null);
+              setReassignDestination('');
+          }
+      }
   };
 
-  // 3. Data (Taxonomy)
-  const renderData = () => {
-      const getUsersForCategory = (cat: string) => safeUsers.filter(u => (u.mainField || '').trim().toLowerCase() === cat.trim().toLowerCase());
-      const getUsersForInterest = (int: string) => safeUsers.filter(u => (u.interests || []).some(i => i.trim().toLowerCase() === int.trim().toLowerCase()));
-
-      const getCategoryCount = (cat: string) => getUsersForCategory(cat).length;
-      const getInterestCount = (int: string) => getUsersForInterest(int).length;
-
-      const handleAddData = () => {
-          if (!newDataInput.trim()) return;
-          if (dataSubTab === 'categories') {
-              props.onAddCategory(newDataInput.trim());
-          } else {
-              props.onAddInterest(newDataInput.trim());
-          }
-          setNewDataInput('');
-      };
-
-      const handleStartEdit = (item: string) => {
-          setEditingItem(item);
-          setEditName(item);
-          if (dataSubTab === 'categories' && props.categoryHierarchy) {
-              setEditParent(props.categoryHierarchy[item] || '');
-          }
-      };
-
-      const handleSaveEdit = () => {
-          if (!editingItem || !editName.trim()) return;
-          
-          if (dataSubTab === 'categories') {
-              props.onEditCategory(editingItem, editName.trim(), editParent || undefined);
-          } else {
-              props.onEditInterest(editingItem, editName.trim());
-          }
-          
-          setEditingItem(null);
-          setEditName('');
-          setEditParent('');
-      };
-
-      const handlePendingMerge = (pendingItem: string) => {
-          if (reassignTarget === pendingItem && reassignDestination) {
-              if (window.confirm(`האם למזג את "${pendingItem}" לתוך "${reassignDestination}"? פעולה זו תעדכן את כל המשתמשים ותמחק את הבקשה.`)) {
-                  props.onReassignCategory(pendingItem, reassignDestination);
-                  setReassignTarget(null);
-                  setReassignDestination('');
-              }
-          }
-      };
-
-      const sortedCategories = [...safeAvailableCategories].sort((a, b) => getCategoryCount(b) - getCategoryCount(a));
-      const sortedInterests = [...safeAvailableInterests].sort((a, b) => getInterestCount(b) - getInterestCount(a));
-
-      const activeList = dataSubTab === 'categories' ? sortedCategories : sortedInterests;
-
-      return (
-          <div className="space-y-4 h-full flex flex-col relative">
-              {viewingUsersFor && (
-                  <div className="absolute inset-0 bg-white z-20 flex flex-col animate-in fade-in slide-in-from-right-4">
-                      <div className="flex justify-between items-center p-3 border-b border-slate-100 bg-slate-50">
-                          <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                              <Users className="w-5 h-5 text-brand-600" />
-                              משתמשים ב: <span className="text-brand-700 underline">{viewingUsersFor.name}</span>
-                          </h4>
-                          <button onClick={() => setViewingUsersFor(null)} className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full shadow-sm">
-                              <ArrowRightLeft className="w-4 h-4" /> חזרה
-                          </button>
-                      </div>
-                      <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                          {(viewingUsersFor.type === 'category' 
-                              ? getUsersForCategory(viewingUsersFor.name) 
-                              : getUsersForInterest(viewingUsersFor.name)
-                          ).map(u => (
-                              <div key={u.id} className="flex items-center gap-3 p-2 border border-slate-100 rounded-lg hover:bg-slate-50 cursor-pointer" onClick={() => props.onViewProfile(u)}>
-                                  <img src={u.avatarUrl} className="w-8 h-8 rounded-full bg-slate-200 object-cover" />
-                                  <div>
-                                      <div className="font-bold text-sm text-slate-800">{u.name}</div>
-                                      <div className="text-xs text-slate-500">{u.email}</div>
-                                  </div>
-                              </div>
-                          ))}
-                          {(viewingUsersFor.type === 'category' 
-                              ? getUsersForCategory(viewingUsersFor.name) 
-                              : getUsersForInterest(viewingUsersFor.name)
-                          ).length === 0 && (
-                              <div className="text-center py-10 text-slate-400">לא נמצאו משתמשים פעילים בתחום זה</div>
-                          )}
-                      </div>
-                  </div>
-              )}
-
-              <div className="flex border-b border-slate-200 bg-slate-50">
-                  <button onClick={() => setDataSubTab('categories')} className={`flex-1 py-2 text-sm font-bold transition-colors ${dataSubTab === 'categories' ? 'border-b-2 border-brand-600 text-brand-600 bg-white' : 'text-slate-500 hover:bg-white/50'}`}>תחומים ({safeAvailableCategories.length})</button>
-                  <button onClick={() => setDataSubTab('pending')} className={`flex-1 py-2 text-sm font-bold transition-colors ${dataSubTab === 'pending' ? 'border-b-2 border-orange-500 text-orange-600 bg-white' : 'text-slate-500 hover:bg-white/50'}`}>ממתינים ({safePendingCategories.length + safePendingInterests.length})</button>
-                  <button onClick={() => setDataSubTab('interests')} className={`flex-1 py-2 text-sm font-bold transition-colors ${dataSubTab === 'interests' ? 'border-b-2 border-pink-500 text-pink-600 bg-white' : 'text-slate-500 hover:bg-white/50'}`}>עניין ({safeAvailableInterests.length})</button>
-              </div>
-
-              {dataSubTab !== 'pending' && (
-                  <div className="flex gap-2">
-                      <input 
-                        className="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" 
-                        placeholder={dataSubTab === 'categories' ? 'הוסף מקצוע חדש...' : 'הוסף עניין חדש...'}
-                        value={newDataInput}
-                        onChange={e => setNewDataInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleAddData()}
-                      />
-                      <button onClick={handleAddData} className="bg-slate-800 text-white px-4 rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors">הוסף</button>
-                  </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-1 space-y-2 max-h-[50vh]">
-                  {dataSubTab === 'pending' && (
-                      <div className="space-y-3">
-                        {safePendingCategories.map(cat => {
-                            const count = getCategoryCount(cat);
-                            return (
-                                <div key={cat} className="bg-orange-50 border border-orange-100 rounded-lg p-3">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div>
-                                            <span className="font-bold text-slate-800">{cat}</span> <span className="text-xs text-slate-500">(מקצוע)</span>
-                                            <div className="flex items-center gap-1 mt-1">
-                                                <span className="text-xs bg-orange-200 text-orange-800 px-1.5 rounded font-bold">{count} משתמשים</span>
-                                                {count > 0 && (
-                                                    <button 
-                                                        onClick={() => setViewingUsersFor({name: cat, type: 'category'})}
-                                                        className="text-xs text-blue-600 hover:underline flex items-center gap-0.5"
-                                                    >
-                                                        <Users className="w-3 h-3" /> הצג
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => props.onApproveCategory(cat)} className="text-green-600 hover:bg-green-100 p-2 rounded-lg transition-colors" title="אשר"><CheckCircle className="w-5 h-5"/></button>
-                                            <button onClick={() => props.onRejectCategory(cat)} className="text-red-600 hover:bg-red-100 p-2 rounded-lg transition-colors" title="דחה"><Trash2 className="w-5 h-5"/></button>
-                                        </div>
-                                    </div>
-                                    <div className="bg-white p-2 rounded-lg border border-orange-200 flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
-                                            <ArrowRightLeft className="w-3 h-3 inline mr-1" />
-                                            מיזוג לקיים:
-                                        </span>
-                                        <select 
-                                            className="flex-1 border border-slate-300 rounded text-xs p-1 h-8 bg-white"
-                                            value={reassignTarget === cat ? reassignDestination : ''}
-                                            onChange={(e) => {
-                                                setReassignTarget(cat);
-                                                setReassignDestination(e.target.value);
-                                            }}
-                                        >
-                                            <option value="">בחר תחום ליעד...</option>
-                                            {sortedCategories.map(existing => (
-                                                <option key={existing} value={existing}>{existing}</option>
-                                            ))}
-                                        </select>
-                                        <button 
-                                            onClick={() => handlePendingMerge(cat)}
-                                            disabled={reassignTarget !== cat || !reassignDestination}
-                                            className="bg-slate-800 text-white px-3 py-1 rounded-lg text-[10px] font-bold disabled:opacity-50"
-                                        >
-                                            בצע
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        {safePendingInterests.map(int => {
-                            const count = getInterestCount(int);
-                            return (
-                                <div key={int} className="flex justify-between items-center p-3 bg-pink-50 border border-pink-100 rounded-lg">
-                                    <div>
-                                        <span className="font-bold text-slate-800">{int}</span> <span className="text-xs text-slate-500">(עניין)</span>
-                                        <div className="flex items-center gap-1 mt-1">
-                                            <span className="text-xs bg-pink-200 text-pink-800 px-1.5 rounded font-bold">{count} משתמשים</span>
-                                            {count > 0 && (
-                                                <button 
-                                                    onClick={() => setViewingUsersFor({name: int, type: 'interest'})}
-                                                    className="text-xs text-blue-600 hover:underline flex items-center gap-0.5"
-                                                >
-                                                    <Users className="w-3 h-3" /> הצג
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => props.onApproveInterest(int)} className="text-green-600 hover:bg-green-100 p-2 rounded-lg transition-colors" title="אשר"><CheckCircle className="w-5 h-5"/></button>
-                                        <button onClick={() => props.onRejectInterest(int)} className="text-red-600 hover:bg-red-100 p-2 rounded-lg transition-colors" title="דחה"><Trash2 className="w-5 h-5"/></button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        {safePendingCategories.length === 0 && safePendingInterests.length === 0 && <div className="text-center text-slate-400 py-10">אין בקשות ממתינות</div>}
-                      </div>
-                  )}
-
-                  {(dataSubTab === 'categories' || dataSubTab === 'interests') && (
-                      activeList.map(item => {
-                          const count = dataSubTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
-                          const isEditingThis = editingItem === item;
-                          const parent = (dataSubTab === 'categories' && props.categoryHierarchy) ? props.categoryHierarchy[item] : null;
-
-                          return (
-                              <div key={item} className={`flex flex-col p-2 border-b border-slate-100 last:border-0 rounded-xl transition-colors ${isEditingThis ? 'bg-blue-50 border border-blue-200 shadow-sm' : 'hover:bg-slate-50'}`}>
-                                  <div className="flex justify-between items-center w-full">
-                                      {isEditingThis ? (
-                                          <div className="flex flex-col gap-2 w-full">
-                                              <div className="flex gap-2 items-center">
-                                                  <input 
-                                                      value={editName}
-                                                      onChange={(e) => setEditName(e.target.value)}
-                                                      className="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-bold bg-white focus:border-brand-500 outline-none"
-                                                      placeholder="שם התחום"
-                                                      autoFocus
-                                                  />
-                                                  {dataSubTab === 'categories' && (
-                                                      <select 
-                                                          value={editParent}
-                                                          onChange={(e) => setEditParent(e.target.value)}
-                                                          className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-32 bg-white"
-                                                      >
-                                                          <option value="">ללא אב</option>
-                                                          {sortedCategories.filter(c => c !== item).map(c => (
-                                                              <option key={c} value={c}>{c}</option>
-                                                          ))}
-                                                      </select>
-                                                  )}
-                                              </div>
-                                          </div>
-                                      ) : (
-                                          <div className="flex items-center gap-3 overflow-hidden">
-                                              <div className="flex flex-col min-w-0">
-                                                  <span className="font-bold text-slate-800 truncate text-sm">{item}</span>
-                                                  {parent && (
-                                                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                                                          <CornerDownRight className="w-3 h-3" /> תחת: {parent}
-                                                      </span>
-                                                  )}
-                                              </div>
-                                          </div>
-                                      )}
-
-                                      <div className="flex items-center gap-2 shrink-0 self-start">
-                                          {!isEditingThis && (
-                                              <div className="flex flex-col items-end mr-2">
-                                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold min-w-[2.5rem] text-center ${count > 0 ? 'bg-slate-100 text-slate-600' : 'bg-slate-50 text-slate-300'}`}>
-                                                      {count}
-                                                  </span>
-                                                  {count > 0 && (
-                                                      <button 
-                                                          onClick={(e) => { e.stopPropagation(); setViewingUsersFor({name: item, type: dataSubTab === 'categories' ? 'category' : 'interest'}); }}
-                                                          className="text-[10px] text-blue-600 hover:underline mt-0.5 font-medium"
-                                                      >
-                                                          הצג
-                                                      </button>
-                                                  )}
-                                              </div>
-                                          )}
-                                          
-                                          {isEditingThis ? (
-                                              <div className="flex gap-1">
-                                                  <button 
-                                                      onClick={handleSaveEdit} 
-                                                      className="p-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm"
-                                                      title="שמור"
-                                                  >
-                                                      <Save className="w-4 h-4" />
-                                                  </button>
-                                                  <button 
-                                                      onClick={() => setEditingItem(null)} 
-                                                      className="p-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300"
-                                                      title="ביטול"
-                                                  >
-                                                      <X className="w-4 h-4" />
-                                                  </button>
-                                              </div>
-                                          ) : (
-                                              <>
-                                                  <button 
-                                                      onClick={() => handleStartEdit(item)}
-                                                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
-                                                      title="ערוך"
-                                                  >
-                                                      <Pencil className="w-4 h-4" />
-                                                  </button>
-                                                  <button
-                                                      onClick={() => {
-                                                          const type = dataSubTab === 'categories' ? 'מקצוע' : 'תחום עניין';
-                                                          if (window.confirm(`האם למחוק את ה${type} "${item}" מהמערכת?`)) {
-                                                              if (dataSubTab === 'categories') props.onDeleteCategory(item);
-                                                              else props.onDeleteInterest(item);
-                                                          }
-                                                      }}
-                                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                      title="מחק"
-                                                  >
-                                                      <Trash2 className="w-4 h-4" />
-                                                  </button>
-                                              </>
-                                          )}
-                                      </div>
-                                  </div>
-                                  {isEditingThis && (
-                                      <div className="mt-2 text-[10px] text-slate-500 bg-white/50 p-2 rounded-lg border border-blue-100">
-                                          <Check className="w-3 h-3 text-green-600 inline mr-1" />
-                                          <span>שינוי השם יעדכן את כל המשתמשים המשוייכים מיידית.</span>
-                                      </div>
-                                  )}
-                              </div>
-                          );
-                      })
-                  )}
-              </div>
-          </div>
-      );
-  };
-
-  // 4. Ads
-  const renderAds = () => {
-      // ... (Ads section remains the same, only deleted DeleteToggleButton helper usage is removed here implicitly as we use standard buttons)
-      // Since I provided full file content, I'll assume standard implementation below.
-      return (
-          <div className="space-y-4">
-              <button onClick={() => { setAdEditId('new'); setAdForm({ title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', targetCategories: ['Global'], targetInterests: [], isActive: true }); setTargetCategories(['Global']); setTargetInterests([]); }} className="w-full py-4 border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold hover:bg-purple-50 flex items-center justify-center gap-2 transition-all"><Plus className="w-5 h-5" /> יצירת קמפיין חדש</button>
-              <div className="space-y-2 overflow-y-auto max-h-[60vh] p-1">
-                  {safeAds.map(ad => (
-                      <div key={ad.id} className={`flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group relative ${!ad.isActive ? 'opacity-70 bg-slate-50' : ''}`}>
-                          <div className="flex flex-col items-center gap-1 border-l pl-3 ml-2"><button onClick={(e) => { e.stopPropagation(); handleToggleAdStatus(ad); }} className={`relative w-8 h-5 rounded-full transition-colors duration-200 ${ad.isActive ? 'bg-green-500' : 'bg-slate-300'}`} title={ad.isActive ? 'כבה מודעה' : 'הפעל מודעה'}><span className={`absolute top-0.5 bg-white w-4 h-4 rounded-full transition-transform duration-200 shadow-sm ${ad.isActive ? 'left-0.5' : 'left-3.5'}`}></span></button><span className={`text-[9px] font-bold ${ad.isActive ? 'text-green-600' : 'text-slate-400'}`}>{ad.isActive ? 'פעיל' : 'כבוי'}</span></div>
-                          <div className="flex-1 min-w-0 pr-2"><div className="flex items-center gap-2 mb-1"><h4 className="font-bold text-slate-800 text-sm truncate">{ad.title}</h4></div><div className="flex items-center gap-2 text-xs text-slate-500"><span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] border border-slate-200">{ad.targetCategories?.[0] || 'כללי'}</span>{ad.targetInterests && ad.targetInterests.length > 0 && (<span className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-[10px] border border-pink-100">+{ad.targetInterests.length}</span>)}</div></div>
-                          <div className="flex items-center gap-3 shrink-0"><div className="flex gap-1"><button onClick={(e) => { e.stopPropagation(); handleDuplicateAd(ad); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="שכפל"><Copy className="w-4 h-4"/></button><button onClick={(e) => { e.stopPropagation(); handleEditAdClick(ad); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך"><Pencil className="w-4 h-4"/></button><button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק קמפיין זה?')) props.onDeleteAd(ad.id); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="מחק"><Trash2 className="w-4 h-4" /></button></div><img src={ad.imageUrl} className="w-20 h-14 object-cover rounded-lg border border-slate-100 shadow-sm bg-slate-50" alt="" /></div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      );
-  };
+  const activeList = activeTab === 'categories' ? sortedCategories : sortedInterests;
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-hidden sm:overflow-y-auto" role="dialog" aria-modal="true">
-      <div className="flex items-center justify-center min-h-screen p-0 sm:px-4 sm:pt-4 sm:pb-20 text-center">
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={props.onClose}></div>
-        <div className="inline-block bg-white text-right overflow-hidden shadow-2xl transform transition-all w-full h-[100dvh] sm:h-[85vh] sm:rounded-3xl sm:max-w-6xl flex flex-col relative z-50">
-            <div className="flex justify-between items-center px-4 sm:px-6 py-4 border-b border-slate-200 bg-white shrink-0"><div className="flex items-center gap-3"><div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200"><LayoutDashboard className="w-6 h-6 text-brand-600" /></div><div><h3 className="text-lg font-bold text-slate-800 tracking-tight">מרכז ניהול מערכת</h3><p className="text-xs text-slate-500 font-medium">שלום, {props.currentUser?.name}</p></div></div><button onClick={props.onClose} className="text-slate-400 hover:text-slate-800 bg-white border border-slate-200 p-2 rounded-full hover:bg-slate-100 transition-colors shadow-sm"><X className="w-5 h-5" /></button></div>
-            <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
-                <div className="order-2 sm:order-1 w-full sm:w-64 bg-slate-50 border-t sm:border-t-0 sm:border-l border-slate-200 shrink-0">
-                    <nav className="flex flex-row sm:flex-col p-2 sm:p-4 gap-1 sm:gap-2 overflow-x-auto sm:overflow-visible scrollbar-hide">
-                        <button onClick={() => setActiveTab('users')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Shield className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">משתמשים</span>{pendingUserUpdates > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingUserUpdates}</span>}</button>
-                        <button onClick={() => setActiveTab('content')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'content' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><FileText className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">מודעות</span>{pendingOffersCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingOffersCount}</span>}</button>
-                        <button onClick={() => setActiveTab('data')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><BarChart3 className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">קטגוריות</span>{pendingDataCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingDataCount}</span>}</button>
-                        <button onClick={() => setActiveTab('ads')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'ads' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Megaphone className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">פרסומות</span></button>
-                    </nav>
+    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+
+        <div className="inline-block bg-white rounded-2xl text-right overflow-hidden shadow-xl transform transition-all sm:max-w-4xl w-full">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50">
+                <div className="flex items-center gap-2">
+                    <BarChart3 className="w-6 h-6 text-brand-600" />
+                    <h3 className="text-lg font-bold text-slate-800">
+                        ניהול טקסונומיה
+                    </h3>
                 </div>
-                <div className="order-1 sm:order-2 flex-1 overflow-y-auto p-4 sm:p-6 bg-white shadow-inner">
-                    <div className="max-w-4xl mx-auto h-full">
-                        <div className="mb-6">
-                            <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-                                {activeTab === 'users' && 'ניהול משתמשים'}
-                                {activeTab === 'content' && 'ניהול מודעות'}
-                                {activeTab === 'data' && 'ניהול נתונים'}
-                                {activeTab === 'ads' && 'ניהול פרסום'}
-                            </h2>
-                        </div>
-                        {activeTab === 'users' && renderUsers()}
-                        {activeTab === 'content' && renderContent()}
-                        {activeTab === 'data' && (
-                            <div className="h-full">
-                                <div className="p-4 bg-blue-50 text-blue-800 rounded-xl mb-4 text-xs font-medium border border-blue-100 flex items-start gap-2">
-                                    <GitMerge className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                    <span><strong>ניהול טקסונומיה:</strong> שינוי שם של קטגוריה או מיזוג יעדכן את כל הפרופילים והמודעות המשוייכים באופן אוטומטי במערכת.</span>
-                                </div>
-                                {renderData()}
-                            </div>
-                        )}
-                        {activeTab === 'ads' && renderAds()}
+                <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-5 h-5" />
+                </button>
+            </div>
+
+            <div className="flex border-b border-slate-200 bg-slate-50">
+                <button onClick={() => setActiveTab('categories')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'categories' ? 'border-b-2 border-brand-600 text-brand-600 bg-white' : 'text-slate-600 hover:bg-slate-100'}`}>מקצועות</button>
+                <button onClick={() => setActiveTab('pending')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'pending' ? 'border-b-2 border-orange-500 text-orange-600 bg-white' : 'text-slate-600 hover:bg-slate-100'}`}>ממתינים ({pendingCategories.length + pendingInterests.length})</button>
+                <button onClick={() => setActiveTab('interests')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'interests' ? 'border-b-2 border-pink-500 text-pink-600 bg-white' : 'text-slate-600 hover:bg-slate-100'}`}>תחומי עניין</button>
+            </div>
+
+            <div className="p-6 h-[500px] flex flex-col">
+                {activeTab !== 'pending' && (
+                    <div className="flex gap-2 mb-6">
+                        <input className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm" placeholder={activeTab === 'categories' ? 'הוסף מקצוע...' : 'הוסף עניין...'} value={newInput} onChange={e => setNewInput(e.target.value)} />
+                        <button onClick={handleAdd} className="bg-brand-600 text-white px-4 py-2 rounded-lg font-bold text-sm"><Plus className="w-4 h-4 inline ml-1"/> הוסף</button>
                     </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+                    {activeTab === 'pending' ? (
+                        <>
+                            {pendingCategories.map(cat => (
+                                <div key={cat} className="bg-orange-50 p-3 rounded-lg border border-orange-100 mb-2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="font-bold">{cat} (מקצוע)</span>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => onApproveCategory && onApproveCategory(cat)} className="text-green-600"><CheckCircle className="w-5 h-5"/></button>
+                                            <button onClick={() => onRejectCategory && onRejectCategory(cat)} className="text-red-600"><Trash2 className="w-5 h-5"/></button>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        <select className="flex-1 border rounded text-xs p-1" value={reassignTarget === cat ? reassignDestination : ''} onChange={e => { setReassignTarget(cat); setReassignDestination(e.target.value); }}>
+                                            <option value="">מיזוג עם...</option>
+                                            {sortedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                        <button onClick={handleExecuteReassign} disabled={reassignTarget !== cat} className="bg-slate-800 text-white px-2 py-1 rounded text-xs">מזג</button>
+                                    </div>
+                                </div>
+                            ))}
+                            {pendingInterests.map(int => (
+                                <div key={int} className="bg-pink-50 p-3 rounded-lg border border-pink-100 mb-2 flex justify-between items-center">
+                                    <span className="font-bold">{int} (עניין)</span>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => onApproveInterest && onApproveInterest(int)} className="text-green-600"><CheckCircle className="w-5 h-5"/></button>
+                                        <button onClick={() => onRejectInterest && onRejectInterest(int)} className="text-red-600"><Trash2 className="w-5 h-5"/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </>
+                    ) : (
+                        activeList.map(item => {
+                            const isEditingThis = editingItem === item;
+                            const count = activeTab === 'categories' ? getCategoryCount(item) : getInterestCount(item);
+                            return (
+                                <div key={item} className="flex justify-between items-center p-3 border-b hover:bg-slate-50">
+                                    {isEditingThis ? (
+                                        <div className="flex gap-2 flex-1 ml-4">
+                                            <input value={editName} onChange={e => setEditName(e.target.value)} className="border rounded px-2 py-1 flex-1 text-sm" />
+                                            <button onClick={handleSaveEdit} className="text-green-600"><Save className="w-4 h-4"/></button>
+                                            <button onClick={() => setEditingItem(null)} className="text-slate-400"><X className="w-4 h-4"/></button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium">{item}</span>
+                                            <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{count}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex gap-2">
+                                        {!isEditingThis && (
+                                            <>
+                                                <button onClick={() => handleStartEdit(item)} className="text-blue-400 hover:text-blue-600"><Pencil className="w-4 h-4"/></button>
+                                                <button onClick={() => handleDelete(item)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </div>
         </div>
