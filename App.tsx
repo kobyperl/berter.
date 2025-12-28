@@ -47,27 +47,34 @@ const translateAuthError = (code: string) => {
 // --- Helper: Clean Undefined Values for Firestore ---
 const cleanObject = (obj: any): any => {
     if (obj === undefined) return undefined;
-    if (typeof obj !== 'object' || obj === null) return obj;
+    if (obj === null) return null;
     
-    // Robust check for Firestore FieldValues (Delete/ServerTimestamp)
-    const isFieldValue = obj instanceof firebase.firestore.FieldValue || 
-                         (obj.constructor && obj.constructor.name === 'FieldValue') ||
-                         (typeof obj === 'object' && '_methodName' in obj); // Internal Firebase property check
+    // Check if object is a Firestore FieldValue (e.g., delete(), serverTimestamp())
+    // We check for the constructor name or internal properties as a heuristic
+    if (obj.constructor && (obj.constructor.name === 'FieldValue' || obj.constructor.name === 'e')) {
+        return obj;
+    }
+    // Also check for standard object with no keys if it might be a special firebase object, 
+    // but usually FieldValues have specific prototypes. 
+    // Safest check for Delete/ServerTimestamp in JS SDK v8/v9 compat:
+    if (typeof obj === 'object' && obj._methodName) return obj;
 
-    if (isFieldValue) return obj;
-    
     if (Array.isArray(obj)) {
         return obj.map(cleanObject).filter(v => v !== undefined);
     }
     
-    const newObj: any = {};
-    Object.keys(obj).forEach(key => {
-        const value = cleanObject(obj[key]);
-        if (value !== undefined) {
-            newObj[key] = value;
-        }
-    });
-    return newObj;
+    if (typeof obj === 'object') {
+        const newObj: any = {};
+        Object.keys(obj).forEach(key => {
+            const value = cleanObject(obj[key]);
+            if (value !== undefined) {
+                newObj[key] = value;
+            }
+        });
+        return newObj;
+    }
+    
+    return obj;
 };
 
 // --- Email Templates Helpers ---
@@ -415,20 +422,17 @@ export const App: React.FC = () => {
 
   const handleGlobalProfileUpdate = async (profileData: any) => {
       try {
-          // Safe clean update - Ensures FieldValues like 'delete' are preserved
           const sanitizedProfile = cleanObject(profileData);
-          
-          if (!sanitizedProfile.id) {
-              throw new Error("Invalid Profile Data: ID missing");
-          }
+          if (!sanitizedProfile.id) throw new Error("Invalid Profile Data: ID missing");
 
-          // 1. Update the User Document
+          // 1. Update the User Document (This is the primary action)
           await db.collection("users").doc(sanitizedProfile.id).set(sanitizedProfile, { merge: true });
 
-          // 2. Update Offers (Attempt to update all offers, ignoring errors if permissions fail)
+          // 2. Try to update Offers (Secondary action)
+          // We put this in a separate try/catch so if admin permissions for offers are strict,
+          // it won't fail the user approval process.
           try {
               const cleanProfile = { ...sanitizedProfile };
-              // Remove keys that shouldn't be in the offer embed
               delete cleanProfile.pendingUpdate; 
               delete cleanProfile.password; 
               
@@ -440,45 +444,45 @@ export const App: React.FC = () => {
                       batch.update(doc.ref, { profile: cleanProfile });
                   });
                   await batch.commit();
-                  console.log("Offers updated successfully.");
               }
           } catch (offerErr) {
-              console.warn("Could not update user offers (possibly due to permission rules). The user profile itself was updated.", offerErr);
-              // We do NOT alert the user here, as the primary action (approving user) succeeded.
+              console.warn("User offers could not be updated (likely permission issue), but user profile was updated.", offerErr);
           }
 
       } catch (e: any) {
           console.error("Global Update Error:", e);
           if (e.code === 'permission-denied') {
-              alert("שגיאת הרשאות: אין לך הרשאה לבצע עדכון זה. אם אתה מנהל, וודא שאתה מחובר לחשבון הנכון.");
+              alert("שגיאת הרשאות: אינך מורשה לבצע פעולה זו.");
           } else {
-              alert("אירעה שגיאה בעדכון הפרופיל. נסה שוב מאוחר יותר.");
+              alert("אירעה שגיאה בעדכון הפרופיל.");
           }
       }
   };
 
-  // Robust Delete: Deletes offers first, then the user
+  // Robust Delete: Handle permissions gracefully
   const handleFullUserDelete = async (userId: string) => {
       if (!window.confirm("פעולה זו תמחק את המשתמש וכל ההצעות שלו לצמיתות. האם להמשיך?")) return;
       
       try {
-          // 1. Delete all offers by this user
-          const offersSnap = await db.collection("offers").where("profileId", "==", userId).get();
-          const batch = db.batch();
+          // 1. Try to delete offers first
+          try {
+              const offersSnap = await db.collection("offers").where("profileId", "==", userId).get();
+              const batch = db.batch();
+              offersSnap.forEach(doc => {
+                  batch.delete(doc.ref);
+              });
+              await batch.commit();
+          } catch (offerDeleteErr) {
+              console.warn("Could not delete user offers (permissions?), proceeding to delete user.", offerDeleteErr);
+          }
           
-          offersSnap.forEach(doc => {
-              batch.delete(doc.ref);
-          });
+          // 2. Delete the user document (Primary)
+          await db.collection("users").doc(userId).delete();
           
-          // 2. Delete the user document
-          const userRef = db.collection("users").doc(userId);
-          batch.delete(userRef);
-          
-          await batch.commit();
-          alert("המשתמש וכל הנתונים שלו נמחקו בהצלחה.");
-      } catch (e) {
+          alert("המשתמש נמחק בהצלחה.");
+      } catch (e: any) {
           console.error("Delete Error:", e);
-          alert("אירעה שגיאה במחיקת הנתונים. וודא שיש לך הרשאות ניהול.");
+          alert(`אירעה שגיאה במחיקת המשתמש: ${e.message || e.code}`);
       }
   };
 
@@ -605,7 +609,6 @@ export const App: React.FC = () => {
             onApproveUpdate={id => {
                 const u = users.find(x => x.id === id);
                 if (u && u.pendingUpdate) {
-                    // Safe update object
                     const updatedProfile = { 
                         ...u, 
                         ...u.pendingUpdate, 
