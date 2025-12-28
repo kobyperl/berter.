@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, Shield, FileText, BarChart3, Megaphone, 
@@ -59,13 +58,13 @@ const compressImage = (file: File): Promise<string> => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 400; // Aggressive compression
+          const MAX_WIDTH = 800; 
           let width = img.width;
           let height = img.height;
           if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
           canvas.width = width; canvas.height = height;
           const ctx = canvas.getContext('2d');
-          if (ctx) { ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.4)); } // Quality 0.4
+          if (ctx) { ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.8)); } 
           else { reject(new Error("Could not get canvas context")); }
         };
         img.onerror = (err) => reject(err);
@@ -122,7 +121,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   
   // Local State
   const [userSearch, setUserSearch] = useState('');
-  const [usersSubTab, setUsersSubTab] = useState<'all' | 'pending'>('all'); // Added pending tab
   const [contentTab, setContentTab] = useState<'pending' | 'all'>('pending');
   const [dateThreshold, setDateThreshold] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -250,12 +248,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
   // 1. Users
   const renderUsers = () => {
-      let displayedUsers = safeUsers;
-      if (usersSubTab === 'pending') {
-          displayedUsers = safeUsers.filter(u => u.pendingUpdate);
-      }
-
-      const filtered = displayedUsers.filter(u => 
+      const filtered = safeUsers.filter(u => 
         (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
         (u.email || '').toLowerCase().includes(userSearch.toLowerCase())
       ).sort((a, b) => {
@@ -266,22 +259,16 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
       
       return (
           <div className="space-y-4">
-              <div className="flex gap-2 border-b border-slate-200">
-                  <button 
-                      onClick={() => setUsersSubTab('all')} 
-                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${usersSubTab === 'all' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                  >
-                      כל המשתמשים ({safeUsers.length})
-                  </button>
-                  <button 
-                      onClick={() => setUsersSubTab('pending')} 
-                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${usersSubTab === 'pending' ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                  >
-                      ממתינים לאישור
-                      {pendingUserUpdates > 0 && (
-                          <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[10px] font-black">{pendingUserUpdates}</span>
-                      )}
-                  </button>
+              <div className="flex items-center justify-between px-1 mb-1">
+                  <div className="flex items-center gap-2 text-slate-600">
+                      <Users className="w-4 h-4 text-brand-600" />
+                      <span className="text-sm font-medium">סה"כ משתמשים רשומים:</span>
+                      <span className="text-sm font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">{safeUsers.length}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 uppercase tracking-tight">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                      מעודכן בזמן אמת
+                  </div>
               </div>
 
               <div className="relative">
@@ -322,15 +309,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                   </td>
                                   <td className="px-4 py-3">
                                       <div className="flex gap-2 items-center">
-                                          {user.pendingUpdate && (
-                                              <button 
-                                                  onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} 
-                                                  className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg shadow-sm"
-                                                  title="צפה ואשר שינויים"
-                                              >
-                                                  <CheckCircle className="w-4 h-4" />
-                                              </button>
-                                          )}
                                           <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
                                           {user.id !== props.currentUser?.id && (
                                               <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
@@ -343,7 +321,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                   </table>
                   {filtered.length === 0 && (
                       <div className="p-10 text-center text-slate-400 font-medium">
-                          {usersSubTab === 'pending' ? 'אין משתמשים הממתינים לאישור' : 'לא נמצאו משתמשים תואמים לחיפוש'}
+                          לא נמצאו משתמשים תואמים לחיפוש
                       </div>
                   )}
               </div>
@@ -366,7 +344,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
               {contentTab === 'all' && (
                   <div className="bg-slate-50 p-3 rounded-lg flex items-center gap-2 text-sm">
                       <span className="font-bold text-slate-700">מחיקה מרוכזת לפני תאריך:</span>
-                      <input type="date" className="border border-slate-200 rounded px-2 py-1 bg-white" value={dateThreshold} onChange={e => setDateThreshold(e.target.value)} />
+                      <input type="date" className="border rounded px-2 py-1 bg-white" value={dateThreshold} onChange={e => setDateThreshold(e.target.value)} />
                       <button 
                         type="button"
                         onClick={() => { if(confirmDelete) { props.onBulkDelete(dateThreshold); setConfirmDelete(false); } else setConfirmDelete(true); }}
@@ -554,7 +532,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                             מיזוג לקיים:
                                         </span>
                                         <select 
-                                            className="flex-1 border border-slate-300 rounded text-xs p-1 h-8 bg-white"
+                                            className="flex-1 border border-slate-300 rounded text-xs p-1 h-8"
                                             value={reassignTarget === cat ? reassignDestination : ''}
                                             onChange={(e) => {
                                                 setReassignTarget(cat);
@@ -720,6 +698,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   // 4. Ads
   const renderAds = () => {
       const inputClassName = "w-full bg-white border border-slate-300 rounded-xl p-2.5 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all";
+      
+      // --- Edit Form View ---
       if (adEditId === 'new' || (adEditId && adEditId !== 'new')) {
           const filteredInterests = safeAvailableInterests.filter(i => (i||'').toLowerCase().includes(intSearch.toLowerCase()));
           const filteredCategories = safeAvailableCategories.filter(c => (c||'').toLowerCase().includes(catSearch.toLowerCase()));
@@ -742,23 +722,60 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex justify-between items-center"><div><label className="block text-sm font-bold text-slate-700">סטטוס המודעה</label><p className="text-[10px] text-slate-500">האם המודעה מוצגת כרגע באתר?</p></div><button type="button" onClick={() => setAdForm({...adForm, isActive: !adForm.isActive})} className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${adForm.isActive ? 'bg-green-500' : 'bg-slate-300'}`}><span className={`absolute top-1 bg-white w-5 h-5 rounded-full transition-transform duration-200 shadow-sm ${adForm.isActive ? 'left-1' : 'left-6'}`}></span></button></div>
                            <div><label className="block text-sm font-bold text-slate-700 mb-1.5">כותרת ראשית</label><input required className={inputClassName} value={adForm.title} onChange={e => setAdForm({...adForm, title: e.target.value})} /></div>
                            <div><label className="block text-sm font-bold text-slate-700 mb-1.5">תיאור הקמפיין</label><textarea className={`${inputClassName} h-24 resize-none`} value={adForm.description} onChange={e => setAdForm({...adForm, description: e.target.value})} /></div>
-                           <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-bold text-slate-700 mb-1.5">לינק ליעד</label><input required className={`${inputClassName} ltr text-left bg-white`} value={adForm.linkUrl} onChange={e => setAdForm({...adForm, linkUrl: e.target.value})} /></div><div><label className="block text-sm font-bold text-slate-700 mb-1.5">טקסט כפתור</label><input className={inputClassName} value={adForm.ctaText} onChange={e => setAdForm({...adForm, ctaText: e.target.value})} /></div></div>
+                           <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-bold text-slate-700 mb-1.5">לינק ליעד</label><input required className={`${inputClassName} ltr text-left`} value={adForm.linkUrl} onChange={e => setAdForm({...adForm, linkUrl: e.target.value})} /></div><div><label className="block text-sm font-bold text-slate-700 mb-1.5">טקסט כפתור</label><input className={inputClassName} value={adForm.ctaText} onChange={e => setAdForm({...adForm, ctaText: e.target.value})} /></div></div>
                        </div>
-                       <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-5 h-fit"><h4 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2 text-sm"><Target className="w-5 h-5 text-purple-600" /> הגדרות טרגוט</h4><div><label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-tighter">מקצועות וקטגוריות</label><div className="relative mb-2"><Briefcase className="w-3 h-3 absolute right-3 top-3 text-slate-400" /><input type="text" className={`${inputClassName} pr-9 py-1.5 bg-white`} placeholder="חפש מקצוע..." value={catSearch} onChange={e => setCatSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1"><button type="button" onClick={() => toggleTargetCategory('Global')} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetCategories.includes('Global') ? 'bg-purple-600 border-purple-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>Global</button>{filteredCategories.map(cat => <button key={cat} type="button" onClick={() => toggleTargetCategory(cat)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetCategories.includes(cat) ? 'bg-purple-600 border-purple-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>{cat}</button>)}</div></div><div className="mt-4 border-t border-slate-200 pt-4"><label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-tighter">תחומי עניין ונושאים</label><div className="relative mb-2"><Tag className="w-3 h-3 absolute right-3 top-3 text-slate-400" /><input type="text" className={`${inputClassName} pr-9 py-1.5 bg-white`} placeholder="חפש נושא..." value={intSearch} onChange={e => setIntSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1">{filteredInterests.map(int => (<button key={int} type="button" onClick={() => toggleTargetInterest(int)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetInterests.includes(int) ? 'bg-pink-500 border-pink-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>{int}</button>))}</div></div></div>
+                       <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-5 h-fit"><h4 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-2 text-sm"><Target className="w-5 h-5 text-purple-600" /> הגדרות טרגוט</h4><div><label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-tighter">מקצועות וקטגוריות</label><div className="relative mb-2"><Briefcase className="w-3 h-3 absolute right-3 top-3 text-slate-400" /><input type="text" className={`${inputClassName} pr-9 py-1.5`} placeholder="חפש מקצוע..." value={catSearch} onChange={e => setCatSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1"><button type="button" onClick={() => toggleTargetCategory('Global')} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetCategories.includes('Global') ? 'bg-purple-600 border-purple-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>Global</button>{filteredCategories.map(cat => <button key={cat} type="button" onClick={() => toggleTargetCategory(cat)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetCategories.includes(cat) ? 'bg-purple-600 border-purple-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>{cat}</button>)}</div></div><div className="mt-4 border-t border-slate-200 pt-4"><label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-tighter">תחומי עניין ונושאים</label><div className="relative mb-2"><Tag className="w-3 h-3 absolute right-3 top-3 text-slate-400" /><input type="text" className={`${inputClassName} pr-9 py-1.5`} placeholder="חפש נושא..." value={intSearch} onChange={e => setIntSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1">{filteredInterests.map(int => (<button key={int} type="button" onClick={() => toggleTargetInterest(int)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${targetInterests.includes(int) ? 'bg-pink-500 border-pink-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>{int}</button>))}</div></div></div>
                   </div>
                   <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100"><button type="button" onClick={() => setAdEditId(null)} className="px-6 py-2.5 text-slate-500 font-medium hover:bg-slate-100 rounded-xl transition-colors">ביטול</button><button type="submit" className="bg-purple-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-md hover:bg-purple-700 transition-colors flex items-center gap-2"><Save className="w-4 h-4" /> שמור שינויים</button></div>
               </form>
           );
       }
+
+      // --- List View ---
       return (
           <div className="space-y-4">
               <button onClick={() => { setAdEditId('new'); setAdForm({ title: '', description: '', ctaText: 'לפרטים', linkUrl: '', imageUrl: '', subLabel: '', targetCategories: ['Global'], targetInterests: [], isActive: true }); setTargetCategories(['Global']); setTargetInterests([]); }} className="w-full py-4 border-2 border-dashed border-purple-200 text-purple-600 rounded-2xl font-bold hover:bg-purple-50 flex items-center justify-center gap-2 transition-all"><Plus className="w-5 h-5" /> יצירת קמפיין חדש</button>
+              
               <div className="space-y-2 overflow-y-auto max-h-[60vh] p-1">
                   {safeAds.map(ad => (
                       <div key={ad.id} className={`flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group relative ${!ad.isActive ? 'opacity-70 bg-slate-50' : ''}`}>
-                          <div className="flex flex-col items-center gap-1 border-l pl-3 ml-2"><button onClick={(e) => { e.stopPropagation(); handleToggleAdStatus(ad); }} className={`relative w-8 h-5 rounded-full transition-colors duration-200 ${ad.isActive ? 'bg-green-500' : 'bg-slate-300'}`} title={ad.isActive ? 'כבה מודעה' : 'הפעל מודעה'}><span className={`absolute top-0.5 bg-white w-4 h-4 rounded-full transition-transform duration-200 shadow-sm ${ad.isActive ? 'left-0.5' : 'left-3.5'}`}></span></button><span className={`text-[9px] font-bold ${ad.isActive ? 'text-green-600' : 'text-slate-400'}`}>{ad.isActive ? 'פעיל' : 'כבוי'}</span></div>
-                          <div className="flex-1 min-w-0 pr-2"><div className="flex items-center gap-2 mb-1"><h4 className="font-bold text-slate-800 text-sm truncate">{ad.title}</h4></div><div className="flex items-center gap-2 text-xs text-slate-500"><span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] border border-slate-200">{ad.targetCategories?.[0] || 'כללי'}</span>{ad.targetInterests && ad.targetInterests.length > 0 && (<span className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-[10px] border border-pink-100">+{ad.targetInterests.length}</span>)}</div></div>
-                          <div className="flex items-center gap-3 shrink-0"><div className="flex gap-1"><button onClick={(e) => { e.stopPropagation(); handleDuplicateAd(ad); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="שכפל"><Copy className="w-4 h-4"/></button><button onClick={(e) => { e.stopPropagation(); handleEditAdClick(ad); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך"><Pencil className="w-4 h-4"/></button><DeleteToggleButton onDelete={() => props.onDeleteAd(ad.id)} /></div><img src={ad.imageUrl} className="w-20 h-14 object-cover rounded-lg border border-slate-100 shadow-sm bg-slate-50" alt="" /></div>
+                          
+                          {/* Status Toggle */}
+                          <div className="flex flex-col items-center gap-1 border-l pl-3 ml-2">
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleToggleAdStatus(ad); }} 
+                                  className={`relative w-8 h-5 rounded-full transition-colors duration-200 ${ad.isActive ? 'bg-green-500' : 'bg-slate-300'}`}
+                                  title={ad.isActive ? 'כבה מודעה' : 'הפעל מודעה'}
+                              >
+                                  <span className={`absolute top-0.5 bg-white w-4 h-4 rounded-full transition-transform duration-200 shadow-sm ${ad.isActive ? 'left-0.5' : 'left-3.5'}`}></span>
+                              </button>
+                              <span className={`text-[9px] font-bold ${ad.isActive ? 'text-green-600' : 'text-slate-400'}`}>
+                                  {ad.isActive ? 'פעיל' : 'כבוי'}
+                              </span>
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0 pr-2">
+                              <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-bold text-slate-800 text-sm truncate">{ad.title}</h4>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-slate-500">
+                                  <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] border border-slate-200">{ad.targetCategories?.[0] || 'כללי'}</span>
+                                  {ad.targetInterests && ad.targetInterests.length > 0 && (
+                                      <span className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-[10px] border border-pink-100">+{ad.targetInterests.length}</span>
+                                  )}
+                              </div>
+                          </div>
+
+                          {/* Actions & Image */}
+                          <div className="flex items-center gap-3 shrink-0">
+                              <div className="flex gap-1">
+                                  <button onClick={(e) => { e.stopPropagation(); handleDuplicateAd(ad); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="שכפל"><Copy className="w-4 h-4"/></button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleEditAdClick(ad); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך"><Pencil className="w-4 h-4"/></button>
+                                  <DeleteToggleButton onDelete={() => props.onDeleteAd(ad.id)} />
+                              </div>
+                              <img src={ad.imageUrl} className="w-20 h-14 object-cover rounded-lg border border-slate-100 shadow-sm bg-slate-50" alt="" />
+                          </div>
                       </div>
                   ))}
               </div>
@@ -781,27 +798,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                         <button onClick={() => setActiveTab('ads')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'ads' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Megaphone className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">פרסומות</span></button>
                     </nav>
                 </div>
-                <div className="order-1 sm:order-2 flex-1 overflow-y-auto p-4 sm:p-6 bg-white shadow-inner">
-                    <div className="max-w-4xl mx-auto h-full">
-                        <div className="mb-6">
-                            <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-                                {activeTab === 'users' && 'ניהול משתמשים'}
-                                {activeTab === 'content' && 'ניהול מודעות'}
-                                {activeTab === 'data' && 'ניהול נתונים'}
-                                {activeTab === 'ads' && 'ניהול פרסום'}
-                            </h2>
-                        </div>
+                <div className="order-1 sm:order-2 flex-1 overflow-y-auto p-4 sm:p-6 bg-white shadow-inner"><div className="max-w-4xl mx-auto h-full"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{activeTab === 'users' && 'ניהול משתמשים'}{activeTab === 'content' && 'ניהול מודעות'}{activeTab === 'data' && 'ניהול נתונים'}{activeTab === 'ads' && 'ניהול פרסום'}</h2></div>
                         {activeTab === 'users' && renderUsers()}
                         {activeTab === 'content' && renderContent()}
-                        {activeTab === 'data' && (
-                            <div className="h-full">
-                                <div className="p-4 bg-blue-50 text-blue-800 rounded-xl mb-4 text-xs font-medium border border-blue-100 flex items-start gap-2">
-                                    <GitMerge className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                    <span><strong>ניהול טקסונומיה:</strong> שינוי שם של קטגוריה או מיזוג יעדכן את כל הפרופילים והמודעות המשוייכים באופן אוטומטי במערכת.</span>
-                                </div>
-                                {renderData()}
-                            </div>
-                        )}
+                        {activeTab === 'data' && (<div className="h-full"><div className="p-4 bg-blue-50 text-blue-800 rounded-xl mb-4 text-xs font-medium border border-blue-100 flex items-start gap-2"><GitMerge className="w-5 h-5 flex-shrink-0 mt-0.5" /><span><strong>ניהול טקסונומיה:</strong> שינוי שם של קטגוריה או מיזוג יעדכן את כל הפרופילים והמודעות המשוייכים באופן אוטומטי במערכת.</span></div>{renderData()}</div>)}
                         {activeTab === 'ads' && renderAds()}
                     </div>
                 </div>

@@ -66,6 +66,14 @@ export interface Message {
   content: string;
   timestamp: string;
   isRead: boolean;
+  
+  // New features
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'file';
+  attachmentExpiry?: string; // ISO date for deletion
+  replyTo?: { id: string; content: string; senderName: string };
+  isDeleted?: boolean;
+  lastEdited?: string; // Timestamp
 }
 
 export interface SystemAd {
@@ -87,4 +95,5 @@ export interface SystemTaxonomy {
   approvedInterests: string[];
   pendingInterests?: string[];
   categoryHierarchy?: Record<string, string>; // Child Category -> Parent Category Name
+  isInitialized?: boolean; // New: Track if static constants have been migrated to DB
 }
