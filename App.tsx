@@ -154,13 +154,25 @@ export const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  // 2. Profile Sync
+  // 2. Profile Sync & CRITICAL ADMIN FIX
   useEffect(() => {
     if (!authUid) return;
     const unsub = db.collection("users").doc(authUid).onSnapshot(
-      doc => {
+      async doc => {
         if (doc.exists) {
-          setCurrentUser({ ...doc.data() as UserProfile, id: doc.id });
+          const data = doc.data() as UserProfile;
+          
+          // Force local admin state if email matches, regardless of DB state
+          if (data.email === ADMIN_EMAIL) {
+              data.role = 'admin'; 
+              
+              // Attempt to fix DB if it's wrong (Best effort)
+              if (doc.data()?.role !== 'admin') {
+                  db.collection("users").doc(authUid).update({ role: 'admin' }).catch(console.warn);
+              }
+          }
+          
+          setCurrentUser({ ...data, id: doc.id });
         }
         setIsAuthChecking(false);
       },
@@ -297,7 +309,7 @@ export const App: React.FC = () => {
   // --- UI State ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<BarterOffer | null>(null);
-  const [actingUser, setActingUser] = useState<UserProfile | null>(null); // For admin to publish as others
+  const [actingUser, setActingUser] = useState<UserProfile | null>(null);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authStartOnRegister, setAuthStartOnRegister] = useState(false);
@@ -409,12 +421,12 @@ export const App: React.FC = () => {
 
           await db.collection("users").doc(sanitizedProfile.id).set(sanitizedProfile, { merge: true });
 
-          // Try to update offers, but don't fail if permissions deny it (for normal users)
           try {
               const cleanProfile = { ...sanitizedProfile };
               delete cleanProfile.pendingUpdate; 
               delete cleanProfile.password; 
-              
+              if(cleanProfile.pendingUpdate) delete cleanProfile.pendingUpdate;
+
               const offersSnap = await db.collection("offers").where("profileId", "==", sanitizedProfile.id).get();
               if (!offersSnap.empty) {
                   const batch = db.batch();
@@ -430,37 +442,41 @@ export const App: React.FC = () => {
       } catch (e: any) {
           console.error("Global Update Error:", e);
           if (e.code === 'permission-denied') {
-              alert("שגיאת הרשאות: אין הרשאה לעדכון זה.");
+              alert("שגיאת הרשאות: אין לך הרשאה לעדכן משתמש זה.");
           } else {
-              alert("אירעה שגיאה בעדכון הפרופיל.");
+              alert(`אירעה שגיאה בעדכון הפרופיל: ${e.message}`);
           }
       }
   };
 
-  // Improved Delete Handler: Attempts to delete user document FIRST to prevent "zombie" accounts if offer delete fails
+  // Robust BATCH delete logic
   const handleFullUserDelete = async (userId: string) => {
       if (!window.confirm("פעולה זו תמחק את המשתמש וכל ההצעות שלו לצמיתות. האם להמשיך?")) return;
       
       try {
-          // 1. Delete the user document - THIS IS THE PRIMARY ACTION
-          await db.collection("users").doc(userId).delete();
+          const batch = db.batch();
           
-          // 2. Try to clean up offers in background (Best Effort)
-          try {
-              const offersSnap = await db.collection("offers").where("profileId", "==", userId).get();
-              if (!offersSnap.empty) {
-                  const batch = db.batch();
-                  offersSnap.forEach(doc => batch.delete(doc.ref));
-                  await batch.commit();
-              }
-          } catch (offerDeleteErr) {
-              console.warn("Offer cleanup partially failed (permission?), but user was deleted.", offerDeleteErr);
-          }
+          // 1. Get User Offers and add to batch delete
+          const offersSnap = await db.collection("offers").where("profileId", "==", userId).get();
+          offersSnap.forEach(doc => {
+              batch.delete(doc.ref);
+          });
+
+          // 2. Add User Document to batch delete
+          const userRef = db.collection("users").doc(userId);
+          batch.delete(userRef);
+
+          // 3. Commit Atomic Batch
+          await batch.commit();
           
-          alert("המשתמש נמחק בהצלחה.");
+          alert("המשתמש והנתונים הנלווים נמחקו בהצלחה.");
       } catch (e: any) {
           console.error("Delete User Error:", e);
-          alert(`שגיאה במחיקת המשתמש: ${e.message || 'אין הרשאה'}`);
+          if (e.code === 'permission-denied') {
+              alert("שגיאת הרשאות: אין לך הרשאה למחוק משתמש זה. וודא שאתה מחובר כ-Admin.");
+          } else {
+              alert(`שגיאה במחיקת המשתמש: ${e.message}`);
+          }
       }
   };
 
