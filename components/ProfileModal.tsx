@@ -140,11 +140,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 mainField: editOccupationsList[0], 
                 secondaryFields: editOccupationsList.slice(1), 
                 portfolioUrl: normalizeUrl(editFormData.portfolioUrl),
-                // Explicitly delete the pendingUpdate field from Firestore
+                // Explicitly delete the pendingUpdate field from Firestore when Admin saves
                 pendingUpdate: firebase.firestore.FieldValue.delete()
             };
-            // Estimate size
-            payloadSize = new Blob([JSON.stringify(dataToSave)]).size;
+            // Estimate size (exclude FieldValue from calc as it breaks JSON.stringify)
+            const calcObj = {...dataToSave};
+            delete calcObj.pendingUpdate;
+            payloadSize = new Blob([JSON.stringify(calcObj)]).size;
         } else {
             pendingData = {
                 name: editFormData.name || "",
@@ -182,7 +184,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             if (err.toString().includes("maximum allowed size") || err.code === 'invalid-argument') {
                 alert("שגיאה: נפח הנתונים (תמונות) גדול מדי. אנא נסה למחוק חלק מהתמונות.");
             } else {
-                alert("אירעה שגיאה בשמירת הפרופיל. אנא נסה שוב."); 
+                alert("אירעה שגיאה בשמירת הפרופיל. בדוק שכל השדות תקינים."); 
             }
         } finally { 
             setIsSaving(false); 
@@ -269,7 +271,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const viewModeOccupations = [displayProfile.mainField, ...(displayProfile.secondaryFields || [])].filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[210] overflow-y-auto" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" onClick={onClose}></div>
         <div className="inline-block bg-white rounded-2xl text-right shadow-xl transform transition-all sm:max-w-4xl w-full max-h-[90vh] flex flex-col relative z-50 overflow-y-auto custom-scrollbar">
