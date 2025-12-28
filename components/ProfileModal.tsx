@@ -140,13 +140,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 mainField: editOccupationsList[0], 
                 secondaryFields: editOccupationsList.slice(1), 
                 portfolioUrl: normalizeUrl(editFormData.portfolioUrl),
-                // Explicitly delete the pendingUpdate field from Firestore when Admin saves
+                // Explicitly delete the pendingUpdate field from Firestore
                 pendingUpdate: firebase.firestore.FieldValue.delete()
             };
-            // Estimate size (exclude FieldValue from calc as it breaks JSON.stringify)
-            const calcObj = {...dataToSave};
-            delete calcObj.pendingUpdate;
-            payloadSize = new Blob([JSON.stringify(calcObj)]).size;
+            // Estimate size
+            payloadSize = new Blob([JSON.stringify(dataToSave)]).size;
         } else {
             pendingData = {
                 name: editFormData.name || "",
@@ -184,7 +182,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             if (err.toString().includes("maximum allowed size") || err.code === 'invalid-argument') {
                 alert("שגיאה: נפח הנתונים (תמונות) גדול מדי. אנא נסה למחוק חלק מהתמונות.");
             } else {
-                alert("אירעה שגיאה בשמירת הפרופיל. בדוק שכל השדות תקינים."); 
+                alert("אירעה שגיאה בשמירת הפרופיל. אנא נסה שוב."); 
             }
         } finally { 
             setIsSaving(false); 
