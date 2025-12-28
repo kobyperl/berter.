@@ -44,6 +44,32 @@ const translateAuthError = (code: string) => {
   }
 };
 
+// --- Helper: Clean Undefined Values for Firestore ---
+const cleanObject = (obj: any): any => {
+    if (obj === undefined) return undefined;
+    if (typeof obj !== 'object' || obj === null) return obj;
+    
+    // Robust check for Firestore FieldValues (Delete/ServerTimestamp)
+    const isFieldValue = obj instanceof firebase.firestore.FieldValue || 
+                         (obj.constructor && obj.constructor.name === 'FieldValue') ||
+                         (typeof obj === 'object' && '_methodName' in obj); // Internal Firebase property check
+
+    if (isFieldValue) return obj;
+    
+    if (Array.isArray(obj)) {
+        return obj.map(cleanObject).filter(v => v !== undefined);
+    }
+    
+    const newObj: any = {};
+    Object.keys(obj).forEach(key => {
+        const value = cleanObject(obj[key]);
+        if (value !== undefined) {
+            newObj[key] = value;
+        }
+    });
+    return newObj;
+};
+
 // --- Email Templates Helpers ---
 const getWelcomeHtml = (name: string) => `
   <div style="direction: rtl; text-align: right; font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
@@ -310,7 +336,7 @@ export const App: React.FC = () => {
         const cred = await auth.createUserWithEmailAndPassword(u.email!, p);
         const uid = cred.user!.uid;
         const profileData = { ...u, id: uid, role: u.email === ADMIN_EMAIL ? 'admin' : 'user', joinedAt: new Date().toISOString() };
-        await db.collection("users").doc(uid).set(profileData);
+        await db.collection("users").doc(uid).set(cleanObject(profileData));
         
         // -----------------------
         // TRIGGER: Welcome Email via Firestore Extension
@@ -346,7 +372,7 @@ export const App: React.FC = () => {
   const handleAddOffer = async (o: BarterOffer) => { 
       if (!authUid) return; 
       try {
-          await db.collection("offers").doc(o.id).set(o);
+          await db.collection("offers").doc(o.id).set(cleanObject(o));
           if (o.profileId === authUid) {
               setIsProfessionalismPromptOpen(true);
           }
@@ -389,24 +415,70 @@ export const App: React.FC = () => {
 
   const handleGlobalProfileUpdate = async (profileData: any) => {
       try {
-          await db.collection("users").doc(profileData.id).set(profileData, { merge: true });
-
-          const cleanProfile = { ...profileData };
-          delete cleanProfile.pendingUpdate; 
-          delete cleanProfile.password; 
+          // Safe clean update - Ensures FieldValues like 'delete' are preserved
+          const sanitizedProfile = cleanObject(profileData);
           
-          const offersSnap = await db.collection("offers").where("profileId", "==", profileData.id).get();
+          if (!sanitizedProfile.id) {
+              throw new Error("Invalid Profile Data: ID missing");
+          }
+
+          // 1. Update the User Document
+          await db.collection("users").doc(sanitizedProfile.id).set(sanitizedProfile, { merge: true });
+
+          // 2. Update Offers (Attempt to update all offers, ignoring errors if permissions fail)
+          try {
+              const cleanProfile = { ...sanitizedProfile };
+              // Remove keys that shouldn't be in the offer embed
+              delete cleanProfile.pendingUpdate; 
+              delete cleanProfile.password; 
+              
+              const offersSnap = await db.collection("offers").where("profileId", "==", sanitizedProfile.id).get();
+              
+              if (!offersSnap.empty) {
+                  const batch = db.batch();
+                  offersSnap.forEach(doc => {
+                      batch.update(doc.ref, { profile: cleanProfile });
+                  });
+                  await batch.commit();
+                  console.log("Offers updated successfully.");
+              }
+          } catch (offerErr) {
+              console.warn("Could not update user offers (possibly due to permission rules). The user profile itself was updated.", offerErr);
+              // We do NOT alert the user here, as the primary action (approving user) succeeded.
+          }
+
+      } catch (e: any) {
+          console.error("Global Update Error:", e);
+          if (e.code === 'permission-denied') {
+              alert("שגיאת הרשאות: אין לך הרשאה לבצע עדכון זה. אם אתה מנהל, וודא שאתה מחובר לחשבון הנכון.");
+          } else {
+              alert("אירעה שגיאה בעדכון הפרופיל. נסה שוב מאוחר יותר.");
+          }
+      }
+  };
+
+  // Robust Delete: Deletes offers first, then the user
+  const handleFullUserDelete = async (userId: string) => {
+      if (!window.confirm("פעולה זו תמחק את המשתמש וכל ההצעות שלו לצמיתות. האם להמשיך?")) return;
+      
+      try {
+          // 1. Delete all offers by this user
+          const offersSnap = await db.collection("offers").where("profileId", "==", userId).get();
           const batch = db.batch();
           
-          if (!offersSnap.empty) {
-              offersSnap.forEach(doc => {
-                  batch.update(doc.ref, { profile: cleanProfile });
-              });
-              await batch.commit();
-          }
+          offersSnap.forEach(doc => {
+              batch.delete(doc.ref);
+          });
+          
+          // 2. Delete the user document
+          const userRef = db.collection("users").doc(userId);
+          batch.delete(userRef);
+          
+          await batch.commit();
+          alert("המשתמש וכל הנתונים שלו נמחקו בהצלחה.");
       } catch (e) {
-          console.error("Global Update Error:", e);
-          alert("אירעה שגיאה בעדכון הגורף של הפרופיל.");
+          console.error("Delete Error:", e);
+          alert("אירעה שגיאה במחיקת הנתונים. וודא שיש לך הרשאות ניהול.");
       }
   };
 
@@ -529,10 +601,11 @@ export const App: React.FC = () => {
           <AdminDashboardModal 
             isOpen={isAdminDashboardOpen} onClose={() => setIsAdminDashboardOpen(false)}
             users={users} currentUser={currentUser} 
-            onDeleteUser={id => db.collection("users").doc(id).delete()}
+            onDeleteUser={handleFullUserDelete}
             onApproveUpdate={id => {
                 const u = users.find(x => x.id === id);
                 if (u && u.pendingUpdate) {
+                    // Safe update object
                     const updatedProfile = { 
                         ...u, 
                         ...u.pendingUpdate, 
@@ -553,8 +626,25 @@ export const App: React.FC = () => {
             categoryHierarchy={taxonomy.categoryHierarchy}
             onAddCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat) })} 
             onAddInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int) })} 
-            onDeleteCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(cat) })} 
-            onDeleteInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
+            
+            // Updated delete handlers with Error Handling
+            onDeleteCategory={async (cat) => {
+                try {
+                    await db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayRemove(cat) });
+                } catch (e) {
+                    console.error(e);
+                    alert("שגיאה במחיקת הקטגוריה. וודא שאתה מחובר.");
+                }
+            }} 
+            onDeleteInterest={async (int) => {
+                try {
+                    await db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(int) });
+                } catch (e) {
+                    console.error(e);
+                    alert("שגיאה במחיקת תחום העניין. וודא שאתה מחובר.");
+                }
+            }}
+
             onApproveCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat), pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
             onRejectCategory={cat => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
             onReassignCategory={(oldC, newC) => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldC), approvedCategories: firebase.firestore.FieldValue.arrayUnion(newC) })}
@@ -568,8 +658,8 @@ export const App: React.FC = () => {
                 db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayRemove(oldN) }); 
                 db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(newN) }); 
             }}
-            ads={systemAds} onAddAd={ad => db.collection("systemAds").doc(ad.id).set(ad)}
-            onEditAd={ad => db.collection("systemAds").doc(ad.id).set(ad)}
+            ads={systemAds} onAddAd={ad => db.collection("systemAds").doc(ad.id).set(cleanObject(ad))}
+            onEditAd={ad => db.collection("systemAds").doc(ad.id).set(cleanObject(ad))}
             onDeleteAd={id => db.collection("systemAds").doc(id).delete()}
             onViewProfile={u => { setSelectedProfile(u); setProfileModalStartEdit(false); setIsProfileModalOpen(true); }}
           />
@@ -620,7 +710,7 @@ export const App: React.FC = () => {
         startInEditMode={profileModalStartEdit} 
       />
       
-      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={handleAddOffer} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(o)} />
+      <CreateOfferModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingOffer(null); }} onAddOffer={handleAddOffer} currentUser={currentUser || {id:'guest'} as UserProfile} editingOffer={editingOffer} onUpdateOffer={o => db.collection("offers").doc(o.id).set(cleanObject(o))} />
       
       <PostRegisterPrompt 
         isOpen={isPostRegisterPromptOpen} 

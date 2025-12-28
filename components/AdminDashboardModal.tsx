@@ -74,47 +74,6 @@ const compressImage = (file: File): Promise<string> => {
     });
 };
 
-const DeleteToggleButton = ({ onDelete, className = "" }: { onDelete: () => void, className?: string }) => {
-    const [isConfirming, setIsConfirming] = useState(false);
-    
-    useEffect(() => {
-        if(isConfirming) {
-            const timer = setTimeout(() => setIsConfirming(false), 4000);
-            return () => clearTimeout(timer);
-        }
-    }, [isConfirming]);
-
-    const handleClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        e.preventDefault();
-        if (isConfirming) {
-            onDelete();
-            setIsConfirming(false);
-        } else {
-            setIsConfirming(true);
-        }
-    };
-
-    return (
-        <button
-            type="button"
-            onClick={handleClick}
-            className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] ${
-                isConfirming 
-                ? 'bg-red-600 text-white w-auto px-3 shadow-md' 
-                : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-            } ${className}`}
-            title={isConfirming ? "לחץ שוב לאישור סופי" : "מחק"}
-        >
-            {isConfirming ? (
-                <span className="text-[10px] font-bold whitespace-nowrap animate-in fade-in slide-in-from-left-1">מחק?</span>
-            ) : (
-                <Trash2 className="w-4 h-4 pointer-events-none" />
-            )}
-        </button>
-    );
-};
-
 type TabType = 'users' | 'content' | 'data' | 'ads';
 
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) => {
@@ -333,7 +292,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                           )}
                                           <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
                                           {user.id !== props.currentUser?.id && (
-                                              <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
+                                              <button 
+                                                  onClick={() => props.onDeleteUser(user.id)} 
+                                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                  title="מחק משתמש"
+                                              >
+                                                  <Trash2 className="w-4 h-4" />
+                                              </button>
                                           )}
                                       </div>
                                   </td>
@@ -402,7 +367,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                   <button onClick={() => props.onApproveOffer(offer.id)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700">אשר</button>
                               )}
                               <button onClick={() => props.onEditOffer(offer)} className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200 transition-colors" title="ערוך"><Edit className="w-4 h-4"/></button>
-                              <DeleteToggleButton onDelete={() => props.onDeleteOffer(offer.id)} />
+                              <button 
+                                onClick={() => { if(window.confirm('האם למחוק מודעה זו?')) props.onDeleteOffer(offer.id); }}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="מחק"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                           </div>
                       </div>
                   ))}
@@ -695,9 +666,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                                   >
                                                       <Pencil className="w-4 h-4" />
                                                   </button>
-                                                  <DeleteToggleButton 
-                                                      onDelete={() => dataSubTab === 'categories' ? props.onDeleteCategory(item) : props.onDeleteInterest(item)} 
-                                                  />
+                                                  <button
+                                                      onClick={() => {
+                                                          const type = dataSubTab === 'categories' ? 'מקצוע' : 'תחום עניין';
+                                                          if (window.confirm(`האם למחוק את ה${type} "${item}" מהמערכת?`)) {
+                                                              if (dataSubTab === 'categories') props.onDeleteCategory(item);
+                                                              else props.onDeleteInterest(item);
+                                                          }
+                                                      }}
+                                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                      title="מחק"
+                                                  >
+                                                      <Trash2 className="w-4 h-4" />
+                                                  </button>
                                               </>
                                           )}
                                       </div>
@@ -758,7 +739,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                       <div key={ad.id} className={`flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-all group relative ${!ad.isActive ? 'opacity-70 bg-slate-50' : ''}`}>
                           <div className="flex flex-col items-center gap-1 border-l pl-3 ml-2"><button onClick={(e) => { e.stopPropagation(); handleToggleAdStatus(ad); }} className={`relative w-8 h-5 rounded-full transition-colors duration-200 ${ad.isActive ? 'bg-green-500' : 'bg-slate-300'}`} title={ad.isActive ? 'כבה מודעה' : 'הפעל מודעה'}><span className={`absolute top-0.5 bg-white w-4 h-4 rounded-full transition-transform duration-200 shadow-sm ${ad.isActive ? 'left-0.5' : 'left-3.5'}`}></span></button><span className={`text-[9px] font-bold ${ad.isActive ? 'text-green-600' : 'text-slate-400'}`}>{ad.isActive ? 'פעיל' : 'כבוי'}</span></div>
                           <div className="flex-1 min-w-0 pr-2"><div className="flex items-center gap-2 mb-1"><h4 className="font-bold text-slate-800 text-sm truncate">{ad.title}</h4></div><div className="flex items-center gap-2 text-xs text-slate-500"><span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] border border-slate-200">{ad.targetCategories?.[0] || 'כללי'}</span>{ad.targetInterests && ad.targetInterests.length > 0 && (<span className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded text-[10px] border border-pink-100">+{ad.targetInterests.length}</span>)}</div></div>
-                          <div className="flex items-center gap-3 shrink-0"><div className="flex gap-1"><button onClick={(e) => { e.stopPropagation(); handleDuplicateAd(ad); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="שכפל"><Copy className="w-4 h-4"/></button><button onClick={(e) => { e.stopPropagation(); handleEditAdClick(ad); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך"><Pencil className="w-4 h-4"/></button><DeleteToggleButton onDelete={() => props.onDeleteAd(ad.id)} /></div><img src={ad.imageUrl} className="w-20 h-14 object-cover rounded-lg border border-slate-100 shadow-sm bg-slate-50" alt="" /></div>
+                          <div className="flex items-center gap-3 shrink-0"><div className="flex gap-1"><button onClick={(e) => { e.stopPropagation(); handleDuplicateAd(ad); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="שכפל"><Copy className="w-4 h-4"/></button><button onClick={(e) => { e.stopPropagation(); handleEditAdClick(ad); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="ערוך"><Pencil className="w-4 h-4"/></button><button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק קמפיין זה?')) props.onDeleteAd(ad.id); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="מחק"><Trash2 className="w-4 h-4" /></button></div><img src={ad.imageUrl} className="w-20 h-14 object-cover rounded-lg border border-slate-100 shadow-sm bg-slate-50" alt="" /></div>
                       </div>
                   ))}
               </div>
