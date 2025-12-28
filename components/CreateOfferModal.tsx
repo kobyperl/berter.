@@ -4,13 +4,15 @@ import { X, Sparkles, Loader2, Tag, Clock, Repeat, CheckCircle, Calendar, AlertT
 import { optimizeOfferDescription } from '../services/geminiService';
 import { BarterOffer, UserProfile } from '../types';
 
-interface CreateOfferModalProps {
+export interface CreateOfferModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddOffer: (offer: BarterOffer) => void;
-  onUpdateOffer?: (offer: BarterOffer) => void;
+  // Allow both synchronous and asynchronous returns to satisfy TypeScript strict checks
+  onAddOffer: (offer: BarterOffer) => void | Promise<void>;
+  onUpdateOffer?: (offer: BarterOffer) => void | Promise<void>;
   currentUser: UserProfile;
-  editingOffer?: BarterOffer | null; // Optional prop for editing
+  editingOffer?: BarterOffer | null;
+  targetProfile?: UserProfile | null;
 }
 
 export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({ 
@@ -19,7 +21,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     onAddOffer, 
     onUpdateOffer,
     currentUser, 
-    editingOffer 
+    editingOffer,
+    targetProfile
 }) => {
   const [step, setStep] = useState(1);
   const [roughText, setRoughText] = useState('');
@@ -27,10 +30,10 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
   
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
-  const [interimText, setInterimText] = useState(''); // Text being spoken but not finalized
+  const [interimText, setInterimText] = useState('');
   
   const recognitionRef = useRef<any>(null);
-  const isRecordingRef = useRef(false); // Track recording state for callbacks
+  const isRecordingRef = useRef(false);
 
   const [formData, setFormData] = useState<{
       title: string;
@@ -52,7 +55,6 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     expirationDate: ''
   });
 
-  // Pre-fill form if editing
   useEffect(() => {
     if (editingOffer && isOpen) {
         setFormData({
@@ -65,9 +67,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             durationType: editingOffer.durationType,
             expirationDate: editingOffer.expirationDate || ''
         });
-        setStep(2); // Skip AI step when editing
+        setStep(2);
     } else if (isOpen && !editingOffer) {
-        // Reset if opening fresh
         setStep(1);
         setRoughText('');
         setFormData({
@@ -83,7 +84,6 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     }
   }, [editingOffer, isOpen]);
 
-  // Cleanup speech recognition on unmount or close
   useEffect(() => {
       return () => {
           isRecordingRef.current = false;
@@ -208,6 +208,8 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
         ...(formData.durationType === 'one-time' && formData.expirationDate ? { expirationDate: formData.expirationDate } : {})
     };
 
+    const effectiveProfile = targetProfile || currentUser;
+
     if (editingOffer && onUpdateOffer) {
         const updatedOffer: BarterOffer = { ...editingOffer, ...commonFields, ratings: [], averageRating: 0 };
         if (formData.durationType === 'ongoing') delete (updatedOffer as any).expirationDate;
@@ -216,16 +218,16 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
     } else {
         const newOffer: BarterOffer = {
             id: Date.now().toString(),
-            profileId: currentUser.id,
-            profile: currentUser,
+            profileId: effectiveProfile.id,
+            profile: effectiveProfile,
             ...commonFields,
-            status: currentUser.role === 'admin' ? 'active' : 'pending',
+            status: (currentUser.role === 'admin' || targetProfile) ? 'active' : 'pending',
             createdAt: new Date().toISOString(),
             ratings: [],
             averageRating: 0
         };
         onAddOffer(newOffer);
-        onClose(); // Parent (App.tsx) handles the "success" nudge modal for better flow
+        onClose(); 
     }
   };
 
@@ -239,6 +241,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg leading-6 font-bold text-slate-900" id="modal-title">
                     {editingOffer ? 'עריכת הצעה' : (step === 1 ? 'מה תרצה להחליף?' : 'עריכת ההצעה')}
+                    {targetProfile && <span className="text-xs font-normal text-slate-500 block">עבור: {targetProfile.name}</span>}
                 </h3>
                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-1.5 rounded-full transition-colors">
                     <X className="w-5 h-5" />
@@ -277,7 +280,7 @@ export const CreateOfferModal: React.FC<CreateOfferModalProps> = ({
                     <div><label className="block text-xs font-bold text-slate-700 mb-1.5">מיקום</label><input type="text" className={inputClassName} placeholder="לדוגמה: תל אביב, זום, כל הארץ" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} /></div>
                     <div><label className="block text-xs font-bold text-slate-700 mb-1.5">פירוט מלא</label><textarea className={`${inputClassName} h-28 resize-none`} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})}></textarea></div>
                     {editingOffer && <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2"><AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" /><p className="text-xs text-amber-800"><strong>שים לב:</strong> שמירת השינויים תאפס את הדירוגים הקיימים להצעה זו, כדי לשמור על אמינות המערכת.</p></div>}
-                    <button type="button" onClick={handlePublish} className="w-full bg-brand-600 text-white rounded-xl py-3.5 font-bold hover:bg-brand-700 transition-colors shadow-sm mt-2">{editingOffer ? 'שמור שינויים (איפוס דירוג)' : (currentUser.role === 'admin' ? 'פרסם מידית (מנהל)' : 'שלח הצעה לאישור')}</button>
+                    <button type="button" onClick={handlePublish} className="w-full bg-brand-600 text-white rounded-xl py-3.5 font-bold hover:bg-brand-700 transition-colors shadow-sm mt-2">{editingOffer ? 'שמור שינויים (איפוס דירוג)' : ((currentUser.role === 'admin' || targetProfile) ? 'פרסם מידית (מנהל)' : 'שלח הצעה לאישור')}</button>
                 </form>
             )}
           </div>
