@@ -49,14 +49,10 @@ const cleanObject = (obj: any): any => {
     if (obj === undefined) return undefined;
     if (obj === null) return null;
     
-    // Strictly preserve Firestore FieldValues and Timestamps
+    // Strictly preserve Firestore FieldValues
     if (obj instanceof firebase.firestore.FieldValue) return obj;
-    if (obj instanceof firebase.firestore.Timestamp) return obj;
-    
-    // Check for internal Firestore types by property duck-typing if instance check fails
-    if (typeof obj === 'object' && (obj._methodName || (obj.seconds !== undefined && obj.nanoseconds !== undefined))) {
-        return obj;
-    }
+    if (obj && obj.constructor && obj.constructor.name === 'FieldValue') return obj;
+    if (typeof obj === 'object' && obj._methodName) return obj;
 
     if (Array.isArray(obj)) {
         return obj.map(cleanObject).filter(v => v !== undefined);
@@ -413,6 +409,7 @@ export const App: React.FC = () => {
 
           await db.collection("users").doc(sanitizedProfile.id).set(sanitizedProfile, { merge: true });
 
+          // Try to update offers, but don't fail if permissions deny it (for normal users)
           try {
               const cleanProfile = { ...sanitizedProfile };
               delete cleanProfile.pendingUpdate; 
@@ -427,7 +424,7 @@ export const App: React.FC = () => {
                   await batch.commit();
               }
           } catch (offerErr) {
-              console.warn("User offers updated partially.", offerErr);
+              console.warn("User offers updated partially or skipped due to permissions.", offerErr);
           }
 
       } catch (e: any) {
@@ -440,9 +437,15 @@ export const App: React.FC = () => {
       }
   };
 
+  // Improved Delete Handler: Attempts to delete user document FIRST to prevent "zombie" accounts if offer delete fails
   const handleFullUserDelete = async (userId: string) => {
       if (!window.confirm("פעולה זו תמחק את המשתמש וכל ההצעות שלו לצמיתות. האם להמשיך?")) return;
+      
       try {
+          // 1. Delete the user document - THIS IS THE PRIMARY ACTION
+          await db.collection("users").doc(userId).delete();
+          
+          // 2. Try to clean up offers in background (Best Effort)
           try {
               const offersSnap = await db.collection("offers").where("profileId", "==", userId).get();
               if (!offersSnap.empty) {
@@ -451,14 +454,13 @@ export const App: React.FC = () => {
                   await batch.commit();
               }
           } catch (offerDeleteErr) {
-              console.warn("Offer delete failed, continuing to user delete.", offerDeleteErr);
+              console.warn("Offer cleanup partially failed (permission?), but user was deleted.", offerDeleteErr);
           }
           
-          await db.collection("users").doc(userId).delete();
           alert("המשתמש נמחק בהצלחה.");
       } catch (e: any) {
-          console.error("Delete Error:", e);
-          alert("אירעה שגיאה במחיקת המשתמש. וודא שיש לך הרשאות ניהול.");
+          console.error("Delete User Error:", e);
+          alert(`שגיאה במחיקת המשתמש: ${e.message || 'אין הרשאה'}`);
       }
   };
 
@@ -469,7 +471,7 @@ export const App: React.FC = () => {
           });
       } catch (e) {
           console.error("Delete category error:", e);
-          alert("שגיאה במחיקת הקטגוריה.");
+          alert("שגיאה במחיקת הקטגוריה. וודא שיש לך הרשאות ניהול.");
       }
   };
 
@@ -480,7 +482,7 @@ export const App: React.FC = () => {
           });
       } catch (e) {
           console.error("Delete interest error:", e);
-          alert("שגיאה במחיקת תחום העניין.");
+          alert("שגיאה במחיקת תחום העניין. וודא שיש לך הרשאות ניהול.");
       }
   };
 
