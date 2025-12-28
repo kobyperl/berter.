@@ -166,9 +166,13 @@ export const App: React.FC = () => {
           if (data.email === ADMIN_EMAIL) {
               data.role = 'admin'; 
               
-              // Attempt to fix DB if it's wrong (Best effort)
+              // FORCE ADMIN ROLE IN DB (Use set with merge to ensure it sticks)
+              // We check first to avoid infinite loops if it's already there
               if (doc.data()?.role !== 'admin') {
-                  db.collection("users").doc(authUid).update({ role: 'admin' }).catch(console.warn);
+                  console.log("Forcing admin role update for:", authUid);
+                  db.collection("users").doc(authUid).set({ role: 'admin' }, { merge: true }).catch(err => {
+                      console.error("Failed to enforce admin role:", err);
+                  });
               }
           }
           
@@ -482,12 +486,20 @@ export const App: React.FC = () => {
 
   const handleDeleteCategory = async (category: string) => {
       try {
+          // If the document doesn't exist, this might fail, so we use set with merge if arrayRemove fails?
+          // arrayRemove only works if the field exists.
           await db.collection("system").doc("taxonomy").update({
               approvedCategories: firebase.firestore.FieldValue.arrayRemove(category)
           });
-      } catch (e) {
+      } catch (e: any) {
           console.error("Delete category error:", e);
-          alert("שגיאה במחיקת הקטגוריה. וודא שיש לך הרשאות ניהול.");
+          // Fallback: If document doesn't exist or other error, maybe try to recreate it?
+          // But usually permission denied is the cause.
+          if (e.code === 'permission-denied') {
+             alert("שגיאה במחיקת הקטגוריה. וודא שיש לך הרשאות ניהול.");
+          } else {
+             alert(`שגיאה במחיקה: ${e.message}`);
+          }
       }
   };
 
@@ -496,9 +508,13 @@ export const App: React.FC = () => {
           await db.collection("system").doc("taxonomy").update({
               approvedInterests: firebase.firestore.FieldValue.arrayRemove(interest)
           });
-      } catch (e) {
+      } catch (e: any) {
           console.error("Delete interest error:", e);
-          alert("שגיאה במחיקת תחום העניין. וודא שיש לך הרשאות ניהול.");
+          if (e.code === 'permission-denied') {
+             alert("שגיאה במחיקת תחום העניין. וודא שיש לך הרשאות ניהול.");
+          } else {
+             alert(`שגיאה במחיקה: ${e.message}`);
+          }
       }
   };
 

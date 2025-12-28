@@ -7,7 +7,6 @@ import { BarterOffer, UserProfile } from '../types';
 export interface CreateOfferModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Allow both synchronous and asynchronous returns to satisfy TypeScript strict checks
   onAddOffer: (offer: BarterOffer) => void | Promise<void>;
   onUpdateOffer?: (offer: BarterOffer) => void | Promise<void>;
   currentUser: UserProfile;
