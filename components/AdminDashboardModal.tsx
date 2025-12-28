@@ -123,6 +123,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   
   // Local State
   const [userSearch, setUserSearch] = useState('');
+  const [userSubTab, setUserSubTab] = useState<'all' | 'pending'>('all'); // New sub-tab state for users
   const [contentTab, setContentTab] = useState<'pending' | 'all'>('pending');
   const [dateThreshold, setDateThreshold] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -164,7 +165,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
   const safePendingCategories = props.pendingCategories || [];
   const safePendingInterests = props.pendingInterests || [];
 
-  const pendingUserUpdates = safeUsers.filter(u => u.pendingUpdate).length;
+  const pendingUserUpdatesCount = safeUsers.filter(u => u.pendingUpdate).length;
   const pendingOffersCount = safeOffers.filter(o => o.status === 'pending').length;
   const pendingDataCount = safePendingCategories.length + safePendingInterests.length;
 
@@ -250,7 +251,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
 
   // 1. Users
   const renderUsers = () => {
-      const filtered = safeUsers.filter(u => 
+      // 1. Filter by Tab (Pending vs All)
+      const baseUsers = userSubTab === 'pending' 
+          ? safeUsers.filter(u => u.pendingUpdate) 
+          : safeUsers;
+
+      // 2. Filter by Search
+      const filtered = baseUsers.filter(u => 
         (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
         (u.email || '').toLowerCase().includes(userSearch.toLowerCase())
       ).sort((a, b) => {
@@ -273,6 +280,27 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                   </div>
               </div>
 
+              {/* Sub Tabs */}
+              <div className="flex gap-2 border-b border-slate-200">
+                  <button 
+                      onClick={() => setUserSubTab('all')} 
+                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${userSubTab === 'all' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                  >
+                      כל המשתמשים
+                  </button>
+                  <button 
+                      onClick={() => setUserSubTab('pending')} 
+                      className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${userSubTab === 'pending' ? 'border-yellow-500 text-yellow-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                  >
+                      ממתינים לאישור
+                      {pendingUserUpdatesCount > 0 && (
+                          <span className="bg-yellow-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                              {pendingUserUpdatesCount}
+                          </span>
+                      )}
+                  </button>
+              </div>
+
               <div className="relative">
                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                  <input 
@@ -285,9 +313,16 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
               </div>
 
               <div className="overflow-x-auto border rounded-xl max-h-[50vh] overflow-y-auto custom-scrollbar shadow-inner bg-white">
-                  <table className="w-full text-sm text-right">
+                  {/* min-w-[700px] ensures horizontal scroll on mobile */}
+                  <table className="w-full text-sm text-right min-w-[700px]">
                       <thead className="bg-slate-50 sticky top-0 z-10 border-b">
-                          <tr><th className="px-4 py-3">שם</th><th className="px-4 py-3">מייל</th><th className="px-4 py-3">סטטוס</th><th className="px-4 py-3">פעולות</th></tr>
+                          <tr>
+                              <th className="px-4 py-3">שם</th>
+                              <th className="px-4 py-3">מייל</th>
+                              <th className="px-4 py-3">תחום ראשי</th>
+                              <th className="px-4 py-3">סטטוס</th>
+                              <th className="px-4 py-3">פעולות</th>
+                          </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                           {filtered.map(user => (
@@ -298,22 +333,34 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                       </div>
                                       <div className="min-w-0">
                                           <div className="font-bold text-slate-800 truncate group-hover:text-brand-600 transition-colors">{user.name}</div>
-                                          <div className="text-[10px] text-slate-500 truncate">{user.mainField}</div>
+                                          <div className="text-[10px] text-slate-500 truncate">הצטרף: {new Date(user.joinedAt || 0).toLocaleDateString()}</div>
                                       </div>
                                   </td>
                                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
+                                  <td className="px-4 py-3 text-slate-700">{user.mainField}</td>
                                   <td className="px-4 py-3">
                                       {user.pendingUpdate ? (
-                                          <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-200 transition-colors">
+                                          <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-200 transition-colors animate-pulse">
                                               <RefreshCw className="w-3 h-3" /> ממתין לאישור
                                           </button>
                                       ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
                                   </td>
                                   <td className="px-4 py-3">
                                       <div className="flex gap-2 items-center">
-                                          <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
-                                          {user.id !== props.currentUser?.id && (
-                                              <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
+                                          {user.pendingUpdate ? (
+                                              <button 
+                                                  onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }}
+                                                  className="bg-brand-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-700 whitespace-nowrap shadow-sm"
+                                              >
+                                                  סקור שינויים
+                                              </button>
+                                          ) : (
+                                              <>
+                                                  <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
+                                                  {user.id !== props.currentUser?.id && (
+                                                      <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
+                                                  )}
+                                              </>
                                           )}
                                       </div>
                                   </td>
@@ -323,7 +370,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                   </table>
                   {filtered.length === 0 && (
                       <div className="p-10 text-center text-slate-400 font-medium">
-                          לא נמצאו משתמשים תואמים לחיפוש
+                          לא נמצאו משתמשים תואמים
                       </div>
                   )}
               </div>
@@ -794,7 +841,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
             <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
                 <div className="order-2 sm:order-1 w-full sm:w-64 bg-slate-50 border-t sm:border-t-0 sm:border-l border-slate-200 shrink-0">
                     <nav className="flex flex-row sm:flex-col p-2 sm:p-4 gap-1 sm:gap-2 overflow-x-auto sm:overflow-visible scrollbar-hide">
-                        <button onClick={() => setActiveTab('users')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Shield className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">משתמשים</span>{pendingUserUpdates > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingUserUpdates}</span>}</button>
+                        <button onClick={() => setActiveTab('users')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Shield className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">משתמשים</span>{pendingUserUpdatesCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingUserUpdatesCount}</span>}</button>
                         <button onClick={() => setActiveTab('content')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'content' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><FileText className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">מודעות</span>{pendingOffersCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingOffersCount}</span>}</button>
                         <button onClick={() => setActiveTab('data')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><BarChart3 className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">קטגוריות</span>{pendingDataCount > 0 && <span className="mr-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full hidden sm:inline-block font-black">{pendingDataCount}</span>}</button>
                         <button onClick={() => setActiveTab('ads')} className={`flex-1 sm:flex-none flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-2xl transition-all whitespace-nowrap ${activeTab === 'ads' ? 'bg-white shadow-md text-brand-700 font-bold ring-1 ring-slate-200' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'}`}><Megaphone className="w-5 h-5 shrink-0" /><span className="hidden sm:inline">פרסומות</span></button>
