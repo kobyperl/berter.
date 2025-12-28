@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Send, Search, User, Paperclip, Reply, Edit2, Trash2, FileText, Loader2, Image as ImageIcon } from 'lucide-react';
 import { Message, UserProfile } from '../types';
@@ -271,11 +272,13 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
   const activePartnerAvatar = activePartnerProfile?.avatarUrl || conversationsMap.get(activeConversationId!)?.avatarUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+    // Fixed layout for mobile: full screen height (100dvh), remove padding on mobile
+    <div className="fixed inset-0 z-[80] flex items-center justify-center sm:p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
-      <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 text-right" dir="rtl">
-            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+      <div className="relative bg-white w-full max-w-5xl h-[100dvh] sm:h-[85vh] sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 text-right font-sans" dir="rtl">
+            {/* Sidebar List */}
+            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col h-full ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
                     <h2 className="font-bold text-slate-800 text-lg">תיבת הודעות</h2>
                     <button onClick={onClose} className="sm:hidden p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
@@ -299,7 +302,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                         <div className="text-center p-8 text-slate-400 text-sm italic">אין לך שיחות פעילות כרגע</div>
                     ) : (
                         filteredConversations.map(conv => {
-                            // Find user profile for this conversation
                             const convProfile = users.find(u => u.id === conv.partnerId);
                             
                             return (
@@ -344,10 +346,12 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                 </div>
             </div>
 
-            <div className={`flex-1 flex flex-col bg-slate-100 relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+            {/* Chat Area - Fix flex layout for mobile scrolling */}
+            <div className={`w-full sm:flex-1 flex flex-col bg-slate-100 h-full relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 {activeConversationId ? (
                     <>
-                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+                        {/* Header - Fixed Height, shrink-0 */}
+                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-20 shrink-0">
                             <div className="flex items-center gap-3">
                                 <button onClick={() => setActiveConversationId(null)} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
                                 <div 
@@ -365,18 +369,17 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                        {/* Messages - Flex-1, scrollable, min-h-0 is crucial for nested flex scrolling */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-100/50 min-h-0 overscroll-contain">
                             {activeMessages.map((msg) => {
                                 const isMe = msg.senderId === currentUser;
                                 const isDeleted = msg.isDeleted;
-                                // Allow edit for 15 mins
                                 const canEdit = isMe && !isDeleted && (Date.now() - new Date(msg.timestamp).getTime() < 15 * 60 * 1000); 
                                 
                                 return (
                                     <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}>
                                         <div className={`max-w-[85%] rounded-2xl px-4 py-2 shadow-sm text-sm relative transition-all ${isMe ? 'bg-brand-500 text-white rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'} ${isDeleted ? 'opacity-60 bg-slate-200 text-slate-500 italic' : ''}`}>
                                             
-                                            {/* Quote Section */}
                                             {msg.replyTo && !isDeleted && (
                                                 <div className={`mb-2 p-2 rounded-lg text-xs border-r-2 ${isMe ? 'bg-brand-600 border-brand-300 text-brand-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
                                                     <span className="font-bold block mb-0.5">{msg.replyTo.senderName}</span>
@@ -384,7 +387,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                                 </div>
                                             )}
 
-                                            {/* Attachment Section */}
                                             {msg.attachmentUrl && !isDeleted && (
                                                 <div className="mb-2">
                                                     {msg.attachmentType === 'image' ? (
@@ -414,7 +416,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                                     {msg.lastEdited && !isDeleted && <span>(נערך)</span>}
                                                 </div>
                                                 
-                                                {/* Hover Actions */}
                                                 {!isDeleted && (
                                                     <div className={`flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity items-center ${isMe ? 'text-white' : 'text-slate-500'}`}>
                                                         <button onClick={() => setReplyingTo(msg)} title="הגב" className="hover:scale-110 transition-transform"><Reply className="w-3 h-3" /></button>
@@ -434,9 +435,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input Area */}
-                        <div className="bg-white p-3 border-t border-slate-200 shrink-0">
-                            {/* Replying Banner */}
+                        {/* Input Area - Fixed at bottom, shrink-0 */}
+                        <div className="bg-white p-3 border-t border-slate-200 shrink-0 z-20 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] pb-safe">
                             {replyingTo && (
                                 <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg mb-2 border-r-4 border-brand-500 animate-in slide-in-from-bottom-2">
                                     <div className="text-xs text-slate-600">
@@ -447,7 +447,6 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                                 </div>
                             )}
                             
-                            {/* Editing Banner */}
                             {editingMessageId && (
                                 <div className="flex justify-between items-center bg-yellow-50 p-2 rounded-lg mb-2 border-r-4 border-yellow-500 animate-in slide-in-from-bottom-2">
                                     <div className="text-xs text-yellow-800 font-bold">עורך הודעה...</div>
