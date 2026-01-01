@@ -13,6 +13,7 @@ interface AuthModalProps {
   availableCategories: string[];
   availableInterests: string[];
   onOpenPrivacyPolicy?: () => void; 
+  onOpenTerms?: () => void;
 }
 
 const normalizeUrl = (url: string): string => {
@@ -54,7 +55,7 @@ const compressImage = (file: File): Promise<string> => {
 };
 
 export const AuthModal: React.FC<AuthModalProps> = ({ 
-    isOpen, onClose, onLogin, onRegister, startOnRegister = false, availableCategories, availableInterests, onOpenPrivacyPolicy 
+    isOpen, onClose, onLogin, onRegister, startOnRegister = false, availableCategories, availableInterests, onOpenPrivacyPolicy, onOpenTerms 
 }) => {
   const [isLoginMode, setIsLoginMode] = useState(!startOnRegister);
   const [showPassword, setShowPassword] = useState(false);
@@ -316,7 +317,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                             <div className={`flex items-start gap-2 p-3 rounded-xl border text-[10px] ${showErrors && !acceptedPrivacy ? 'bg-red-50 border-red-200 text-red-700 font-bold' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                                 <input type="checkbox" id="privacy" className="mt-0.5" checked={acceptedPrivacy} onChange={e => setAcceptedPrivacy(e.target.checked)} />
-                                <label htmlFor="privacy" className="cursor-pointer leading-relaxed">אני מאשר/ת את <button type="button" onClick={onOpenPrivacyPolicy} className="text-brand-600 underline font-bold">מדיניות הפרטיות</button> ותנאי השימוש באתר. *</label>
+                                <label htmlFor="privacy" className="cursor-pointer leading-relaxed">אני מאשר/ת את <button type="button" onClick={onOpenPrivacyPolicy} className="text-brand-600 underline font-bold">מדיניות הפרטיות</button> ו<button type="button" onClick={onOpenTerms} className="text-brand-600 underline font-bold">תנאי השימוש באתר</button>. *</label>
                             </div>
                         </>
                     )}

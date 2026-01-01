@@ -37,6 +37,7 @@ interface AdminDashboardModalProps {
   onApproveCategory: (category: string) => void;
   onRejectCategory: (category: string) => void;
   onReassignCategory: (oldCategory: string, newCategory: string) => void;
+  onReassignInterest?: (oldInterest: string, newInterest: string) => void; // Added Prop
   onApproveInterest: (interest: string) => void;
   onRejectInterest: (interest: string) => void;
   onEditCategory: (oldName: string, newName: string, parentCategory?: string) => void;
@@ -312,67 +313,91 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                  />
               </div>
 
-              <div className="overflow-x-auto border rounded-xl max-h-[50vh] overflow-y-auto custom-scrollbar shadow-inner bg-white">
-                  {/* min-w-[700px] ensures horizontal scroll on mobile */}
-                  <table className="w-full text-sm text-right min-w-[700px]">
-                      <thead className="bg-slate-50 sticky top-0 z-10 border-b">
-                          <tr>
-                              <th className="px-4 py-3">שם</th>
-                              <th className="px-4 py-3">מייל</th>
-                              <th className="px-4 py-3">תחום ראשי</th>
-                              <th className="px-4 py-3">סטטוס</th>
-                              <th className="px-4 py-3">פעולות</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                          {filtered.map(user => (
-                              <tr key={user.id} className="hover:bg-slate-50/80 transition-colors group">
-                                  <td className="px-4 py-3 flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}>
-                                      <div className="relative shrink-0">
-                                          <img src={user.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" alt="" />
-                                      </div>
-                                      <div className="min-w-0">
-                                          <div className="font-bold text-slate-800 truncate group-hover:text-brand-600 transition-colors">{user.name}</div>
-                                          <div className="text-[10px] text-slate-500 truncate">הצטרף: {new Date(user.joinedAt || 0).toLocaleDateString()}</div>
-                                      </div>
-                                  </td>
-                                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{user.email}</td>
-                                  <td className="px-4 py-3 text-slate-700">{user.mainField}</td>
-                                  <td className="px-4 py-3">
-                                      {user.pendingUpdate ? (
-                                          <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 whitespace-nowrap hover:bg-yellow-200 transition-colors animate-pulse">
-                                              <RefreshCw className="w-3 h-3" /> ממתין לאישור
-                                          </button>
-                                      ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                      <div className="flex gap-2 items-center">
-                                          {user.pendingUpdate ? (
-                                              <button 
-                                                  onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }}
-                                                  className="bg-brand-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-700 whitespace-nowrap shadow-sm"
-                                              >
-                                                  סקור שינויים
-                                              </button>
-                                          ) : (
-                                              <>
-                                                  <a href={`mailto:${user.email}`} className="p-2 text-slate-400 hover:bg-white hover:text-brand-600 border border-transparent hover:border-slate-200 rounded-lg block shadow-sm transition-all" onClick={(e) => e.stopPropagation()}><Mail className="w-4 h-4"/></a>
-                                                  {user.id !== props.currentUser?.id && (
-                                                      <DeleteToggleButton onDelete={() => props.onDeleteUser(user.id)} />
-                                                  )}
-                                              </>
-                                          )}
-                                      </div>
-                                  </td>
+              <div className="border rounded-xl shadow-inner bg-white flex flex-col max-h-[55vh] relative">
+                  {/* min-w-[900px] ensures horizontal scroll on mobile without being too wide */}
+                  <div className="overflow-x-auto custom-scrollbar flex-1 w-full rounded-xl">
+                      <table className="w-full text-sm text-right min-w-[900px]">
+                          <thead className="bg-slate-50 sticky top-0 z-20 border-b shadow-sm">
+                              <tr>
+                                  <th className="px-4 py-3 whitespace-nowrap bg-slate-50 text-slate-500 font-medium">שם</th>
+                                  <th className="px-4 py-3 whitespace-nowrap bg-slate-50 text-slate-500 font-medium">מייל</th>
+                                  <th className="px-4 py-3 whitespace-nowrap bg-slate-50 text-slate-500 font-medium">תחום ראשי</th>
+                                  <th className="px-4 py-3 whitespace-nowrap bg-slate-50 text-slate-500 font-medium">סטטוס</th>
+                                  <th className="px-4 py-3 whitespace-nowrap bg-slate-50 text-slate-500 font-medium">פעולות</th>
                               </tr>
-                          ))}
-                      </tbody>
-                  </table>
-                  {filtered.length === 0 && (
-                      <div className="p-10 text-center text-slate-400 font-medium">
-                          לא נמצאו משתמשים תואמים
-                      </div>
-                  )}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                              {filtered.map(user => (
+                                  <tr key={user.id} className="hover:bg-slate-50/80 transition-colors group">
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                          <div className="flex items-center gap-3 cursor-pointer" onClick={() => props.onViewProfile(user)}>
+                                              <div className="relative shrink-0">
+                                                  <img src={user.avatarUrl} className="w-10 h-10 rounded-full border border-slate-200 object-cover aspect-square" alt="" />
+                                              </div>
+                                              <div className="min-w-0">
+                                                  <div className="font-bold text-slate-800 group-hover:text-brand-600 transition-colors">{user.name}</div>
+                                                  <div className="text-[10px] text-slate-500">הצטרף: {new Date(user.joinedAt || 0).toLocaleDateString()}</div>
+                                              </div>
+                                          </div>
+                                      </td>
+                                      <td className="px-4 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">{user.email}</td>
+                                      <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{user.mainField}</td>
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                          {user.pendingUpdate ? (
+                                              <button onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }} className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-yellow-200 transition-colors animate-pulse">
+                                                  <RefreshCw className="w-3 h-3" /> ממתין לאישור
+                                              </button>
+                                          ) : <span className="text-green-600 text-xs font-medium">פעיל</span>}
+                                      </td>
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                          <div className="flex gap-3 items-center justify-end pl-2">
+                                              {/* Mail Icon Button - Order 1 (Visual Right) */}
+                                              <a 
+                                                  href={`mailto:${user.email}`} 
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-slate-500 hover:text-brand-600 transition-colors p-1" 
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  title="שלח אימייל"
+                                              >
+                                                  <Mail className="w-5 h-5"/>
+                                              </a>
+                                              
+                                              {/* Simple Delete Button - Order 2 (Visual Left in RTL with justify-end) */}
+                                              {user.id !== props.currentUser?.id && (
+                                                  <button 
+                                                      onClick={(e) => { 
+                                                          e.stopPropagation(); 
+                                                          if(window.confirm('האם אתה בטוח שברצונך למחוק משתמש זה?')) props.onDeleteUser(user.id); 
+                                                      }}
+                                                      className="text-slate-500 hover:text-red-600 transition-colors p-1"
+                                                      title="מחק משתמש"
+                                                  >
+                                                      <Trash2 className="w-5 h-5" />
+                                                  </button>
+                                              )}
+
+                                              {/* Review Button if pending */}
+                                              {user.pendingUpdate && (
+                                                  <button 
+                                                      onClick={(e) => { e.stopPropagation(); props.onViewProfile(user); }}
+                                                      className="bg-brand-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-700 shadow-sm ml-2"
+                                                  >
+                                                      סקור
+                                                  </button>
+                                              )}
+                                          </div>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                      {filtered.length === 0 && (
+                          <div className="p-10 text-center text-slate-400 font-medium">
+                              לא נמצאו משתמשים תואמים
+                          </div>
+                      )}
+                  </div>
               </div>
           </div>
       );
@@ -478,10 +503,14 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
           setEditParent('');
       };
 
-      const handlePendingMerge = (pendingItem: string) => {
+      const handlePendingMerge = (pendingItem: string, type: 'category' | 'interest') => {
           if (reassignTarget === pendingItem && reassignDestination) {
               if (window.confirm(`האם למזג את "${pendingItem}" לתוך "${reassignDestination}"? פעולה זו תעדכן את כל המשתמשים ותמחק את הבקשה.`)) {
-                  props.onReassignCategory(pendingItem, reassignDestination);
+                  if (type === 'category') {
+                      props.onReassignCategory(pendingItem, reassignDestination);
+                  } else {
+                      props.onReassignInterest && props.onReassignInterest(pendingItem, reassignDestination);
+                  }
                   setReassignTarget(null);
                   setReassignDestination('');
               }
@@ -594,7 +623,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                                             ))}
                                         </select>
                                         <button 
-                                            onClick={() => handlePendingMerge(cat)}
+                                            onClick={() => handlePendingMerge(cat, 'category')}
                                             disabled={reassignTarget !== cat || !reassignDestination}
                                             className="bg-slate-800 text-white px-3 py-1 rounded-lg text-[10px] font-bold disabled:opacity-50"
                                         >
@@ -607,24 +636,53 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = (props) =
                         {safePendingInterests.map(int => {
                             const count = getInterestCount(int);
                             return (
-                                <div key={int} className="flex justify-between items-center p-3 bg-pink-50 border border-pink-100 rounded-lg">
-                                    <div>
-                                        <span className="font-bold text-slate-800">{int}</span> <span className="text-xs text-slate-500">(עניין)</span>
-                                        <div className="flex items-center gap-1 mt-1">
-                                            <span className="text-xs bg-pink-200 text-pink-800 px-1.5 rounded font-bold">{count} משתמשים</span>
-                                            {count > 0 && (
-                                                <button 
-                                                    onClick={() => setViewingUsersFor({name: int, type: 'interest'})}
-                                                    className="text-xs text-blue-600 hover:underline flex items-center gap-0.5"
-                                                >
-                                                    <Users className="w-3 h-3" /> הצג
-                                                </button>
-                                            )}
+                                <div key={int} className="bg-pink-50 border border-pink-100 rounded-lg p-3">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <div>
+                                            <span className="font-bold text-slate-800">{int}</span> <span className="text-xs text-slate-500">(עניין)</span>
+                                            <div className="flex items-center gap-1 mt-1">
+                                                <span className="text-xs bg-pink-200 text-pink-800 px-1.5 rounded font-bold">{count} משתמשים</span>
+                                                {count > 0 && (
+                                                    <button 
+                                                        onClick={() => setViewingUsersFor({name: int, type: 'interest'})}
+                                                        className="text-xs text-blue-600 hover:underline flex items-center gap-0.5"
+                                                    >
+                                                        <Users className="w-3 h-3" /> הצג
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => props.onApproveInterest(int)} className="text-green-600 hover:bg-green-100 p-2 rounded-lg transition-colors" title="אשר"><CheckCircle className="w-5 h-5"/></button>
+                                            <button onClick={() => props.onRejectInterest(int)} className="text-red-600 hover:bg-red-100 p-2 rounded-lg transition-colors" title="דחה"><Trash2 className="w-5 h-5"/></button>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => props.onApproveInterest(int)} className="text-green-600 hover:bg-green-100 p-2 rounded-lg transition-colors" title="אשר"><CheckCircle className="w-5 h-5"/></button>
-                                        <button onClick={() => props.onRejectInterest(int)} className="text-red-600 hover:bg-red-100 p-2 rounded-lg transition-colors" title="דחה"><Trash2 className="w-5 h-5"/></button>
+                                    {/* Interest Merge UI */}
+                                    <div className="bg-white p-2 rounded-lg border border-pink-200 flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
+                                            <ArrowRightLeft className="w-3 h-3 inline mr-1" />
+                                            מיזוג לקיים:
+                                        </span>
+                                        <select 
+                                            className="flex-1 border border-slate-300 rounded text-xs p-1 h-8"
+                                            value={reassignTarget === int ? reassignDestination : ''}
+                                            onChange={(e) => {
+                                                setReassignTarget(int);
+                                                setReassignDestination(e.target.value);
+                                            }}
+                                        >
+                                            <option value="">בחר עניין ליעד...</option>
+                                            {sortedInterests.map(existing => (
+                                                <option key={existing} value={existing}>{existing}</option>
+                                            ))}
+                                        </select>
+                                        <button 
+                                            onClick={() => handlePendingMerge(int, 'interest')}
+                                            disabled={reassignTarget !== int || !reassignDestination}
+                                            className="bg-slate-800 text-white px-3 py-1 rounded-lg text-[10px] font-bold disabled:opacity-50"
+                                        >
+                                            בצע
+                                        </button>
                                     </div>
                                 </div>
                             );

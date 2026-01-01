@@ -1,7 +1,8 @@
+
 import { ExpertiseLevel } from './types';
 
 // System Constants
-export const ADMIN_EMAIL = "yaikov.p.0548562029@gmail.com";
+export const ADMIN_EMAIL = "perlow.web@gmail.com";
 
 export const CATEGORIES = [
   "פיתוח אתרים",

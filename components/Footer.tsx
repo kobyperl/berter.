@@ -4,10 +4,11 @@ import { ShieldCheck, Lock, Facebook, Instagram, Linkedin, Send, AlertTriangle, 
 
 interface FooterProps {
     onOpenAccessibility?: () => void;
-    onOpenPrivacyPolicy?: () => void; // New prop
+    onOpenPrivacyPolicy?: () => void;
+    onOpenTerms?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility, onOpenPrivacyPolicy }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility, onOpenPrivacyPolicy, onOpenTerms }) => {
   return (
     // Changed bg-black to bg-teal-900 for the "Mint Style" requested
     <footer className="bg-teal-900 text-teal-100 border-t border-teal-800 font-sans">
@@ -31,7 +32,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility, onOpenPriva
             </h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a href="#" className="hover:text-white transition-colors">תקנון ותנאי שימוש</a>
+                <button onClick={onOpenTerms} className="hover:text-white transition-colors text-right">תקנון ותנאי שימוש</button>
               </li>
               <li>
                 <button onClick={onOpenPrivacyPolicy} className="hover:text-white transition-colors text-right">מדיניות פרטיות (Privacy Policy)</button>
@@ -103,14 +104,14 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility, onOpenPriva
         <div className="border-t border-teal-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-teal-400">
             <p>© {new Date().getFullYear()} Barter.org.il - כל הזכויות שמורות.</p>
             <div className="flex gap-4 mt-4 md:mt-0 items-center">
-                <a href="#" className="hover:text-white transition-colors">תקנון האתר</a>
+                <button onClick={onOpenTerms} className="hover:text-white transition-colors">תקנון האתר</button>
                 <span className="text-teal-700">|</span>
                 <button onClick={onOpenAccessibility} className="hover:text-white transition-colors flex items-center gap-1">
                     <Accessibility className="w-3 h-3" />
                     הסדרי נגישות
                 </button>
                 <span className="text-teal-700">|</span>
-                <a href="#" className="hover:text-white transition-colors">צור קשר</a>
+                <a href="mailto:perlow.web@gmail.com" className="hover:text-white transition-colors">צור קשר</a>
             </div>
         </div>
       </div>

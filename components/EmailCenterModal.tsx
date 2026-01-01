@@ -58,7 +58,7 @@ export const EmailCenterModal: React.FC<EmailCenterModalProps> = ({ isOpen, onCl
 
       try {
           await db.collection('mail').add({
-              to: 'yaikov.p.0548562029@gmail.com', // Admin Email
+              to: 'perlow.web@gmail.com', // Admin Email
               message: {
                   subject: `בדיקת מערכת: ${selectedType}`,
                   html: getTestHtml(selectedType)

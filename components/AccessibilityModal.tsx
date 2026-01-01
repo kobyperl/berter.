@@ -84,7 +84,7 @@ export const AccessibilityModal: React.FC<AccessibilityModalProps> = ({ isOpen, 
                     </p>
                     <div className="bg-teal-50 p-4 rounded-lg inline-block text-sm text-teal-900">
                         <strong>שם:</strong> צוות התמיכה של Barter<br/>
-                        <strong>אימייל:</strong> support@barter.org.il<br/>
+                        <strong>אימייל:</strong> perlow.web@gmail.com<br/>
                         <strong>טלפון:</strong> 050-1234567
                     </div>
                 </div>

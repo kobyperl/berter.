@@ -93,7 +93,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                 <div className="bg-slate-100 p-4 rounded-xl border border-slate-200 mt-4">
                     <h4 className="font-bold text-slate-900 mb-1">יצירת קשר</h4>
                     <p>
-                        בכל שאלה בנוגע למדיניות פרטיות זו, ניתן לפנות אלינו בכתובת המייל: <a href="mailto:privacy@barter.org.il" className="text-brand-600 font-bold hover:underline">privacy@barter.org.il</a>
+                        בכל שאלה בנוגע למדיניות פרטיות זו, ניתן לפנות אלינו בכתובת המייל: <a href="mailto:perlow.web@gmail.com" className="text-brand-600 font-bold hover:underline">perlow.web@gmail.com</a>
                     </p>
                 </div>
 

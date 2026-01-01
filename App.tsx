@@ -19,6 +19,7 @@ import { SearchTipsModal } from './components/SearchTipsModal';
 import { AccessibilityModal } from './components/AccessibilityModal';
 import { CookieConsentModal } from './components/CookieConsentModal';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { TermsOfUseModal } from './components/TermsOfUseModal';
 import { AccessibilityToolbar } from './components/AccessibilityToolbar';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { EmailCenterModal } from './components/EmailCenterModal';
@@ -365,6 +366,7 @@ export const App: React.FC = () => {
   const [isSearchTipsOpen, setIsSearchTipsOpen] = useState(false);
   const [isAccessibilityOpen, setIsAccessibilityOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false); 
+  const [isTermsOpen, setIsTermsOpen] = useState(false); // New state for Terms of Use Modal
   const [isPostRegisterPromptOpen, setIsPostRegisterPromptOpen] = useState(false);
   const [isProfessionalismPromptOpen, setIsProfessionalismPromptOpen] = useState(false);
   const [profileModalStartEdit, setProfileModalStartEdit] = useState(false);
@@ -560,6 +562,73 @@ export const App: React.FC = () => {
       }
   };
 
+  // --- SMART REASSIGN LOGIC (Updates Users + Taxonomy) ---
+  const handleReassignCategory = async (oldCategory: string, newCategory: string) => {
+      try {
+          const batch = db.batch();
+          
+          // 1. Update Taxonomy: Remove pending, ensure target exists (optional logic, usually handled by UI)
+          const taxRef = db.collection("system").doc("taxonomy");
+          batch.update(taxRef, {
+              pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldCategory)
+          });
+
+          // 2. Find Users with mainField matching oldCategory
+          const mainFieldSnap = await db.collection("users").where("mainField", "==", oldCategory).get();
+          mainFieldSnap.forEach(doc => {
+              batch.update(doc.ref, { mainField: newCategory });
+          });
+
+          // 3. Find Users with secondaryFields containing oldCategory
+          const secFieldSnap = await db.collection("users").where("secondaryFields", "array-contains", oldCategory).get();
+          secFieldSnap.forEach(doc => {
+              const data = doc.data() as UserProfile;
+              let newFields = (data.secondaryFields || []).filter(f => f !== oldCategory);
+              if (!newFields.includes(newCategory) && newCategory !== data.mainField) {
+                  newFields.push(newCategory);
+              }
+              batch.update(doc.ref, { secondaryFields: newFields });
+          });
+
+          await batch.commit();
+          alert(`בוצע מיזוג בהצלחה: "${oldCategory}" -> "${newCategory}". עודכנו ${mainFieldSnap.size + secFieldSnap.size} משתמשים.`);
+
+      } catch (e: any) {
+          console.error("Reassign Category Error:", e);
+          alert(`שגיאה במיזוג: ${e.message}`);
+      }
+  };
+
+  const handleReassignInterest = async (oldInterest: string, newInterest: string) => {
+      try {
+          const batch = db.batch();
+          
+          // 1. Update Taxonomy
+          const taxRef = db.collection("system").doc("taxonomy");
+          batch.update(taxRef, {
+              pendingInterests: firebase.firestore.FieldValue.arrayRemove(oldInterest)
+          });
+
+          // 2. Find Users with interest matching oldInterest
+          const interestSnap = await db.collection("users").where("interests", "array-contains", oldInterest).get();
+          interestSnap.forEach(doc => {
+              const data = doc.data() as UserProfile;
+              let newInterests = (data.interests || []).filter(i => i !== oldInterest);
+              if (!newInterests.includes(newInterest)) {
+                  newInterests.push(newInterest);
+              }
+              batch.update(doc.ref, { interests: newInterests });
+          });
+
+          await batch.commit();
+          alert(`בוצע מיזוג בהצלחה: "${oldInterest}" -> "${newInterest}". עודכנו ${interestSnap.size} משתמשים.`);
+
+      } catch (e: any) {
+          console.error("Reassign Interest Error:", e);
+          alert(`שגיאה במיזוג: ${e.message}`);
+      }
+  };
+
   const filteredOffers = useMemo(() => {
     return offers.filter(o => {
       // 1. Default Rules (Active Status / Ownership)
@@ -724,7 +793,11 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      <Footer onOpenAccessibility={() => setIsAccessibilityOpen(true)} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} />
+      <Footer 
+        onOpenAccessibility={() => setIsAccessibilityOpen(true)} 
+        onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)} 
+        onOpenTerms={() => setIsTermsOpen(true)}
+      />
       
       {isAdminDashboardOpen && (
           <AdminDashboardModal 
@@ -762,7 +835,11 @@ export const App: React.FC = () => {
 
             onApproveCategory={cat => db.collection("system").doc("taxonomy").update({ approvedCategories: firebase.firestore.FieldValue.arrayUnion(cat), pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
             onRejectCategory={cat => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(cat) })}
-            onReassignCategory={(oldC, newC) => db.collection("system").doc("taxonomy").update({ pendingCategories: firebase.firestore.FieldValue.arrayRemove(oldC), approvedCategories: firebase.firestore.FieldValue.arrayUnion(newC) })}
+            
+            // Smart Merge Handlers
+            onReassignCategory={handleReassignCategory}
+            onReassignInterest={handleReassignInterest} // Wire up interest merge too
+
             onApproveInterest={int => db.collection("system").doc("taxonomy").update({ approvedInterests: firebase.firestore.FieldValue.arrayUnion(int), pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
             onRejectInterest={int => db.collection("system").doc("taxonomy").update({ pendingInterests: firebase.firestore.FieldValue.arrayRemove(int) })}
             onEditCategory={(oldN, newN, p) => {
@@ -780,7 +857,17 @@ export const App: React.FC = () => {
           />
       )}
 
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={handleLogin} onRegister={handleRegister} startOnRegister={authStartOnRegister} availableCategories={availableCategories} availableInterests={availableInterests} onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(false)} />
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        onLogin={handleLogin} 
+        onRegister={handleRegister} 
+        startOnRegister={authStartOnRegister} 
+        availableCategories={availableCategories} 
+        availableInterests={availableInterests} 
+        onOpenPrivacyPolicy={() => setIsPrivacyPolicyOpen(true)}
+        onOpenTerms={() => setIsTermsOpen(true)}
+      />
       
       <MessagingModal 
         isOpen={isMessagingModalOpen} onClose={() => setIsMessagingModalOpen(false)} currentUser={authUid || 'guest'} messages={messages} 
@@ -827,6 +914,14 @@ export const App: React.FC = () => {
         currentUser={currentUser} 
         userOffers={offers.filter(o => o.profileId === selectedProfile?.id)} 
         onDeleteOffer={id => db.collection("offers").doc(id).delete()} 
+        // Pass editing handler so ProfileModal knows how to open the edit dialog
+        onEditOffer={o => { 
+            // Close profile modal first or rely on high z-index of create modal
+            // setIsProfileModalOpen(false); 
+            setEditingOffer(o); 
+            setActingUser(null); 
+            setIsCreateModalOpen(true); 
+        }}
         onUpdateProfile={handleGlobalProfileUpdate} 
         onContact={p => { setSelectedProfile(p); setIsMessagingModalOpen(true); }} 
         onRate={handleRate}
@@ -866,6 +961,7 @@ export const App: React.FC = () => {
       <SearchTipsModal isOpen={isSearchTipsOpen} onClose={() => setIsSearchTipsOpen(false)} onStartSearching={handleStartSearching} />
       <AccessibilityModal isOpen={isAccessibilityOpen} onClose={() => setIsAccessibilityOpen(false)} />
       <PrivacyPolicyModal isOpen={isPrivacyPolicyOpen} onClose={() => setIsPrivacyPolicyOpen(false)} />
+      <TermsOfUseModal isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} />
       <CookieConsentModal />
     </div>
   );
