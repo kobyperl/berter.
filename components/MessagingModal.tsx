@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Send, Search, User, Paperclip, Reply, Edit2, Trash2, FileText, Loader2, Image as ImageIcon } from 'lucide-react';
+import { X, Send, Search, User } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 
 interface MessagingModalProps {
@@ -7,14 +8,10 @@ interface MessagingModalProps {
   onClose: () => void;
   currentUser: string; // authUid
   messages: Message[];
-  onSendMessage: (receiverId: string, receiverName: string, subject: string, content: string, attachment?: {url: string, type: 'image'|'file', expiry: string}, replyTo?: {id: string, content: string, senderName: string}) => void;
+  onSendMessage: (receiverId: string, receiverName: string, subject: string, content: string) => void;
   onMarkAsRead: (messageId: string) => void;
   recipientProfile?: UserProfile | null;
   initialSubject?: string;
-  users: UserProfile[]; // Needed for avatars
-  onUserClick: (profile: UserProfile) => void;
-  onEditMessage: (messageId: string, newContent: string) => void;
-  onDeleteMessage: (messageId: string) => void;
 }
 
 interface Conversation {
@@ -22,66 +19,31 @@ interface Conversation {
   partnerName: string;
   lastMessage: Message;
   unreadCount: number;
-  avatarUrl?: string;
 }
 
-// Utility to compress image
-const compressImage = (file: File): Promise => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 600; 
-          let width = img.width;
-          let height = img.height;
-          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL('image/jpeg', 0.6));
-          } else { reject(new Error("Canvas context error")); }
-        };
-        img.onerror = (err) => reject(err);
-      };
-      reader.onerror = (err) => reject(err);
-    });
-};
-
-export const MessagingModal: React.FC = ({ 
+export const MessagingModal: React.FC<MessagingModalProps> = ({ 
   isOpen, 
   onClose, 
   currentUser, 
   messages, 
   onSendMessage, 
-  onMarkAsRead, 
+  onMarkAsRead,
   recipientProfile,
-  initialSubject,
-  users,
-  onUserClick,
-  onEditMessage,
-  onDeleteMessage
+  initialSubject
 }) => {
-  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const [replyingTo, setReplyingTo] = useState(null);
-  const [editingMessageId, setEditingMessageId] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  
-  const processingReadIds = useRef>(new Set());
+  const processingReadIds = useRef<Set<string>>(new Set());
 
-  // --- Group messages into personal conversations ---
+  // --- Group messages into personal conversations only ---
   const conversationsMap = useMemo(() => {
-    const map = new Map();
+    const map = new Map<string, Conversation>();
+    
+    // סינון הודעות ששייכות למשתמש הנוכחי בלבד (גם אם הוא מנהל)
+    // זה מוודא שאף משתמש לא רואה רשימת שיחות של אחרים
     const personalMessages = messages.filter(m => m && (m.senderId === currentUser || m.receiverId === currentUser));
 
     personalMessages.forEach(msg => {
@@ -92,28 +54,30 @@ export const MessagingModal: React.FC = ({
 
       const partnerName = isMeSender ? (msg.receiverName || 'משתמש') : (msg.senderName || 'משתמש');
       const existing = map.get(partnerId);
+      
       const shouldCountAsUnread = !isMeSender && !msg.isRead && partnerId !== activeConversationId;
+
       const msgTime = new Date(msg.timestamp).getTime();
       const existingTime = existing ? new Date(existing.lastMessage.timestamp).getTime() : 0;
-      const partnerProfile = users.find(u => u.id === partnerId);
-      const avatarUrl = partnerProfile?.avatarUrl;
 
       if (!existing || msgTime > existingTime) {
         map.set(partnerId, {
           partnerId,
-          partnerName: partnerProfile?.name || partnerName,
+          partnerName,
           lastMessage: msg,
-          unreadCount: (existing?.unreadCount || 0) + (shouldCountAsUnread ? 1 : 0),
-          avatarUrl
+          unreadCount: (existing?.unreadCount || 0) + (shouldCountAsUnread ? 1 : 0)
         });
-      } else if (shouldCountAsUnread && existing) {
-          existing.unreadCount += 1;
+      } else if (shouldCountAsUnread) {
+          if (existing) {
+              existing.unreadCount += 1;
+          }
       }
     });
     return map;
-  }, [messages, currentUser, activeConversationId, users]);
+  }, [messages, currentUser, activeConversationId]);
 
   const conversations = useMemo(() => {
+    // Explicitly casting the sort callback parameters to 'Conversation' to avoid 'unknown' type errors
     return Array.from(conversationsMap.values())
       .sort((a: Conversation, b: Conversation) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
   }, [conversationsMap]);
@@ -127,6 +91,7 @@ export const MessagingModal: React.FC = ({
 
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return [];
+    // וידוא שהודעות בתוך הצ'אט הפעיל הן אכן שלנו ושל השותף הנבחר
     return messages.filter(m => m && (
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
@@ -135,18 +100,21 @@ export const MessagingModal: React.FC = ({
 
   useEffect(() => {
     if (isOpen) {
-        if (recipientProfile) setActiveConversationId(recipientProfile.id);
+        if (recipientProfile) {
+            setActiveConversationId(recipientProfile.id);
+        }
         setSearchTerm('');
-        setReplyingTo(null);
-        setEditingMessageId(null);
     }
   }, [isOpen, recipientProfile]);
 
   useEffect(() => {
     if (isOpen && activeConversationId) {
         const unreadForActive = activeMessages.filter(m => 
-            m.receiverId === currentUser && !m.isRead && !processingReadIds.current.has(m.id)
+            m.receiverId === currentUser && 
+            !m.isRead && 
+            !processingReadIds.current.has(m.id)
         );
+
         if (unreadForActive.length > 0) {
             unreadForActive.forEach(msg => {
                 processingReadIds.current.add(msg.id);
@@ -164,86 +132,10 @@ export const MessagingModal: React.FC = ({
     if (isOpen && activeConversationId) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [activeMessages.length, isOpen, activeConversationId, replyingTo]);
+  }, [activeMessages.length, isOpen, activeConversationId]);
 
-  // פונקציית העזר לשליחת אימייל התראה לצד השני
-  const sendChatEmailAlert = async (recipientId: string) => {
-      try {
-          const recipientUser = users.find(u => u.id === recipientId);
-          const senderUser = users.find(u => u.id === currentUser);
-          
-          if (!recipientUser?.email) return;
-
-          await fetch('/api/emails', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  type: 'chat_alert',
-                  to: recipientUser.email,
-                  data: {
-                      userName: recipientUser.name || 'משתמש',
-                      senderName: senderUser?.name || 'משתמש מהאתר'
-                  }
-              })
-          });
-      } catch (err) {
-          console.error("Failed to send chat alert email:", err);
-      }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent) => {
-      const file = e.target.files?.[0];
-      if (!file || !activeConversationId) return;
-
-      setIsUploading(true);
-      try {
-          let fileUrl = '';
-          const isImage = file.type.startsWith('image/');
-          
-          if (isImage) {
-              fileUrl = await compressImage(file);
-          } else {
-              fileUrl = '#file-placeholder'; 
-          }
-
-          const expiryDate = new Date();
-          expiryDate.setDate(expiryDate.getDate() + 7);
-
-          const conv = conversationsMap.get(activeConversationId);
-          let receiverName = conv?.partnerName || (recipientProfile?.id === activeConversationId ? recipientProfile.name : 'משתמש');
-          let subject = activeMessages.length > 0 ? (activeMessages[activeMessages.length - 1].subject || "המשך שיחה") : (initialSubject || "צ'אט");
-
-          onSendMessage(
-              activeConversationId, 
-              receiverName, 
-              subject, 
-              isImage ? '📷 תמונה מצורפת' : '📎 קובץ מצורף',
-              { 
-                  url: fileUrl, 
-                  type: isImage ? 'image' : 'file', 
-                  expiry: expiryDate.toISOString() 
-              }
-          );
-
-          await sendChatEmailAlert(activeConversationId);
-
-      } catch (err) {
-          alert('שגיאה בהעלאת הקובץ');
-      } finally {
-          setIsUploading(false);
-          if (e.target) e.target.value = '';
-      }
-  };
-
-  const handleSend = async () => {
-    if ((!newMessage.trim() && !editingMessageId) || !activeConversationId) return;
-
-    if (editingMessageId) {
-        onEditMessage(editingMessageId, newMessage);
-        setEditingMessageId(null);
-        setNewMessage('');
-        return;
-    }
+  const handleSend = () => {
+    if (!newMessage.trim() || !activeConversationId) return;
 
     let receiverName = '';
     const conv = conversationsMap.get(activeConversationId);
@@ -257,32 +149,120 @@ export const MessagingModal: React.FC = ({
         subject = activeMessages[activeMessages.length - 1].subject || "המשך שיחה"; 
     }
 
-    const textToSend = newMessage;
+    onSendMessage(activeConversationId, receiverName || 'משתמש', subject, newMessage);
     setNewMessage('');
-    setReplyingTo(null);
-
-    onSendMessage(
-        activeConversationId, 
-        receiverName || 'משתמש', 
-        subject, 
-        textToSend, 
-        undefined, 
-        replyingTo ? { id: replyingTo.id, content: replyingTo.content, senderName: replyingTo.senderName } : undefined
-    );
-
-    await sendChatEmailAlert(activeConversationId);
-  };
-
-  const startEdit = (msg: Message) => {
-      setEditingMessageId(msg.id);
-      setNewMessage(msg.content);
-      setReplyingTo(null);
   };
 
   if (!isOpen) return null;
 
-  const activePartnerProfile = users.find(u => u.id === activeConversationId);
-  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || activePartnerProfile?.name || 'צ\'אט';
-  const activePartnerAvatar = activePartnerProfile?.avatarUrl || conversationsMap.get(activeConversationId!)?.avatarUrl;
+  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || 'צ\'אט';
 
   return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+
+      <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 text-right" dir="rtl">
+            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
+                    <h2 className="font-bold text-slate-800 text-lg">תיבת הודעות</h2>
+                    <button onClick={onClose} className="sm:hidden p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                </div>
+                
+                <div className="p-3 border-b border-slate-100 shrink-0">
+                    <div className="relative">
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                            type="text" 
+                            className="w-full bg-white border border-slate-200 rounded-full py-2 pr-10 pl-4 text-sm focus:border-brand-500 focus:bg-white outline-none transition-all text-slate-900"
+                            placeholder="חפש שיחה..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {filteredConversations.length === 0 && !recipientProfile ? (
+                        <div className="text-center p-8 text-slate-400 text-sm italic">אין לך שיחות פעילות כרגע</div>
+                    ) : (
+                        filteredConversations.map(conv => (
+                            <div 
+                                key={conv.partnerId}
+                                onClick={() => setActiveConversationId(conv.partnerId)}
+                                className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-r-brand-500' : ''}`}
+                            >
+                                <div className="relative shrink-0">
+                                    <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">{conv.partnerName[0]}</div>
+                                    {conv.unreadCount > 0 && (
+                                        <div className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
+                                            {conv.unreadCount}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-baseline mb-1">
+                                        <h3 className="font-semibold text-slate-900 truncate text-sm">{conv.partnerName}</h3>
+                                    </div>
+                                    <p className={`text-xs truncate ${conv.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
+                                        {conv.lastMessage.content}
+                                    </p>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
+            <div className={`flex-1 flex flex-col bg-slate-100 relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
+                {activeConversationId ? (
+                    <>
+                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setActiveConversationId(null)} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+                                <div className="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center text-white font-bold">{activePartnerName[0]}</div>
+                                <div><h3 className="font-bold text-slate-900 text-sm">{activePartnerName}</h3></div>
+                            </div>
+                            <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                            {activeMessages.map((msg) => {
+                                const isMe = msg.senderId === currentUser;
+                                return (
+                                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className={`max-w-[85%] rounded-2xl px-4 py-2 shadow-sm text-sm ${isMe ? 'bg-brand-500 text-white rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'}`}>
+                                            <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                            <div className={`text-[9px] mt-1 ${isMe ? 'text-brand-100 text-right' : 'text-slate-400 text-left'}`}>
+                                                {new Date(msg.timestamp).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <div className="bg-white p-3 flex items-center gap-2 border-t border-slate-200 shrink-0">
+                            <input 
+                                type="text"
+                                className="flex-1 bg-white border border-slate-200 text-slate-900 rounded-full py-2.5 px-5 outline-none focus:border-brand-500 focus:bg-white transition-all text-sm"
+                                placeholder="הקלד הודעה..."
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                            />
+                            <button onClick={handleSend} disabled={!newMessage.trim()} className="bg-brand-600 hover:bg-brand-700 text-white p-2.5 rounded-full shadow-sm disabled:opacity-50 transition-all active:scale-95"><Send className="w-5 h-5 mirror-rtl" /></button>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50 p-6 text-center">
+                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4"><User className="w-10 h-10 text-slate-300" /></div>
+                        <h2 className="text-xl font-bold text-slate-600 mb-1">Barter.org.il</h2>
+                        <p className="text-sm">בחר שיחה מהרשימה כדי להתחיל להתכתב</p>
+                    </div>
+                )}
+            </div>
+      </div>
+    </div>
+  );
+};
