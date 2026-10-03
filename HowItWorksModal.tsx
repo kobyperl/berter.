@@ -33,7 +33,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                             <Search className="w-8 h-8" />
                         </div>
                         <h4 className="font-bold text-lg text-slate-900 mb-2">1. מוצאים הזדמנות</h4>
-                        <p className="text-slate-600 text-sm font-light">
+                        <p className="text-slate-600 text-sm">
                             עוברים על הצעות הברטר בלוח, מסננים לפי תחום או מיקום, ומוצאים שירות שאתם צריכים בתמורה לכישורים שלכם.
                         </p>
                     </div>
@@ -44,7 +44,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                             <Bell className="w-8 h-8" />
                         </div>
                         <h4 className="font-bold text-lg text-slate-900 mb-2">2. שולחים התראה</h4>
-                        <p className="text-slate-600 text-sm font-light">
+                        <p className="text-slate-600 text-sm">
                             לוחצים על "שלח הודעה" בכרטיס ההצעה. המערכת תשלח התראה מיידית (נוטיפיקציה) לצד השני על התעניינותכם.
                         </p>
                     </div>
@@ -55,7 +55,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                             <Handshake className="w-8 h-8" />
                         </div>
                         <h4 className="font-bold text-lg text-slate-900 mb-2">3. סוגרים עסקה</h4>
-                        <p className="text-slate-600 text-sm font-light">
+                        <p className="text-slate-600 text-sm">
                             מתכתבים בצ'אט הפנימי, מסכמים את פרטי ההחלפה (מה נותנים ומה מקבלים) ויוצאים לדרך!
                         </p>
                     </div>
@@ -71,7 +71,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600">1</div>
                             <div>
                                 <h5 className="font-bold text-slate-800">פנייה ראשונית</h5>
-                                <p className="text-sm text-slate-600 font-light">
+                                <p className="text-sm text-slate-600">
                                     כאשר משתמש מוצא הצעה שלך, הוא שולח הודעה. פעולה זו מייצרת התראה אצלך במערכת (סימן אדום על אייקון ההודעות).
                                 </p>
                             </div>
@@ -80,7 +80,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600">2</div>
                             <div>
                                 <h5 className="font-bold text-slate-800">מענה וסיכום</h5>
-                                <p className="text-sm text-slate-600 font-light">
+                                <p className="text-sm text-slate-600">
                                     אתם נכנסים לאזור ההודעות, עונים לפנייה ומנהלים משא ומתן. זה הזמן להגדיר ציפיות ולוודא שהברטר הוגן לשני הצדדים.
                                 </p>
                             </div>
@@ -89,7 +89,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600">3</div>
                             <div>
                                 <h5 className="font-bold text-slate-800">ביצוע הברטר</h5>
-                                <p className="text-sm text-slate-600 font-light">
+                                <p className="text-sm text-slate-600">
                                     לאחר הסיכום, כל צד מבצע את עבודתו. אין מעבר כספי, רק החלפת ערך מקצועי.
                                 </p>
                             </div>

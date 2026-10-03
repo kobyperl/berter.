@@ -4,10 +4,9 @@ import { ShieldCheck, Lock, Facebook, Instagram, Linkedin, Send, AlertTriangle, 
 
 interface FooterProps {
     onOpenAccessibility?: () => void;
-    onOpenPrivacyPolicy?: () => void; // New prop
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility, onOpenPrivacyPolicy }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility }) => {
   return (
     // Changed bg-black to bg-teal-900 for the "Mint Style" requested
     <footer className="bg-teal-900 text-teal-100 border-t border-teal-800 font-sans">
@@ -34,7 +33,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAccessibility, onOpenPriva
                 <a href="#" className="hover:text-white transition-colors">תקנון ותנאי שימוש</a>
               </li>
               <li>
-                <button onClick={onOpenPrivacyPolicy} className="hover:text-white transition-colors text-right">מדיניות פרטיות (Privacy Policy)</button>
+                <a href="#" className="hover:text-white transition-colors">מדיניות פרטיות (Privacy Policy)</a>
               </li>
               <li>
                 <button onClick={onOpenAccessibility} className="hover:text-white transition-colors text-right">הצהרת נגישות</button>

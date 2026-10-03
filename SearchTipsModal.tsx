@@ -34,7 +34,7 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                         </div>
                         <div>
                             <h4 className="font-bold text-slate-800 text-lg">1. חיפוש חכם</h4>
-                            <p className="text-sm text-slate-600 font-light leading-relaxed">
+                            <p className="text-sm text-slate-600 leading-relaxed">
                                 השתמשו בסרגל החיפוש כדי למצוא מילות מפתח ספציפיות (למשל "וורדפרס" או "עריכת דין").
                             </p>
                         </div>
@@ -46,7 +46,7 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                         </div>
                         <div>
                             <h4 className="font-bold text-slate-800 text-lg">2. סינון ממוקד</h4>
-                            <p className="text-sm text-slate-600 font-light leading-relaxed">
+                            <p className="text-sm text-slate-600 leading-relaxed">
                                 בחרו קטגוריה ראשית מהתפריט או סננו לפי "חד פעמי" / "מתמשך" כדי לדייק את התוצאות.
                             </p>
                         </div>
@@ -58,7 +58,7 @@ export const SearchTipsModal: React.FC<SearchTipsModalProps> = ({ isOpen, onClos
                         </div>
                         <div>
                             <h4 className="font-bold text-slate-800 text-lg">3. פנייה אישית</h4>
-                            <p className="text-sm text-slate-600 font-light leading-relaxed">
+                            <p className="text-sm text-slate-600 leading-relaxed">
                                 מצאתם הצעה מעניינת? שלחו הודעה מפורטת. הציגו את עצמכם ומה הערך שאתם נותנים בתמורה.
                             </p>
                         </div>
