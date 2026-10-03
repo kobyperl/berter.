@@ -1,0 +1,175 @@
+
+import React, { useState } from 'react';
+import { MapPin, Calendar, MessageCircle, ChevronDown, ChevronUp, Star, Trash2, Clock, Repeat, EyeOff, Edit } from 'lucide-react';
+import { BarterOffer, UserProfile } from '../types';
+
+export interface OfferCardProps {
+  offer: BarterOffer;
+  onContact: (profile: UserProfile) => void;
+  onUserClick: (profile: UserProfile) => void;
+  onRate?: (offerId: string, rating: number) => void;
+  onDelete?: (offerId: string) => void;
+  onEdit?: (offer: BarterOffer) => void; 
+  currentUserId?: string;
+  viewMode?: 'grid' | 'compact';
+}
+
+export const OfferCard: React.FC<OfferCardProps> = ({ 
+    offer, 
+    onContact, 
+    onUserClick, 
+    onRate, 
+    onDelete,
+    onEdit,
+    currentUserId,
+    viewMode = 'grid' 
+}) => {
+  const isOngoing = offer.durationType === 'ongoing';
+  const isExpired = offer.status === 'expired';
+  const isPending = offer.status === 'pending'; 
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hoverRating, setHoverRating] = useState(0);
+
+  // isOwner is used mainly for rating protection. 
+  // For buttons like Edit/Delete, we rely on the existence of the callback prop.
+  const isOwner = currentUserId === offer.profileId;
+  const ratingCount = offer.ratings?.length || 0;
+  const ratingScore = offer.averageRating || 0;
+  const isHighRated = ratingScore >= 4.0 && ratingCount > 0;
+  const isLowRated = ratingScore < 2.5 && ratingCount >= 2;
+
+  const handleRate = (e: React.MouseEvent, score: number) => {
+      e.stopPropagation();
+      if (isOwner || !currentUserId) return;
+      if (onRate) onRate(offer.id, score);
+  };
+
+  const renderStars = (isCompact = false) => {
+      return (
+          <div className="flex items-center flex-wrap gap-2" onMouseLeave={() => setHoverRating(0)}>
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                        key={star}
+                        type="button"
+                        onClick={(e) => handleRate(e, star)}
+                        onMouseEnter={() => !isOwner && setHoverRating(star)}
+                        className={`transition-colors ${isOwner ? 'cursor-default' : 'cursor-pointer hover:scale-110'}`}
+                        disabled={isOwner}
+                    >
+                        <Star 
+                            className={`${isCompact ? 'w-2.5 h-2.5' : 'w-3.5 h-3.5'} ${
+                                (hoverRating || Math.round(ratingScore)) >= star 
+                                ? (isHighRated ? 'text-yellow-400 fill-yellow-400' : 'text-amber-400 fill-amber-400') 
+                                : 'text-slate-300'
+                            }`} 
+                        />
+                    </button>
+                ))}
+              </div>
+              <span className={`font-medium ${isCompact ? 'text-[9px]' : 'text-[10px] sm:text-xs'}`}>
+                  {isHighRated ? (
+                      <span className="text-yellow-600 font-bold bg-yellow-50 px-1.5 py-0.5 rounded-md">מומלץ בחום</span>
+                  ) : ratingCount > 0 ? (
+                      <span className="text-slate-400">דורג ע"י {ratingCount}</span>
+                  ) : (
+                      <span className="text-slate-300">טרם דורג</span>
+                  )}
+              </span>
+          </div>
+      );
+  };
+
+  if (viewMode === 'compact') {
+      return (
+        <div className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col ${isExpanded ? 'ring-2 ring-brand-100' : ''} ${isHighRated ? 'border-yellow-200 shadow-yellow-50' : 'border-slate-200'} ${isLowRated ? 'opacity-90 grayscale-[0.3]' : ''} ${isExpired ? 'opacity-75 bg-slate-50' : ''} ${isPending ? 'border-orange-300 bg-orange-50/30' : ''}`}>
+            <div className="p-3 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex items-start gap-3 w-full">
+                        <div className="flex-shrink-0" onClick={(e) => { e.stopPropagation(); onUserClick(offer.profile); }}>
+                            <div className="relative w-12 h-12">
+                                <img src={offer.profile.avatarUrl} loading="lazy" alt={offer.profile.name} className={`w-12 h-12 rounded-full object-cover border-2 ${isHighRated ? 'border-yellow-400' : 'border-white'} shadow-sm`} />
+                                <span className={`absolute -bottom-1 -right-1 px-1.5 py-1 rounded-full font-bold border border-white shadow-sm flex items-center justify-center ${isOngoing ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700'}`}>{isOngoing ? <Repeat className="w-3 h-3" /> : <Clock className="w-3 h-3" />}</span>
+                            </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex flex-col mb-1.5 gap-1">
+                                <div className="flex justify-between items-start">
+                                    <h4 className={`font-bold text-lg leading-snug flex flex-wrap items-center gap-2 ${isExpired ? 'text-slate-500' : 'text-slate-900'}`}>
+                                        {offer.title}
+                                        {isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">פג תוקף</span>}
+                                        {isPending && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><EyeOff className="w-3 h-3" />ממתין לאישור מנהל</span>}
+                                    </h4>
+                                </div>
+                                <div className="mt-0.5 mb-1 opacity-90 scale-95 origin-top-right" onClick={e => e.stopPropagation()}>{renderStars(true)}</div>
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-0.5"><span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><MapPin className="w-3 h-3" />{offer.location}</span>{offer.expirationDate && !isExpired && <span className="inline-flex items-center gap-1 text-[11px] text-red-500 font-medium"><Calendar className="w-3 h-3" />עד: {new Date(offer.expirationDate).toLocaleDateString('he-IL')}</span>}</div>
+                            </div>
+                            <div className="flex flex-col gap-1.5 w-full mt-1"><div className="flex items-start gap-1.5 min-w-0"><span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-indigo-600'}`}>מבקש/ת:</span><span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.requestedService}</span></div><div className="flex items-start gap-1.5 min-w-0"><span className={`text-xs font-bold whitespace-nowrap shrink-0 ${isExpired ? 'text-slate-400' : 'text-emerald-600'}`}>נותן/ת:</span><span className="text-xs text-slate-700 font-medium truncate sm:whitespace-normal sm:line-clamp-1">{offer.offeredService}</span></div></div>
+                        </div>
+                        <div className="flex flex-col items-end justify-start h-full pl-1 gap-2">
+                            <div className="text-slate-400 hover:text-slate-600 transition-colors p-1">{isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>
+                            
+                            {(onEdit || onDelete) && (
+                                <div className="flex flex-col gap-2 mt-1" onClick={e => e.stopPropagation()}>
+                                    {onEdit && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onEdit(offer); }} 
+                                            className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors" 
+                                            title="ערוך הצעה"
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    {onDelete && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} 
+                                            className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+                                            title="מחק הצעה"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {isExpanded && (
+                <div className="px-3 pb-3 pt-0 animate-in slide-in-from-top-2"><div className="h-px bg-slate-100 mb-3 w-full"></div><p className="text-sm text-slate-600 mb-3 leading-relaxed bg-slate-50 p-3 rounded-lg font-normal">{offer.description}</p><div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"><div className="flex gap-2 flex-wrap">{offer.tags.map(tag => <span key={tag} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded">#{tag}</span>)}</div><div className="w-full sm:w-auto flex justify-end"><button onClick={(e) => { e.stopPropagation(); onContact(offer.profile); }} disabled={isExpired} className={`text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}><MessageCircle className="w-3.5 h-3.5" />{isExpired ? 'מודעה לא פעילה' : 'שלח הודעה'}</button></div></div></div>
+            )}
+        </div>
+      );
+  }
+
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col h-full relative ${isLowRated ? 'opacity-80' : ''} ${isExpired ? 'opacity-75 bg-slate-50' : ''} ${isPending ? 'border-orange-300 ring-1 ring-orange-100' : ''}`}>
+      <div className="absolute top-4 left-4 z-10 flex flex-col items-end gap-1.5">
+          <div className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm ${isOngoing ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>{isOngoing ? <Repeat className="w-3 h-3" /> : <Clock className="w-3 h-3" />}{isOngoing ? 'ברטר מתמשך' : 'פרויקט חד פעמי'}</div>
+          {isPending && (
+              <div className="px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm bg-orange-100 text-orange-700 border border-orange-200 animate-pulse">
+                  <EyeOff className="w-3 h-3" />
+                  ממתין לאישור מנהל
+              </div>
+          )}
+      </div>
+
+      <div className="p-5 flex-1 flex flex-col">
+        <div className="flex items-start justify-between mb-3 mt-1">
+            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => onUserClick(offer.profile)}>
+                <div className="w-10 h-10 shrink-0">
+                    <img src={offer.profile.avatarUrl} loading="lazy" alt={offer.profile.name} className={`w-10 h-10 rounded-full object-cover border group-hover:border-brand-500 transition-colors ${isHighRated ? 'border-yellow-400' : 'border-slate-100'}`} />
+                </div>
+                <div><h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors">{offer.profile.name}</h4></div>
+            </div>
+        </div>
+        <div className="mb-2">{renderStars()}</div>
+        <h3 className={`text-lg font-bold mb-3 leading-tight min-h-[3.5rem] pr-1 ${isExpired ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{offer.title}</h3>
+        <div className="space-y-2 mb-3"><div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-slate-100 border-slate-200' : 'bg-emerald-50 border-emerald-100'}`}><span className={`block text-xs font-bold mb-1 ${isExpired ? 'text-slate-500' : 'text-emerald-600'}`}>נותן/ת:</span><p className="text-sm text-slate-700 font-medium">{offer.offeredService}</p></div><div className={`p-2.5 rounded-lg border ${isExpired ? 'bg-slate-100 border-slate-200' : 'bg-indigo-50 border-indigo-100'}`}><span className={`block text-xs font-bold mb-1 ${isExpired ? 'text-slate-500' : 'text-indigo-600'}`}>מבקש/ת:</span><p className="text-sm text-slate-700 font-medium">{offer.requestedService}</p></div></div>
+        <div className="h-32 overflow-y-auto mb-2 custom-scrollbar"><p className="text-sm text-slate-500 leading-relaxed font-normal">{offer.description}</p></div>
+        <div className="flex flex-wrap gap-2 mb-2 mt-auto">{offer.tags.map(tag => <span key={tag} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded">#{tag}</span>)}</div>
+      </div>
+      <div className="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-4"><div className="flex flex-col sm:flex-row gap-1 sm:gap-3 text-xs text-slate-400"><div className="flex items-center gap-1"><MapPin className="w-3 h-3 flex-shrink-0" /><span className="leading-none">{offer.location}</span></div><div className="flex items-center gap-1"><Calendar className="w-3 h-3 flex-shrink-0" /><span className="leading-none">{new Date(offer.createdAt).toLocaleDateString('he-IL')}</span></div></div><div className="flex items-center gap-2"><button onClick={() => onContact(offer.profile)} disabled={isExpired} className={`text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shrink-0 ${isExpired ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'}`}><MessageCircle className="w-4 h-4" />{isExpired ? 'לא רלוונטי' : 'שלח הודעה'}</button>{(onDelete || onEdit) && (<div className="flex gap-1 border-r border-slate-200 pr-2 mr-2">{onEdit && (<button onClick={(e) => { e.stopPropagation(); onEdit(offer); }} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors"><Edit className="w-4 h-4" /></button>)}{onDelete && (<button onClick={(e) => { e.stopPropagation(); if(window.confirm('האם למחוק את ההצעה?')) onDelete(offer.id); }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>)}</div>)}</div></div>
+    </div>
+  );
+};
