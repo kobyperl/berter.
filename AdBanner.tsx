@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import { ExternalLink, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ExternalLink, ChevronLeft, ChevronRight, X, ArrowRight } from 'lucide-react';
 import { SystemAd, UserProfile } from '../types';
 
 interface AdBannerProps {
@@ -17,26 +17,30 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
   // State for the Expanded Ad Modal
   const [expandedAd, setExpandedAd] = useState<SystemAd | null>(null);
   
-  // Filtering Logic
+  // Filtering & Sorting Logic
   useEffect(() => {
     if (!systemAds) return;
 
+    // 1. Filter: Determine which ads are eligible to be shown at all
     const filtered = systemAds.filter(ad => {
         if (!ad.isActive) return false;
         
-        // 1. Global Ads always show
+        // Always show Global
         if (ad.targetCategories.includes('Global')) return true;
 
-        // 2. Context Match (Multi-category support)
+        // Show if matches Context (Search filters)
         if (contextCategories.length > 0) {
             const hasContextMatch = ad.targetCategories.some(cat => contextCategories.includes(cat));
             if (hasContextMatch) return true;
         }
 
-        // 3. Personal Targeting
+        // Show if matches User Profile
         if (currentUser) {
+            // Match Profession (Usage Category)
             if (ad.targetCategories.includes(currentUser.mainField)) return true;
-            if (currentUser.interests && currentUser.interests.length > 0 && ad.targetInterests && ad.targetInterests.length > 0) {
+            
+            // Match Interests (Subject Category)
+            if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
                 const hasInterestOverlap = ad.targetInterests.some(interest => 
                     currentUser.interests?.some(userInterest => userInterest.includes(interest) || interest.includes(userInterest))
                 );
@@ -46,7 +50,44 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
         return false;
     });
 
-    setRelevantAds(filtered);
+    // 2. Sort: Explicit Priority Order
+    // Priority 1: Usage Category (Profession) - Score 30
+    // Priority 2: Subject Category (Interests) - Score 20
+    // Priority 3: General (Global) - Score 10
+    const sorted = filtered.sort((a, b) => {
+        const getPriorityScore = (ad: SystemAd) => {
+            let score = 0; 
+
+            // Base Score: Global (General)
+            if (ad.targetCategories.includes('Global')) {
+                score = 10;
+            }
+
+            if (currentUser) {
+                // Higher Score: Subject Category (Interests)
+                if (ad.targetInterests && ad.targetInterests.length > 0 && currentUser.interests) {
+                     const hasInterestOverlap = ad.targetInterests.some(interest => 
+                        currentUser.interests?.some(userInterest => userInterest.includes(interest) || interest.includes(userInterest))
+                    );
+                    if (hasInterestOverlap) {
+                        score = 20; // Overrides Global
+                    }
+                }
+
+                // Highest Score: Usage Category (Profession)
+                if (ad.targetCategories.includes(currentUser.mainField)) {
+                    score = 30; // Overrides Interest & Global
+                }
+            }
+            
+            return score;
+        };
+
+        // Sort descending (30 -> 20 -> 10 -> 0)
+        return getPriorityScore(b) - getPriorityScore(a);
+    });
+
+    setRelevantAds(sorted);
   }, [contextCategories, systemAds, currentUser]);
 
   // Continuous Auto-Scroll Logic
@@ -150,7 +191,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                                 <div className="flex-1 p-3 flex flex-col justify-between">
                                     <div>
                                         <h3 className="font-bold text-slate-800 text-base leading-tight mb-1">{ad.title}</h3>
-                                        <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed">{ad.description}</p>
+                                        <p className="text-slate-500 text-xs font-light line-clamp-2 leading-relaxed">{ad.description}</p>
                                     </div>
                                     
                                     <div className="flex items-center justify-between pt-1">
@@ -221,7 +262,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                     <div className="p-6 text-center relative -mt-10 z-10">
                         <div className="bg-white rounded-xl p-6 shadow-lg border border-slate-100">
                              <h3 className="text-2xl font-bold text-slate-900 mb-3">{expandedAd.title}</h3>
-                             <p className="text-slate-600 mb-6 leading-relaxed text-sm">
+                             <p className="text-slate-600 mb-6 leading-relaxed text-sm font-light">
                                 {expandedAd.description}
                              </p>
                              
@@ -229,9 +270,17 @@ export const AdBanner: React.FC<AdBannerProps> = ({ contextCategories, systemAds
                                 {expandedAd.ctaText}
                                 <ExternalLink className="w-5 h-5" />
                              </button>
-                             <p className="text-xs text-slate-400 mt-3 animate-pulse">
-                                לחץ כאן למעבר לאתר
-                             </p>
+                             
+                             <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedAd(null);
+                                }}
+                                className="mt-4 text-xs text-slate-400 hover:text-slate-600 font-medium flex items-center justify-center gap-1 mx-auto transition-colors"
+                            >
+                                <ArrowRight className="w-3 h-3" />
+                                חזרה לאתר
+                             </button>
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 
 /**
- * Helps a user write a better barter offer using Gemini via Vercel Serverless Function.
+ * Helps a user write a better barter offer using Gemini via Serverless Function.
+ * This avoids exposing the API KEY in the client-side bundle.
  */
 export const optimizeOfferDescription = async (rawInput: string): Promise<{ 
     title: string, 
@@ -14,7 +15,6 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
 } | null> => {
   
   try {
-    // Call the server-side API route (hosted on Vercel)
     const response = await fetch('/api/optimize', {
         method: 'POST',
         headers: {
@@ -24,24 +24,26 @@ export const optimizeOfferDescription = async (rawInput: string): Promise<{
     });
 
     if (!response.ok) {
-        let errorMessage = response.statusText;
-        try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorData.details || response.statusText;
-            console.error("Serverless function error details:", errorData);
-        } catch (e) {
-            console.error("Could not parse error JSON");
-        }
-        
-        console.error(`Server error (${response.status}):`, errorMessage);
+        console.error("Server API Error:", response.status, response.statusText);
         return null;
     }
 
     const data = await response.json();
-    return data;
+
+    // Validate and fallback if fields are missing to ensure UI doesn't break
+    return {
+        title: data.title || "הצעה חדשה",
+        description: data.description || rawInput,
+        offeredService: data.offeredService || "שירות",
+        requestedService: data.requestedService || "שירות",
+        location: data.location || "כל הארץ",
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        durationType: data.durationType === 'ongoing' ? 'ongoing' : 'one-time',
+        expirationDate: data.expirationDate
+    };
 
   } catch (error) {
-    console.error("Offer optimization failed (Network/Client error):", error);
+    console.error("Offer optimization failed:", error);
     return null;
   }
 };

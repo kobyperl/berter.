@@ -17,10 +17,12 @@ export interface UserProfile {
   portfolioImages?: string[]; // New: Visual portfolio gallery
   expertise: ExpertiseLevel;
   mainField: string; // Used for ad targeting and relevance
+  secondaryFields?: string[]; // New: Allow up to 3 fields in registration
   interests?: string[]; // New: For personalization (Sports, Baking, etc.)
   bio?: string;
   joinedAt?: string;
   pendingUpdate?: Partial<UserProfile>; // Staging area for profile changes requiring approval
+  lastSmartMatchSent?: string; // Timestamp for throttling smart match emails
 }
 
 export interface Rating {
@@ -57,12 +59,21 @@ export interface Message {
   id: string;
   senderId: string;
   receiverId: string;
+  participantIds: string[]; // חובה! נדרש עבור חוקי האבטחה החדשים
   senderName: string;
   receiverName: string;
   subject: string;
   content: string;
   timestamp: string;
   isRead: boolean;
+  
+  // New features
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'file';
+  attachmentExpiry?: string; // ISO date for deletion
+  replyTo?: { id: string; content: string; senderName: string };
+  isDeleted?: boolean;
+  lastEdited?: string; // Timestamp
 }
 
 export interface SystemAd {
@@ -83,4 +94,6 @@ export interface SystemTaxonomy {
   pendingCategories: string[];
   approvedInterests: string[];
   pendingInterests?: string[];
+  categoryHierarchy?: Record<string, string>; // Child Category -> Parent Category Name
+  isInitialized?: boolean; // New: Track if static constants have been migrated to DB
 }

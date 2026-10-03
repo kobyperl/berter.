@@ -1,17 +1,21 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Send, Search, User } from 'lucide-react';
+import { X, Send, Search, User, Paperclip, Reply, Edit2, Trash2, FileText, Loader2, Image as ImageIcon } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 
 interface MessagingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: string;
+  currentUser: string; // authUid
   messages: Message[];
-  onSendMessage: (receiverId: string, receiverName: string, subject: string, content: string) => void;
+  onSendMessage: (receiverId: string, receiverName: string, subject: string, content: string, attachment?: {url: string, type: 'image'|'file', expiry: string}, replyTo?: {id: string, content: string, senderName: string}) => void;
   onMarkAsRead: (messageId: string) => void;
   recipientProfile?: UserProfile | null;
   initialSubject?: string;
+  users: UserProfile[]; // Needed for avatars
+  onUserClick: (profile: UserProfile) => void;
+  onEditMessage: (messageId: string, newContent: string) => void;
+  onDeleteMessage: (messageId: string) => void;
 }
 
 interface Conversation {
@@ -19,50 +23,104 @@ interface Conversation {
   partnerName: string;
   lastMessage: Message;
   unreadCount: number;
+  avatarUrl?: string;
 }
+
+// Utility to compress image (same as in other components)
+const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 600; 
+          let width = img.width;
+          let height = img.height;
+          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL('image/jpeg', 0.6));
+          } else { reject(new Error("Canvas context error")); }
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+};
 
 export const MessagingModal: React.FC<MessagingModalProps> = ({ 
   isOpen, 
   onClose, 
   currentUser, 
   messages, 
-  onSendMessage,
-  onMarkAsRead,
+  onSendMessage, 
+  onMarkAsRead, 
   recipientProfile,
-  initialSubject
+  initialSubject,
+  users,
+  onUserClick,
+  onEditMessage,
+  onDeleteMessage
 }) => {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // New State for Advanced Features
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const processingReadIds = useRef<Set<string>>(new Set());
 
-  // --- derived state: Group messages into conversations ---
+  // --- Group messages into personal conversations ---
   const conversationsMap = useMemo(() => {
     const map = new Map<string, Conversation>();
-    messages.forEach(msg => {
-      const isSender = msg.senderId === currentUser;
-      const partnerId = isSender ? msg.receiverId : msg.senderId;
-      const partnerName = isSender ? msg.receiverName : msg.senderName;
+    
+    const personalMessages = messages.filter(m => m && (m.senderId === currentUser || m.receiverId === currentUser));
 
+    personalMessages.forEach(msg => {
+      const isMeSender = msg.senderId === currentUser;
+      const partnerId = isMeSender ? msg.receiverId : msg.senderId;
+      
+      if (!partnerId) return;
+
+      const partnerName = isMeSender ? (msg.receiverName || 'משתמש') : (msg.senderName || 'משתמש');
       const existing = map.get(partnerId);
       
-      // Check if this message is newer than what we have
-      if (!existing || new Date(msg.timestamp) > new Date(existing.lastMessage.timestamp)) {
+      const shouldCountAsUnread = !isMeSender && !msg.isRead && partnerId !== activeConversationId;
+
+      const msgTime = new Date(msg.timestamp).getTime();
+      const existingTime = existing ? new Date(existing.lastMessage.timestamp).getTime() : 0;
+
+      // Try to find avatar from users list
+      const partnerProfile = users.find(u => u.id === partnerId);
+      const avatarUrl = partnerProfile?.avatarUrl;
+
+      if (!existing || msgTime > existingTime) {
         map.set(partnerId, {
           partnerId,
-          partnerName,
+          partnerName: partnerProfile?.name || partnerName,
           lastMessage: msg,
-          unreadCount: (existing?.unreadCount || 0) + (!isSender && !msg.isRead ? 1 : 0)
+          unreadCount: (existing?.unreadCount || 0) + (shouldCountAsUnread ? 1 : 0),
+          avatarUrl
         });
-      } else if (!isSender && !msg.isRead) {
-          // Just update unread count if we found an older message but haven't processed this unread one
+      } else if (shouldCountAsUnread) {
           if (existing) {
               existing.unreadCount += 1;
           }
       }
     });
     return map;
-  }, [messages, currentUser]);
+  }, [messages, currentUser, activeConversationId, users]);
 
   const conversations = useMemo(() => {
     return Array.from(conversationsMap.values())
@@ -71,137 +129,168 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
 
   const filteredConversations = useMemo(() => {
     return conversations.filter(c => 
-      c.partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      c.lastMessage.content.toLowerCase().includes(searchTerm.toLowerCase())
+      (c.partnerName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (c.lastMessage.content || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [conversations, searchTerm]);
 
   const activeMessages = useMemo(() => {
     if (!activeConversationId) return [];
-    return messages.filter(m => 
+    return messages.filter(m => m && (
       (m.senderId === currentUser && m.receiverId === activeConversationId) ||
       (m.senderId === activeConversationId && m.receiverId === currentUser)
-    ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    )).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }, [messages, currentUser, activeConversationId]);
 
-  // --- Effects ---
-
-  // 1. Initial Setup: Set active conversation when modal opens
   useEffect(() => {
     if (isOpen) {
         if (recipientProfile) {
             setActiveConversationId(recipientProfile.id);
-        } else {
-            setActiveConversationId(null);
         }
         setSearchTerm('');
+        setReplyingTo(null);
+        setEditingMessageId(null);
     }
   }, [isOpen, recipientProfile]);
 
-  // 2. Mark as read when viewing a conversation
   useEffect(() => {
-    if (isOpen && activeConversationId && activeMessages.length > 0) {
-        activeMessages.forEach(msg => {
-            if (msg.receiverId === currentUser && !msg.isRead) {
+    if (isOpen && activeConversationId) {
+        const unreadForActive = activeMessages.filter(m => 
+            m.receiverId === currentUser && 
+            !m.isRead && 
+            !processingReadIds.current.has(m.id)
+        );
+
+        if (unreadForActive.length > 0) {
+            unreadForActive.forEach(msg => {
+                processingReadIds.current.add(msg.id);
                 onMarkAsRead(msg.id);
-            }
-        });
+            });
+        }
     }
   }, [isOpen, activeConversationId, activeMessages, currentUser, onMarkAsRead]);
 
-  // 3. Auto-scroll to bottom
   useEffect(() => {
-    if (isOpen) {
+      if (!isOpen) processingReadIds.current.clear();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && activeConversationId) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [activeMessages, isOpen, activeConversationId]);
+  }, [activeMessages.length, isOpen, activeConversationId, replyingTo]); // Scroll when replying changes too
 
-  // --- Helpers ---
-  
-  const formatListDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '';
-    const now = new Date();
-    const isToday = date.getDate() === now.getDate() && 
-                    date.getMonth() === now.getMonth() && 
-                    date.getFullYear() === now.getFullYear();
-    
-    if (isToday) {
-        return date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-    }
-    return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
-  };
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeConversationId) return;
 
-  const formatBubbleDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleString('he-IL', { 
-          day: '2-digit', 
-          month: '2-digit', 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false
-      });
+      setIsUploading(true);
+      try {
+          // If image, compress. If file, simulated upload (in real app, upload to storage)
+          let fileUrl = '';
+          const isImage = file.type.startsWith('image/');
+          
+          if (isImage) {
+              fileUrl = await compressImage(file);
+          } else {
+              // Simulating file URL for demo (in prod use Storage)
+              fileUrl = '#file-placeholder'; 
+          }
+
+          const expiryDate = new Date();
+          expiryDate.setDate(expiryDate.getDate() + 7);
+
+          const conv = conversationsMap.get(activeConversationId);
+          let receiverName = conv?.partnerName || (recipientProfile?.id === activeConversationId ? recipientProfile.name : 'משתמש');
+          
+          let subject = activeMessages.length > 0 ? (activeMessages[activeMessages.length - 1].subject || "המשך שיחה") : (initialSubject || "צ'אט");
+
+          onSendMessage(
+              activeConversationId, 
+              receiverName, 
+              subject, 
+              isImage ? '📷 תמונה מצורפת' : '📎 קובץ מצורף',
+              { 
+                  url: fileUrl, 
+                  type: isImage ? 'image' : 'file', 
+                  expiry: expiryDate.toISOString() 
+              }
+          );
+
+      } catch (err) {
+          alert('שגיאה בהעלאת הקובץ');
+      } finally {
+          setIsUploading(false);
+          e.target.value = '';
+      }
   };
 
   const handleSend = () => {
-    if (!newMessage.trim() || !activeConversationId) return;
+    if ((!newMessage.trim() && !editingMessageId) || !activeConversationId) return;
 
-    // Determine receiver name
-    let receiverName = '';
-    const conv = conversationsMap.get(activeConversationId);
-    if (conv) {
-        receiverName = conv.partnerName;
-    } else if (recipientProfile && recipientProfile.id === activeConversationId) {
-        receiverName = recipientProfile.name;
+    if (editingMessageId) {
+        onEditMessage(editingMessageId, newMessage);
+        setEditingMessageId(null);
+        setNewMessage('');
+        return;
     }
 
-    // Determine Subject
-    let subject = "Chat";
+    let receiverName = '';
+    const conv = conversationsMap.get(activeConversationId);
+    if (conv) receiverName = conv.partnerName;
+    else if (recipientProfile && recipientProfile.id === activeConversationId) receiverName = recipientProfile.name;
+
+    let subject = "צ'אט";
     if (activeMessages.length === 0 && initialSubject) {
         subject = initialSubject;
     } else if (activeMessages.length > 0) {
-        subject = activeMessages[activeMessages.length - 1].subject; 
+        subject = activeMessages[activeMessages.length - 1].subject || "המשך שיחה"; 
     }
 
-    onSendMessage(activeConversationId, receiverName, subject, newMessage);
+    onSendMessage(
+        activeConversationId, 
+        receiverName || 'משתמש', 
+        subject, 
+        newMessage, 
+        undefined, 
+        replyingTo ? { id: replyingTo.id, content: replyingTo.content, senderName: replyingTo.senderName } : undefined
+    );
     setNewMessage('');
+    setReplyingTo(null);
   };
 
-  // --- Render ---
-  
+  const startEdit = (msg: Message) => {
+      setEditingMessageId(msg.id);
+      setNewMessage(msg.content);
+      setReplyingTo(null);
+  };
+
   if (!isOpen) return null;
 
-  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || 'Chat';
+  const activePartnerProfile = users.find(u => u.id === activeConversationId);
+  const activePartnerName = conversationsMap.get(activeConversationId!)?.partnerName || recipientProfile?.name || activePartnerProfile?.name || 'צ\'אט';
+  const activePartnerAvatar = activePartnerProfile?.avatarUrl || conversationsMap.get(activeConversationId!)?.avatarUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" aria-labelledby="messaging-modal" role="dialog" aria-modal="true">
-      {/* Backdrop */}
+    // Fixed layout for mobile: full screen height (100dvh), remove padding on mobile
+    // z-index increased to 200 to be above AccessibilityToolbar (z-100) and other layers
+    <div className="fixed inset-0 z-[200] flex items-center justify-center sm:p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
-      {/* Modal Content */}
-      <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50">
-            
-            {/* LEFT SIDEBAR: Conversations List */}
-            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
-                {/* Header */}
+      <div className="relative bg-white w-full max-w-5xl h-[100dvh] sm:h-[85vh] sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row z-50 text-right font-sans" dir="rtl">
+            {/* Sidebar List */}
+            <div className={`w-full sm:w-1/3 border-l border-slate-200 bg-white flex flex-col h-full ${activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center shrink-0">
-                    <h2 className="font-bold text-slate-800 text-lg">הודעות</h2>
-                    <button 
-                        onClick={onClose} 
-                        className="sm:hidden p-2 bg-slate-200 hover:bg-slate-300 rounded-full transition-colors"
-                    >
-                        <X className="w-5 h-5 text-slate-600" />
-                    </button>
+                    <h2 className="font-bold text-slate-800 text-lg">תיבת הודעות</h2>
+                    <button onClick={onClose} className="sm:hidden p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
                 </div>
                 
-                {/* Search */}
                 <div className="p-3 border-b border-slate-100 shrink-0">
                     <div className="relative">
                         <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input 
                             type="text" 
-                            className="w-full bg-white border border-slate-300 text-slate-900 rounded-full py-2.5 pr-10 pl-4 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition-all shadow-sm"
+                            className="w-full bg-white border border-slate-200 rounded-full py-2 pr-10 pl-4 text-sm focus:border-brand-500 focus:bg-white outline-none transition-all text-slate-900"
                             placeholder="חפש שיחה..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -209,166 +298,196 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
                     </div>
                 </div>
 
-                {/* List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredConversations.length === 0 && !recipientProfile ? (
-                        <div className="text-center p-8 text-slate-500">
-                            <p>אין שיחות פעילות</p>
-                        </div>
+                        <div className="text-center p-8 text-slate-400 text-sm italic">אין לך שיחות פעילות כרגע</div>
                     ) : (
-                        filteredConversations.map(conv => (
-                            <div 
-                                key={conv.partnerId}
-                                onClick={() => setActiveConversationId(conv.partnerId)}
-                                className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-r-brand-500' : ''}`}
-                            >
-                                <div className="relative shrink-0">
-                                    <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">
-                                        {conv.partnerName[0]}
+                        filteredConversations.map(conv => {
+                            const convProfile = users.find(u => u.id === conv.partnerId);
+                            
+                            return (
+                                <div 
+                                    key={conv.partnerId}
+                                    onClick={() => setActiveConversationId(conv.partnerId)}
+                                    className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-r-brand-500' : ''}`}
+                                >
+                                    <div 
+                                        className="relative shrink-0 cursor-pointer group"
+                                        onClick={(e) => {
+                                            if (convProfile) {
+                                                e.stopPropagation();
+                                                onUserClick(convProfile);
+                                            }
+                                        }}
+                                        title="לחץ לצפייה בפרופיל"
+                                    >
+                                        {conv.avatarUrl ? (
+                                            <img src={conv.avatarUrl} className="w-12 h-12 rounded-full object-cover border border-slate-200 group-hover:border-brand-500 transition-colors" alt="" />
+                                        ) : (
+                                            <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg group-hover:bg-slate-300">{conv.partnerName[0]}</div>
+                                        )}
+                                        {conv.unreadCount > 0 && (
+                                            <div className="absolute -top-1 -right-1 bg-green-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
+                                                {conv.unreadCount}
+                                            </div>
+                                        )}
                                     </div>
-                                    {conv.unreadCount > 0 && (
-                                        <div className="absolute -top-1 -right-1 bg-green-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
-                                            {conv.unreadCount}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-baseline mb-1">
+                                            <h3 className="font-semibold text-slate-900 truncate text-sm">{conv.partnerName}</h3>
                                         </div>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-baseline mb-1">
-                                        <h3 className="font-semibold text-slate-900 truncate">{conv.partnerName}</h3>
-                                        <span className="text-xs text-slate-400 whitespace-nowrap ml-1">
-                                            {formatListDate(conv.lastMessage.timestamp)}
-                                        </span>
+                                        <p className={`text-xs truncate ${conv.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
+                                            {conv.lastMessage.isDeleted ? 'הודעה נמחקה' : conv.lastMessage.content}
+                                        </p>
                                     </div>
-                                    <p className={`text-sm truncate ${conv.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
-                                        {conv.lastMessage.senderId === currentUser ? 'אני: ' : ''}{conv.lastMessage.content}
-                                    </p>
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </div>
 
-            {/* RIGHT SIDE: Chat Window */}
-            <div className={`flex-1 flex flex-col bg-[#efeae2] relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
-                
+            {/* Chat Area - Fix flex layout for mobile scrolling */}
+            <div className={`w-full sm:flex-1 flex flex-col bg-slate-100 h-full relative ${!activeConversationId ? 'hidden sm:flex' : 'flex'}`}>
                 {activeConversationId ? (
                     <>
-                        {/* Chat Header */}
-                        <div className="bg-slate-50 border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+                        {/* Header - Fixed Height, shrink-0 */}
+                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shadow-sm z-20 shrink-0">
                             <div className="flex items-center gap-3">
-                                <button 
-                                    onClick={() => setActiveConversationId(null)}
-                                    className="sm:hidden p-1 text-slate-600 hover:bg-slate-200 rounded-full"
+                                <button onClick={() => setActiveConversationId(null)} className="sm:hidden p-1 text-slate-400 hover:text-slate-600"><X className="w-6 h-6" /></button>
+                                <div 
+                                    className="relative cursor-pointer group"
+                                    onClick={() => activePartnerProfile && onUserClick(activePartnerProfile)}
                                 >
-                                    <X className="w-6 h-6" />
-                                </button>
-                                <div className="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center text-slate-600 font-bold">
-                                    {activePartnerName[0]}
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900">{activePartnerName}</h3>
-                                    <span className="text-xs text-slate-500 flex items-center gap-1">
-                                        מחובר
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            {/* Actions */}
-                            <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={onClose} 
-                                    className="hidden sm:flex items-center justify-center w-8 h-8 bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-500 rounded-full transition-colors"
-                                    title="סגור חלונית"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" style={{ backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")', opacity: 0.95 }}>
-                            {activeMessages.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-500 text-center bg-white/80 p-6 rounded-xl mx-auto max-w-sm mt-10 shadow-sm backdrop-blur-sm">
-                                    <div className="bg-brand-100 p-4 rounded-full mb-3">
-                                        <Send className="w-8 h-8 text-brand-600" />
-                                    </div>
-                                    <p className="font-medium">התחל שיחה עם {activePartnerName}</p>
-                                    {initialSubject && (
-                                        <div className="mt-2 text-sm bg-slate-100 p-2 rounded text-slate-600">
-                                            נושא: {initialSubject}
-                                        </div>
+                                    {activePartnerAvatar ? (
+                                        <img src={activePartnerAvatar} className="w-10 h-10 rounded-full object-cover border border-slate-200 group-hover:border-brand-500" alt="" />
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center text-white font-bold">{activePartnerName[0]}</div>
                                     )}
                                 </div>
-                            ) : (
-                                activeMessages.map((msg, idx) => {
-                                    const isMe = msg.senderId === currentUser;
-                                    
-                                    return (
-                                        <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                            {idx === 0 && msg.subject !== "Chat" && (
-                                                 <div className="w-full text-center my-2">
-                                                     <span className="bg-slate-200/80 backdrop-blur-sm text-slate-600 text-[10px] px-2 py-1 rounded-full shadow-sm border border-slate-300">
-                                                        נושא: {msg.subject}
-                                                     </span>
-                                                 </div>
+                                <div><h3 className="font-bold text-slate-900 text-sm">{activePartnerName}</h3></div>
+                            </div>
+                            <button onClick={onClose} className="hidden sm:block text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        {/* Messages - Flex-1, scrollable, min-h-0 is crucial for nested flex scrolling */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-100/50 min-h-0 overscroll-contain">
+                            {activeMessages.map((msg) => {
+                                const isMe = msg.senderId === currentUser;
+                                const isDeleted = msg.isDeleted;
+                                const canEdit = isMe && !isDeleted && (Date.now() - new Date(msg.timestamp).getTime() < 15 * 60 * 1000); 
+                                
+                                return (
+                                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}>
+                                        <div className={`max-w-[85%] rounded-2xl px-4 py-2 shadow-sm text-sm relative transition-all ${isMe ? 'bg-brand-500 text-white rounded-tr-none' : 'bg-white text-slate-900 rounded-tl-none'} ${isDeleted ? 'opacity-60 bg-slate-200 text-slate-500 italic' : ''}`}>
+                                            
+                                            {msg.replyTo && !isDeleted && (
+                                                <div className={`mb-2 p-2 rounded-lg text-xs border-r-2 ${isMe ? 'bg-brand-600 border-brand-300 text-brand-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+                                                    <span className="font-bold block mb-0.5">{msg.replyTo.senderName}</span>
+                                                    <span className="line-clamp-1">{msg.replyTo.content}</span>
+                                                </div>
                                             )}
 
-                                            <div 
-                                                className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-4 py-2 shadow-sm relative text-sm ${
-                                                    isMe 
-                                                    ? 'bg-[#dcf8c6] text-slate-900 rounded-tl-2xl rounded-tr-none' 
-                                                    : 'bg-white text-slate-900 rounded-tl-none rounded-tr-2xl'
-                                                }`}
-                                            >
-                                                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                                                <div className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'justify-end text-slate-500' : 'text-slate-400'}`}>
-                                                    {formatBubbleDate(msg.timestamp)}
-                                                    {isMe && (
-                                                        <span>{msg.isRead ? <span className="text-blue-500">✓✓</span> : <span>✓</span>}</span>
+                                            {msg.attachmentUrl && !isDeleted && (
+                                                <div className="mb-2">
+                                                    {msg.attachmentType === 'image' ? (
+                                                        <img src={msg.attachmentUrl} alt="Attachment" className="max-w-full rounded-lg border border-black/10 max-h-48 object-cover" />
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 p-2 bg-black/10 rounded-lg">
+                                                            <FileText className="w-5 h-5" />
+                                                            <span>קובץ מצורף</span>
+                                                        </div>
+                                                    )}
+                                                    {msg.attachmentExpiry && (
+                                                        <div className={`text-[9px] mt-1 flex items-center gap-1 ${isMe ? 'text-brand-200' : 'text-slate-400'}`}>
+                                                            <Loader2 className="w-3 h-3" />
+                                                            יימחק אוטומטית ב: {new Date(msg.attachmentExpiry).toLocaleDateString('he-IL')}
+                                                        </div>
                                                     )}
                                                 </div>
+                                            )}
+
+                                            <p className="whitespace-pre-wrap leading-relaxed">
+                                                {isDeleted ? '🚫 הודעה זו נמחקה' : msg.content}
+                                            </p>
+                                            
+                                            <div className="flex items-center justify-between gap-3 mt-1">
+                                                <div className={`text-[9px] flex items-center gap-1 ${isMe ? 'text-brand-100' : 'text-slate-400'}`}>
+                                                    {new Date(msg.timestamp).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'})}
+                                                    {msg.lastEdited && !isDeleted && <span>(נערך)</span>}
+                                                </div>
+                                                
+                                                {!isDeleted && (
+                                                    <div className={`flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity items-center ${isMe ? 'text-white' : 'text-slate-500'}`}>
+                                                        <button onClick={() => setReplyingTo(msg)} title="הגב" className="hover:scale-110 transition-transform"><Reply className="w-3 h-3" /></button>
+                                                        {isMe && (
+                                                            <>
+                                                                {canEdit && <button onClick={() => startEdit(msg)} title="ערוך" className="hover:scale-110 transition-transform"><Edit2 className="w-3 h-3" /></button>}
+                                                                <button onClick={() => { if(window.confirm('למחוק הודעה זו?')) onDeleteMessage(msg.id); }} title="מחק" className="hover:scale-110 transition-transform"><Trash2 className="w-3 h-3" /></button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                    );
-                                })
-                            )}
+                                    </div>
+                                );
+                            })}
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input Area */}
-                        <div className="bg-slate-50 p-3 flex items-center gap-2 border-t border-slate-200 shrink-0">
-                            <input 
-                                type="text"
-                                className="flex-1 bg-white border border-slate-300 text-slate-900 rounded-full py-3 px-5 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all placeholder-slate-400 shadow-sm"
-                                placeholder="הקלד הודעה..."
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                                autoFocus
-                            />
-                            <button 
-                                onClick={handleSend}
-                                disabled={!newMessage.trim()}
-                                className="bg-brand-600 hover:bg-brand-700 text-white p-3 rounded-full shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
-                            >
-                                <Send className="w-5 h-5" />
-                            </button>
+                        {/* Input Area - Fixed at bottom, shrink-0 */}
+                        <div className="bg-white p-3 border-t border-slate-200 shrink-0 z-20 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] pb-safe">
+                            {replyingTo && (
+                                <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg mb-2 border-r-4 border-brand-500 animate-in slide-in-from-bottom-2">
+                                    <div className="text-xs text-slate-600">
+                                        <span className="font-bold block text-brand-700">משיב ל-{replyingTo.senderName}:</span>
+                                        <span className="line-clamp-1">{replyingTo.content}</span>
+                                    </div>
+                                    <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                                </div>
+                            )}
+                            
+                            {editingMessageId && (
+                                <div className="flex justify-between items-center bg-yellow-50 p-2 rounded-lg mb-2 border-r-4 border-yellow-500 animate-in slide-in-from-bottom-2">
+                                    <div className="text-xs text-yellow-800 font-bold">עורך הודעה...</div>
+                                    <button onClick={() => { setEditingMessageId(null); setNewMessage(''); }} className="text-yellow-600 hover:text-yellow-800"><X className="w-4 h-4" /></button>
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    disabled={isUploading || !!editingMessageId} 
+                                    className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-50 rounded-full transition-colors disabled:opacity-50"
+                                    title="צרף קובץ (יימחק תוך שבוע)"
+                                >
+                                    {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
+                                </button>
+                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+                                
+                                <input 
+                                    type="text"
+                                    className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 rounded-full py-2.5 px-5 outline-none focus:border-brand-500 focus:bg-white transition-all text-sm"
+                                    placeholder={editingMessageId ? "ערוך את ההודעה..." : "הקלד הודעה..."}
+                                    value={newMessage}
+                                    onChange={(e) => setNewMessage(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                                />
+                                <button 
+                                    onClick={handleSend} 
+                                    disabled={!newMessage.trim()} 
+                                    className={`p-2.5 rounded-full shadow-sm transition-all active:scale-95 text-white ${editingMessageId ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-brand-600 hover:bg-brand-700 disabled:opacity-50'}`}
+                                >
+                                    {editingMessageId ? <Check className="w-5 h-5" /> : <Send className="w-5 h-5 mirror-rtl" />}
+                                </button>
+                            </div>
                         </div>
                     </>
                 ) : (
-                    /* Empty State for Right Side */
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-100 border-b-8 border-brand-600 relative">
-                        <button 
-                            onClick={onClose} 
-                            className="absolute top-4 left-4 p-2 bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-full shadow-sm transition-colors"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
-                        <div className="w-24 h-24 bg-slate-200 rounded-full flex items-center justify-center mb-6">
-                            <User className="w-12 h-12 text-slate-400" />
-                        </div>
-                        <h2 className="text-2xl font-light text-slate-600 mb-2">Barter Web</h2>
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50 p-6 text-center">
+                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4"><User className="w-10 h-10 text-slate-300" /></div>
+                        <h2 className="text-xl font-bold text-slate-600 mb-1">Barter.org.il</h2>
                         <p className="text-sm">בחר שיחה מהרשימה כדי להתחיל להתכתב</p>
                     </div>
                 )}
@@ -377,3 +496,8 @@ export const MessagingModal: React.FC<MessagingModalProps> = ({
     </div>
   );
 };
+
+// Simple Check Icon for edit confirm
+const Check = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>
+);

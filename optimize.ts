@@ -51,19 +51,33 @@ export default async function handler(req, res) {
       Current Date: ${today}
       Analyze this barter offer request: "${rawInput}"
       
-      Return a JSON object with the following fields (all text in Hebrew):
-      - title (Professional headline)
-      - description (Persuasive description)
-      - offeredService (Short 2-4 words)
-      - requestedService (Short 2-4 words)
-      - location (City or 'Remote')
-      - tags (Array of strings. CRITICAL INSTRUCTION: Limit to maximum 10 tags. Identify relevant hobbies, interests, or soft skills mentioned in the text that could match user interests (e.g. sports, cooking, music, gaming) and include them as tags. Also include professional tags.)
-      - durationType (Enum: 'one-time' or 'ongoing'. Logic: if text implies monthly (חודשי), retainer (ריטיינר), long-term (לטווח ארוך), constant (קבוע), subscription (מנוי) -> 'ongoing'. Otherwise -> 'one-time')
-      - expirationDate (YYYY-MM-DD, optional. Only include if a specific deadline is mentioned AND durationType is 'one-time')
+      Extract structrued data in Hebrew.
     `;
 
-    // We use direct REST API fetch instead of the SDK to manually inject the 'Referer' header.
-    // This solves the "Requests from referer <empty> are blocked" error when using restricted API keys.
+    // Define JSON Schema for strict output
+    const responseSchema = {
+        type: "OBJECT",
+        properties: {
+            title: { type: "STRING", description: "A professional and catchy title for the barter offer (Hebrew)." },
+            description: { type: "STRING", description: "A persuasive and clear description of the offer (Hebrew)." },
+            offeredService: { type: "STRING", description: "Short 2-4 words summarizing what is given (Hebrew)." },
+            requestedService: { type: "STRING", description: "Short 2-4 words summarizing what is requested (Hebrew)." },
+            location: { type: "STRING", description: "The city or area mentioned. If none mentioned, return 'כל הארץ'." },
+            tags: { 
+                type: "ARRAY", 
+                items: { type: "STRING" },
+                description: "Up to 10 relevant tags (professions, skills, or interests)."
+            },
+            durationType: { 
+                type: "STRING", 
+                enum: ["one-time", "ongoing"],
+                description: "ongoing for retainers/subscriptions/long-term, one-time for projects."
+            },
+            expirationDate: { type: "STRING", description: "YYYY-MM-DD format if a deadline is explicitly mentioned." }
+        },
+        required: ["title", "description", "offeredService", "requestedService", "tags", "durationType"]
+    };
+
     const model = 'gemini-2.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -72,7 +86,8 @@ export default async function handler(req, res) {
         parts: [{ text: prompt }]
       }],
       generationConfig: {
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: responseSchema
       }
     };
 
@@ -83,7 +98,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Referer': referer, // CRITICAL: Pass the referer to satisfy API key restrictions
+        'Referer': referer, 
         'Origin': referer
       },
       body: JSON.stringify(requestBody)
