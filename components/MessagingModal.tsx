@@ -286,6 +286,7 @@ export const MessagingModal: React.FC = ({
   const activePartnerAvatar = activePartnerProfile?.avatarUrl || conversationsMap.get(activeConversationId!)?.avatarUrl;
 
   return (
+
 {/* Sidebar List */}
 
 תיבת הודעות
@@ -299,8 +300,7 @@ setSearchTerm(e.target.value)}
 ) : (
 filteredConversations.map(conv => {
 const convProfile = users.find(u => u.id === conv.partnerId);
-
-    return (
+  return (
 setActiveConversationId(conv.partnerId)}
 className={flex items-center gap-3 p-4 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeConversationId === conv.partnerId ? 'bg-brand-50 border-r-4 border-r-brand-500' : ''}}
 >
@@ -330,8 +330,9 @@ title="לחץ לצפייה בפרופיל"
 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
 {conv.lastMessage.isDeleted ? 'הודעה נמחקה' : conv.lastMessage.content}
 
-    );
+);
 })
+
 )}
 
 {/* Chat Area */}
@@ -358,6 +359,7 @@ const isDeleted = msg.isDeleted;
 const canEdit = isMe && !isDeleted && (Date.now() - new Date(msg.timestamp).getTime() < 15 * 60 * 1000);
 
 return (
+
 {msg.replyTo && !isDeleted && (
 
 {msg.replyTo.senderName}
@@ -400,6 +402,7 @@ setReplyingTo(msg)} title="הגב" className="hover:scale-110 transition-transfo
 )}
 
 );
+
 })}
 
 {/* Input Area */}
@@ -425,8 +428,8 @@ fileInputRef.current?.click()}
 disabled={isUploading || !!editingMessageId}
 className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-50 rounded-full transition-colors disabled:opacity-50"
 title="צרף קובץ (יימחק תוך שבוע)"
-
 {isUploading ?  : }
+
 setNewMessage(e.target.value)}
 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
 />
@@ -438,12 +441,5 @@ Barter.org.il
 בחר שיחה מהרשימה כדי להתחיל להתכתב
 
 )}
-
-);
-};
-
-const Check = ({ className }: { className?: string }) => (
-
-SVG
 
 );
